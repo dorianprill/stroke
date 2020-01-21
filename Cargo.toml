@@ -1,0 +1,12 @@
+[package]
+name = "brezel"
+version = "0.1.0"
+authors = ["Dorian Prill"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies.num-traits]
+version = "0.2"
+default-features = false
+features = ["libm"]    # <--- Uncomment if you wish to use `Float` and `Real` without `std`
