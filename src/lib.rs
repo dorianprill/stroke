@@ -5,54 +5,54 @@ use num_traits::{float::Float};
 
 #[derive(Debug, Copy, Clone)]
 #[allow(dead_code)]
-pub struct Point2D<T>
+pub struct Point2<T>
 {
     x: T,
     y: T,
 }
 
-impl<T> Point2D<T> 
+impl<T> Point2<T> 
 where T: Add + Sub + Mul + Clone {
-    // Let this be the only way users can create Point2D, which requires that 
+    // Let this be the only way users can create Point2, which requires that 
     // T implement Add, Sub, Mul, and Clone
     pub fn new(x: T, y: T) -> Self {
-        Point2D {
+        Point2 {
             x: x,
-            y, // Shortcut (I think this is the preferred) way.
+            y,
         }
     }
 }
 
 
-impl<T> Add for Point2D<T>
+impl<T> Add for Point2<T>
 where
     T: Add<Output=T>,
 {
     type Output = Self;
 
-    fn add(self, other: Point2D<T>) -> Point2D<T> {
-        Point2D {
+    fn add(self, other: Point2<T>) -> Point2<T> {
+        Point2 {
             x: self.x + other.x,
             y: self.y + other.y
         }
     }
 }
 
-impl<T> Sub for Point2D<T>
+impl<T> Sub for Point2<T>
 where 
     T: Sub<Output=T>
 {
     type Output = Self;
 
     fn sub(self, other: Self) -> Self::Output {
-        Point2D {
+        Point2 {
             x: self.x - other.x,
             y: self.y - other.y,
         }
     }
 }
 
-impl<T,U> Mul<U> for Point2D<T>
+impl<T,U> Mul<U> for Point2<T>
 where
     // How you have the mulitplication done is mulitpling T * U => T, this
     // trait bounds for T will specify this requirement as the mul operator is
@@ -60,10 +60,10 @@ where
     T: Mul<U,Output=T>,
     U: Clone,
 {
-    type Output = Point2D<T>;
+    type Output = Point2<T>;
 
-    fn mul(self, _rhs: U) -> Point2D<T> {
-        return Point2D{x: self.x * _rhs.clone(), y: self.y * _rhs}
+    fn mul(self, _rhs: U) -> Point2<T> {
+        return Point2{x: self.x * _rhs.clone(), y: self.y * _rhs}
     }
 }
 
@@ -97,7 +97,7 @@ where
     where 
         F: Float,
         T: Add<T, Output=T> + Add<F, Output=T> + Sub<F, Output=T> + Mul<F, Output=T>,
-        f64: Sub<F, Output=F> + Mul<F, Output=F>, // this is the primitive type f64
+        f64: Sub<F, Output=T> + Mul<F, Output=T>, // this is the primitive type f64
     {
         return self.start * ((1.0-t) * (1.0-t) * (1.0-t))
                 + self.ctrl1 * (3.0 * t * (1.0-t) * (1.0-t))
@@ -153,7 +153,7 @@ mod tests
     fn circle_approximation_error() 
     {
         // define closure for unit circle 
-        let circle = |p: Point2D<f64>| -> f64 { ( p.x.pow(2) as f64 
+        let circle = |p: Point2<f64>| -> f64 { ( p.x.pow(2) as f64 
                                                 + p.y.pow(2) as f64)
                                                 .sqrt() - 1f64};
 
@@ -165,15 +165,36 @@ mod tests
         let max_drift_perc  = 0.019608; // radial drift percent
         let max_error       = max_drift_perc * 0.01; // absolute max radial error
 
-        let cubic_bezier_circle = CubicBezier{ start:  Point2D{x:0f64,  y:1f64},
-                                                ctrl1: Point2D{x:c,     y:1f64},
-                                                ctrl2: Point2D{x:1f64,  y:c},
-                                                end:   Point2D{x:1f64,  y:0f64}};
+        let bezier_quadrant_1= CubicBezier{ start:  Point2{x:0f64,  y:1f64},
+                                                ctrl1: Point2{x:c,     y:1f64},
+                                                ctrl2: Point2{x:1f64,  y:c},
+                                                end:   Point2{x:1f64,  y:0f64}};
+        let bezier_quadrant_2 = CubicBezier{ start:  Point2{x:1f64,  y:0f64},
+                                                ctrl1: Point2{x:1f64,     y:-c},
+                                                ctrl2: Point2{x:c,  y:-1f64},
+                                                end:   Point2{x:0f64,  y:-1f64}};
+        let bezier_quadrant_3 = CubicBezier{ start:  Point2{x:0f64,  y:-1f64},
+                                                ctrl1: Point2{x:-c,     y:-1f64},
+                                                ctrl2: Point2{x:-1f64,  y:-c},
+                                                end:   Point2{x:-1f64,  y:0f64}};
+        let bezier_quadrant_4 = CubicBezier{ start:  Point2{x:-1f64,    y:0f64},
+                                                ctrl1: Point2{x:-1f64,  y:c},
+                                                ctrl2: Point2{x:-c,     y:1f64},
+                                                end:   Point2{x:0f64,   y:1f64}};
         let nsteps =  1000;                                      
         for t in -nsteps..nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
-            let point = cubic_bezier_circle.eval(t);
-            let contour = circle(point);
+            let mut point = bezier_quadrant_1.eval(t);
+            let mut contour = circle(point);
+            assert!( contour.abs() <= max_error );
+            point = bezier_quadrant_2.eval(t);
+            contour = circle(point);
+            assert!( contour.abs() <= max_error );
+            point = bezier_quadrant_3.eval(t);
+            contour = circle(point);
+            assert!( contour.abs() <= max_error );
+            point = bezier_quadrant_4.eval(t);
+            contour = circle(point);
             assert!( contour.abs() <= max_error );
         }
     }
