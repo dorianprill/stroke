@@ -57,7 +57,7 @@ where
     // How you have the mulitplication done is mulitpling T * U => T, this
     // trait bounds for T will specify this requirement as the mul operator is
     // translated to using the first operand as self and the second as rhs. 
-    T: Mul<U,Output=T>,
+    T: Mul<U,Output=T> + Copy,
     U: Clone,
 {
     type Output = Point2<T>;
@@ -79,12 +79,12 @@ pub struct CubicBezier<T>
 
 
 #[allow(dead_code)]
-impl<T> CubicBezier<T> 
+impl<P> CubicBezier<P> 
 where 
-    T: Add + Sub + Mul + Copy,
+    P: Add + Sub + Copy,
 {
 
-    pub fn new(start: T, ctrl1: T, ctrl2: T,  end: T) -> Self {
+    pub fn new(start: P, ctrl1: P, ctrl2: P,  end: P) -> Self {
         CubicBezier { 
             start, 
             ctrl1, 
@@ -93,11 +93,14 @@ where
         }
     }
 
-    fn eval<F>(&mut self, t: F) -> T 
+    fn eval<F>(&mut self, t: F) -> P 
     where 
-        F: Float,
-        T: Add<T, Output=T> + Add<F, Output=T> + Sub<F, Output=T> + Mul<F, Output=T>,
-        f64: Sub<F, Output=T> + Mul<F, Output=T>, // this is the primitive type f64
+    F: Float,
+    P: Add<F, Output = P>
+        + Add<P, Output = P>
+        + Sub<F, Output = P>
+        + Mul<F, Output = P>,
+    f64: Sub<F, Output = F> + Mul<F, Output = F>
     {
         return self.start * ((1.0-t) * (1.0-t) * (1.0-t))
                 + self.ctrl1 * (3.0 * t * (1.0-t) * (1.0-t))
@@ -109,11 +112,10 @@ where
     fn split<F>(&mut self, t: F) -> (Self, Self)
     where
         F: Float,
-        T: Add<F, Output = T>
-            + Sub<T, Output = T>
-            + Add<T, Output = T>
-            + Sub<F, Output = T>
-            + Mul<F, Output = T>,
+        P: Add<F, Output = P>
+            + Sub<P, Output = P>
+            + Add<P, Output = P>
+            + Mul<F, Output = P>,
         f64: Sub<F, Output = F> + Mul<F, Output = F>,
     {
         let ctrl1a   = self.start + (self.ctrl1 - self.start) * t;
@@ -182,7 +184,7 @@ mod tests
                                                 ctrl2: Point2{x:-c,     y:1f64},
                                                 end:   Point2{x:0f64,   y:1f64}};
         let nsteps =  1000;                                      
-        for t in -nsteps..nsteps {
+        for t in 0..nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             let mut point = bezier_quadrant_1.eval(t);
             let mut contour = circle(point);
