@@ -93,12 +93,11 @@ where
         }
     }
 
-    fn eval<F>(&mut self, t: F) -> P 
+    fn eval<F>(&self, t: F) -> P 
     where 
     F: Float,
-    P: Add<F, Output = P>
-        + Add<P, Output = P>
-        + Sub<F, Output = P>
+    P: Add<P, Output = P>
+        + Sub<P, Output = P>
         + Mul<F, Output = P>,
     f64: Sub<F, Output = F> + Mul<F, Output = F>
     {
