@@ -111,8 +111,7 @@ where
     fn split<F>(&mut self, t: F) -> (Self, Self)
     where
         F: Float,
-        P: Add<F, Output = P>
-            + Sub<P, Output = P>
+        P:  Sub<P, Output = P>
             + Add<P, Output = P>
             + Mul<F, Output = P>,
         f64: Sub<F, Output = F> + Mul<F, Output = F>,
