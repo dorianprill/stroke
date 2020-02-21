@@ -1,7 +1,7 @@
 use core::ops::{Add, Sub, Mul};
 
 extern crate num_traits;
-use num_traits::{float::Float};
+use num_traits::{float::Float, Pow};
 
 #[derive(Debug, Copy, Clone)]
 #[allow(dead_code)]
@@ -12,7 +12,7 @@ pub struct Point2<T>
 }
 
 impl<T> Point2<T> 
-where T: Add + Sub + Mul + Clone {
+where T: Add + Sub + Mul + Clone + Mul<T,Output=T> {
     // Let this be the only way users can create Point2, which requires that 
     // T implement Add, Sub, Mul, and Clone
     pub fn new(x: T, y: T) -> Self {
@@ -20,6 +20,19 @@ where T: Add + Sub + Mul + Clone {
             x: x,
             y,
         }
+    }
+
+    // TODO fix norm() trait bound issue
+    // pub fn norm(&self) -> T {
+    //     ((self.x * self.x)
+    //         + (self.y * self.y)).sqrt()
+    // }
+}
+
+impl<T> PartialEq for Point2<T> 
+where T: PartialOrd {
+    fn eq(&self, other: &Self) -> bool {
+        (self.x == other.x) && (self.y == other.y)
     }
 }
 
@@ -196,6 +209,38 @@ mod tests
             point = bezier_quadrant_4.eval(t);
             contour = circle(point);
             assert!( contour.abs() <= max_error );
+        }
+    }
+
+    #[test]
+    fn split_equivalence() {
+        // chose some arbitrary control points and construct a cubic bezier
+        let mut bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
+                                  ctrl1: Point2{x:2.9f64, y:0f64},
+                                  ctrl2: Point2{x:4.3f64, y:-3f64},
+                                  end:   Point2{x:3.2f64,  y:4f64}};
+        // split it at an arbitrary point
+        let at = 0.5;
+        let (left, right) = bezier.split(at);
+        // compare left and right subcurves with parent curve
+        // this is tricky as we have to map t->t/2 (for left) which will 
+        // inevitably contain rounding errors from floating point ops
+        // instead, take the difference of the two points does not exceed an absolute error
+        // TODO update test to use norm() instead, once implemented for Point (maybe as trait?)
+        let max_err = 1e-14;
+        let nsteps =  1000;                                      
+        for t in 0..nsteps {
+            let t = t as f64 * 1f64/(nsteps as f64);
+            dbg!(bezier.eval(t/2.0));
+            dbg!(left.eval(t));
+            // left
+            let mut err = bezier.eval(t/2.0) - left.eval(t);
+            dbg!(err);
+            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+            // right
+            err = bezier.eval((t*0.5)+0.5) - right.eval(t);
+            dbg!(err);
+            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );  
         }
     }
 }
