@@ -12,8 +12,7 @@ pub struct Point2<T>
 }
 
 impl<T> Point2<T> 
-//where T: Add + Add<T,Output=T> + Sub + Mul + Mul<T,Output=T> + Clone {
-where T: Float {
+where T: Add + Add<T,Output=T> + Sub + Mul + Mul<T,Output=T> + Clone {
     /// Creates a new Point2<T>, which requires that 
     /// T implements Add, Sub, Mul, and Clone
     pub fn new(x: T, y: T) -> Self {
