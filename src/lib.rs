@@ -1,7 +1,7 @@
 use core::ops::{Add, Sub, Mul};
 
 extern crate num_traits;
-use num_traits::{float::Float, Pow};
+use num_traits::{float::Float};//, Pow};
 
 #[derive(Debug, Copy, Clone)]
 #[allow(dead_code)]
@@ -106,6 +106,8 @@ where
         }
     }
 
+
+    /// Evaluate a CubicBezier curve at t by direct evaluation of the polynomial (not numerically stable)
     fn eval<F>(&self, t: F) -> P 
     where 
     F: Float,
@@ -120,6 +122,29 @@ where
                 + self.end * (t * t * t);
     }
 
+    /// Evaluate a CubicBezier curve at t using the numerically stable De Casteljau algorithm
+    fn eval_casteljau<F>(&self, t: F) -> P 
+    where 
+    F: Float,
+    P: Add<P, Output = P>
+        + Sub<P, Output = P>
+        + Mul<F, Output = P>,
+    f64: Sub<F, Output = F> + Mul<F, Output = F>
+    {
+        // unrolled de casteljau algorithm
+        // _1ab is the first iteration from first (a) to second (b) control point and so on
+        let ctrl_1ab = self.start + (self.ctrl1 - self.start) * t;
+        let ctrl_1bc   = self.ctrl1 + (self.ctrl2 - self.ctrl1) * t;
+        let ctrl_1cd   = self.ctrl2 + (self.end - self.ctrl2) * t;
+        // second iteration
+        let ctrl_2ab  = ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t;
+        let ctrl_2bc  = ctrl_1bc + (ctrl_1cd - ctrl_1bc) * t;
+        // third iteration, final point on the curve
+        let ctrl_3ab = ctrl_2ab + (ctrl_2bc - ctrl_2ab) * t;
+
+        return ctrl_3ab
+    }
+
 
     fn split<F>(&mut self, t: F) -> (Self, Self)
     where
@@ -129,24 +154,28 @@ where
             + Mul<F, Output = P>,
         f64: Sub<F, Output = F> + Mul<F, Output = F>,
     {
-        let ctrl1a   = self.start + (self.ctrl1 - self.start) * t;
-        let ctrl2a   = self.ctrl1 + (self.ctrl2 - self.ctrl1) * t;
-        let ctrl1aa  = ctrl1a + (ctrl2a - ctrl1a) * t;
-        let ctrl3a   = self.ctrl2 + (self.end - self.ctrl2) * t;
-        let ctrl2aa  = ctrl2a + (ctrl3a - ctrl2a) * t;
-        let ctrl1aaa = ctrl1aa + (ctrl2aa - ctrl1aa) * t;
+       // unrolled de casteljau algorithm
+        // _1ab is the first iteration from first (a) to second (b) control point and so on
+        let ctrl_1ab = self.start + (self.ctrl1 - self.start) * t;
+        let ctrl_1bc   = self.ctrl1 + (self.ctrl2 - self.ctrl1) * t;
+        let ctrl_1cd   = self.ctrl2 + (self.end - self.ctrl2) * t;
+        // second iteration
+        let ctrl_2ab  = ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t;
+        let ctrl_2bc  = ctrl_1bc + (ctrl_1cd - ctrl_1bc) * t;
+        // third iteration, final point on the curve
+        let ctrl_3ab = ctrl_2ab + (ctrl_2bc - ctrl_2ab) * t;
 
         return (
             CubicBezier {
                 start: self.start,
-                ctrl1: ctrl1a,
-                ctrl2: ctrl1aa,
-                end: ctrl1aaa,
+                ctrl1: ctrl_1ab,
+                ctrl2: ctrl_2ab,
+                end: ctrl_3ab,
             },
             CubicBezier {
-                start: ctrl1aaa,
-                ctrl1: ctrl2aa,
-                ctrl2: ctrl3a,
+                start: ctrl_3ab,
+                ctrl1: ctrl_2bc,
+                ctrl2: ctrl_1cd,
                 end: self.end,
             },
         );
@@ -209,6 +238,29 @@ mod tests
             point = bezier_quadrant_4.eval(t);
             contour = circle(point);
             assert!( contour.abs() <= max_error );
+        }
+    }
+
+
+    #[test]
+    fn eval_equivalence() {
+        // all eval methods should be approximately equivalent for well defined test cases
+        // and not equivalent where numerical stability becomes an issue for normal eval
+        let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
+                                  ctrl1: Point2{x:2.9f64, y:0f64},
+                                  ctrl2: Point2{x:4.3f64, y:-3f64},
+                                  end:   Point2{x:3.2f64,  y:4f64}};
+
+        let max_err = 1e-14;
+        let nsteps =  1000;                                      
+        for t in 0..nsteps {
+            let t = t as f64 * 1f64/(nsteps as f64);
+            let p1 = bezier.eval(t);
+            let p2 = bezier.eval_casteljau(t);
+            let err = p2-p1;
+            dbg!(p1);
+            dbg!(p2);
+            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
         }
     }
 
