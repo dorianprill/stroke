@@ -1,7 +1,7 @@
 use core::ops::{Add, Sub, Mul};
 
 extern crate num_traits;
-use num_traits::{float::Float};//, Pow};
+use num_traits::{float::Float};
 
 #[derive(Debug, Copy, Clone)]
 #[allow(dead_code)]
@@ -12,22 +12,39 @@ pub struct Point2<T>
 }
 
 impl<T> Point2<T> 
-where T: Add + Sub + Mul + Clone + Mul<T,Output=T> {
-    // Let this be the only way users can create Point2, which requires that 
-    // T implement Add, Sub, Mul, and Clone
+//where T: Add + Add<T,Output=T> + Sub + Mul + Mul<T,Output=T> + Clone {
+where T: Float {
+    /// Creates a new Point2<T>, which requires that 
+    /// T implements Add, Sub, Mul, and Clone
     pub fn new(x: T, y: T) -> Self {
         Point2 {
             x: x,
             y,
         }
     }
-
-    // TODO fix norm() trait bound issue
-    // pub fn norm(&self) -> T {
-    //     ((self.x * self.x)
-    //         + (self.y * self.y)).sqrt()
-    // }
 }
+
+pub trait Distance {
+    type ScalarDist;
+    fn distance(&self, other: Self) -> Self::ScalarDist;
+}
+
+impl Distance for Point2<f64> {
+    type ScalarDist = f64;
+    fn distance(&self, other: Self) -> f64 {
+        ( ((self.x - other.x) * (self.x - other.x))
+            + ((self.y - other.y) * (self.y - other.y)) ) .sqrt()
+    }
+}
+
+impl Distance for Point2<f32> {
+    type ScalarDist = f32;
+    fn distance(&self, other: Self) -> f32 {
+        ( ((self.x - other.x) * (self.x - other.x))
+            + ((self.y - other.y) * (self.y - other.y)) ) .sqrt()
+    }
+}
+
 
 impl<T> PartialEq for Point2<T> 
 where T: PartialOrd {
@@ -82,19 +99,19 @@ where
 
 
 #[allow(dead_code)]
-pub struct CubicBezier<T>
+pub struct CubicBezier<P>
 {
-    start:  T,
-    ctrl1:  T,
-    ctrl2:  T,
-    end:    T,
+    start:  P,
+    ctrl1:  P,
+    ctrl2:  P,
+    end:    P,
 }
 
 
 #[allow(dead_code)]
 impl<P> CubicBezier<P> 
 where 
-    P: Add + Sub + Copy,
+    P: Add + Sub + Copy + Distance,
 {
 
     pub fn new(start: P, ctrl1: P, ctrl2: P,  end: P) -> Self {
@@ -145,8 +162,31 @@ where
         return ctrl_3ab
     }
 
+    /// Approximates the arc length of the curve by flattening it with straight line segments.
+    /// This works quite well, at ~32 segments it should already provide an error < 0.5
+    fn arclen<F>(&self, nsteps: usize) -> F
+    where 
+    F: Float,
+    P: Add<P, Output = P>
+        + Sub<P, Output = P>
+        + Mul<F, Output = P>,
+    f64: Sub<F, Output = F> + Mul<F, Output = F> + Into<F>
+    {
+        let stepsize = 1f64/(nsteps as f64);
+        let mut arclen = 0f64;
+        for t in 1..nsteps {
+            let t = t as f32 * 1f32.into()/(nsteps as f32).into();
+            let p1 = self.eval_casteljau(t);
+            let p2 = self.eval_casteljau(t+stepsize.into());
 
-    fn split<F>(&mut self, t: F) -> (Self, Self)
+            arclen = arclen + p1.distance(p2);
+        
+        }
+        return arclen.into()
+    }
+
+
+    fn split<F>(&self, t: F) -> (Self, Self)
     where
         F: Float,
         P:  Sub<P, Output = P>
@@ -226,17 +266,21 @@ mod tests
         let nsteps =  1000;                                      
         for t in 0..nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
-            let mut point = bezier_quadrant_1.eval(t);
-            let mut contour = circle(point);
+
+            let point = bezier_quadrant_1.eval(t);
+            let contour = circle(point);
             assert!( contour.abs() <= max_error );
-            point = bezier_quadrant_2.eval(t);
-            contour = circle(point);
+
+            let point = bezier_quadrant_2.eval(t);
+            let contour = circle(point);
             assert!( contour.abs() <= max_error );
-            point = bezier_quadrant_3.eval(t);
-            contour = circle(point);
+
+            let point = bezier_quadrant_3.eval(t);
+            let contour = circle(point);
             assert!( contour.abs() <= max_error );
-            point = bezier_quadrant_4.eval(t);
-            contour = circle(point);
+
+            let point = bezier_quadrant_4.eval(t);
+            let contour = circle(point);
             assert!( contour.abs() <= max_error );
         }
     }
@@ -252,7 +296,7 @@ mod tests
                                   end:   Point2{x:3.2f64,  y:4f64}};
 
         let max_err = 1e-14;
-        let nsteps =  1000;                                      
+        let nsteps: usize =  1000;                                      
         for t in 0..nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             let p1 = bezier.eval(t);
@@ -267,7 +311,7 @@ mod tests
     #[test]
     fn split_equivalence() {
         // chose some arbitrary control points and construct a cubic bezier
-        let mut bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
+        let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
                                   ctrl1: Point2{x:2.9f64, y:0f64},
                                   ctrl2: Point2{x:4.3f64, y:-3f64},
                                   end:   Point2{x:3.2f64,  y:4f64}};
@@ -276,11 +320,11 @@ mod tests
         let (left, right) = bezier.split(at);
         // compare left and right subcurves with parent curve
         // this is tricky as we have to map t->t/2 (for left) which will 
-        // inevitably contain rounding errors from floating point ops
-        // instead, take the difference of the two points does not exceed an absolute error
+        // inevitably contain rounding errors from floating point ops.
+        // instead, take the difference of the two points which must not exceed the absolute error
         // TODO update test to use norm() instead, once implemented for Point (maybe as trait?)
         let max_err = 1e-14;
-        let nsteps =  1000;                                      
+        let nsteps: usize =  1000;                                      
         for t in 0..nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             dbg!(bezier.eval(t/2.0));
