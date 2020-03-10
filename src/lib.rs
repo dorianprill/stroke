@@ -28,6 +28,7 @@ pub trait Distance {
     fn distance(&self, other: Self) -> Self::ScalarDist;
 }
 
+#[cfg(target_pointer_width = "64")]
 impl Distance for Point2<f64> {
     type ScalarDist = f64;
     fn distance(&self, other: Self) -> f64 {
@@ -35,7 +36,12 @@ impl Distance for Point2<f64> {
             + ((self.y - other.y) * (self.y - other.y)) ) .sqrt()
     }
 }
+// conditionally compiled newtype pattern used to determine which size float to use in arclen() and for tests
+// so that the library can abstract over both 32 and 64 bit architectures
+#[cfg(target_pointer_width = "64")]
+type NativeWidthFloat = f64;
 
+#[cfg(target_pointer_width = "32")]
 impl Distance for Point2<f32> {
     type ScalarDist = f32;
     fn distance(&self, other: Self) -> f32 {
@@ -43,6 +49,8 @@ impl Distance for Point2<f32> {
             + ((self.y - other.y) * (self.y - other.y)) ) .sqrt()
     }
 }
+#[cfg(target_pointer_width = "32")]
+type NativeWidthFloat = f32;
 
 
 impl<T> PartialEq for Point2<T> 
@@ -110,7 +118,7 @@ pub struct CubicBezier<P>
 #[allow(dead_code)]
 impl<P> CubicBezier<P> 
 where 
-    P: Add + Sub + Copy + Distance,
+    P: Add + Sub + Copy + Distance<ScalarDist = NativeWidthFloat>,
 {
 
     pub fn new(start: P, ctrl1: P, ctrl2: P,  end: P) -> Self {
@@ -169,12 +177,13 @@ where
     P: Add<P, Output = P>
         + Sub<P, Output = P>
         + Mul<F, Output = P>,
+    f32: Sub<F, Output = F> + Mul<F, Output = F> + Into<F>,
     f64: Sub<F, Output = F> + Mul<F, Output = F> + Into<F>
     {
-        let stepsize = 1f64/(nsteps as f64);
-        let mut arclen = 0f64;
+        let stepsize: NativeWidthFloat = 1.0/(nsteps as NativeWidthFloat);
+        let mut arclen: NativeWidthFloat = 0.0;
         for t in 1..nsteps {
-            let t = t as f32 * 1f32.into()/(nsteps as f32).into();
+            let t = t as NativeWidthFloat * 1.0.into()/(nsteps as NativeWidthFloat).into();
             let p1 = self.eval_casteljau(t);
             let p2 = self.eval_casteljau(t+stepsize.into());
 
