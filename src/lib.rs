@@ -1,3 +1,4 @@
+#![no_std]
 use core::ops::{Add, Sub, Mul};
 
 extern crate num_traits;
@@ -250,8 +251,7 @@ where
 mod tests 
 {
     use super::*;
-    use std::f64;
-    use crate::num_traits::Pow;
+    use crate::num_traits::{Pow};
 
     #[test]
     fn circle_approximation_error() 
@@ -324,8 +324,8 @@ mod tests
             let p1 = bezier.eval(t);
             let p2 = bezier.eval_casteljau(t);
             let err = p2-p1;
-            dbg!(p1);
-            dbg!(p2);
+            //dbg!(p1);
+            //dbg!(p2);
             assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
         }
     }
@@ -349,15 +349,15 @@ mod tests
         let nsteps: usize =  1000;                                      
         for t in 0..nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
-            dbg!(bezier.eval(t/2.0));
-            dbg!(left.eval(t));
+            //dbg!(bezier.eval(t/2.0));
+            //dbg!(left.eval(t));
             // left
             let mut err = bezier.eval(t/2.0) - left.eval(t);
-            dbg!(err);
+            //dbg!(err);
             assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
             // right
             err = bezier.eval((t*0.5)+0.5) - right.eval(t);
-            dbg!(err);
+            //dbg!(err);
             assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );  
         }
     }
