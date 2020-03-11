@@ -153,7 +153,7 @@ where
     P: Add<P, Output = P>
         + Sub<P, Output = P>
         + Mul<F, Output = P>,
-    f64: Sub<F, Output = F> + Mul<F, Output = F>
+    NativeFloat: Sub<F, Output = F> + Mul<F, Output = F>
     {
         return self.start * ((1.0-t) * (1.0-t) * (1.0-t))
                 + self.ctrl1 * (3.0 * t * (1.0-t) * (1.0-t))
@@ -168,7 +168,7 @@ where
     P: Add<P, Output = P>
         + Sub<P, Output = P>
         + Mul<F, Output = P>,
-    f64: Sub<F, Output = F> + Mul<F, Output = F>
+    NativeFloat: Sub<F, Output = F> + Mul<F, Output = F>
     {
         // unrolled de casteljau algorithm
         // _1ab is the first iteration from first (a) to second (b) control point and so on
@@ -186,14 +186,15 @@ where
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.
     /// This works quite well, at ~32 segments it should already provide an error < 0.5
-    fn arclen<F>(&self, nsteps: usize) -> F
+    /// Remember arclen also works by linear approximation, not the integral, so we have to accept error!
+    /// This approximation is unfeasable if desired accuracy is greater than 2 decimal places
+    fn arclen<F>(&self, nsteps: usize) -> NativeFloat
     where 
     F: Float,
     P: Add<P, Output = P>
         + Sub<P, Output = P>
         + Mul<F, Output = P>,
-    f32: Sub<F, Output = F> + Mul<F, Output = F> + Into<F>,
-    f64: Sub<F, Output = F> + Mul<F, Output = F> + Into<F>
+    NativeFloat: Sub<F, Output = F> + Mul<F, Output = F> + Into<F>
     {
         let stepsize: NativeFloat = 1.0/(nsteps as NativeFloat);
         let mut arclen: NativeFloat = 0.0;
@@ -205,17 +206,17 @@ where
             arclen = arclen + p1.distance(p2);
         
         }
-        return arclen.into()
+        return arclen
     }
 
 
     fn split<F>(&self, t: F) -> (Self, Self)
     where
-        F: Float,
-        P:  Sub<P, Output = P>
-            + Add<P, Output = P>
-            + Mul<F, Output = P>,
-        f64: Sub<F, Output = F> + Mul<F, Output = F>,
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> + Mul<F, Output = F>,
     {
        // unrolled de casteljau algorithm
         // _1ab is the first iteration from first (a) to second (b) control point and so on
@@ -252,6 +253,61 @@ mod tests
 {
     use super::*;
     use crate::num_traits::{Pow};
+
+    #[test]
+    fn eval_equivalence() {
+        // all eval methods should be approximately equivalent for well defined test cases
+        // and not equivalent where numerical stability becomes an issue for normal eval
+        let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
+                                  ctrl1: Point2{x:2.9f64, y:0f64},
+                                  ctrl2: Point2{x:4.3f64, y:-3f64},
+                                  end:   Point2{x:3.2f64,  y:4f64}};
+
+        let max_err = 1e-14;
+        let nsteps: usize =  1000;                                      
+        for t in 0..nsteps {
+            let t = t as f64 * 1f64/(nsteps as f64);
+            let p1 = bezier.eval(t);
+            let p2 = bezier.eval_casteljau(t);
+            let err = p2-p1;
+            //dbg!(p1);
+            //dbg!(p2);
+            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+        }
+    }
+
+    #[test]
+    fn split_equivalence() {
+        // chose some arbitrary control points and construct a cubic bezier
+        let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
+                                  ctrl1: Point2{x:2.9f64, y:0f64},
+                                  ctrl2: Point2{x:4.3f64, y:-3f64},
+                                  end:   Point2{x:3.2f64,  y:4f64}};
+        // split it at an arbitrary point
+        let at = 0.5;
+        let (left, right) = bezier.split(at);
+        // compare left and right subcurves with parent curve
+        // this is tricky as we have to map t->t/2 (for left) which will 
+        // inevitably contain rounding errors from floating point ops.
+        // instead, take the difference of the two points which must not exceed the absolute error
+        // TODO update test to use norm() instead, once implemented for Point (maybe as trait?)
+        let max_err = 1e-14;
+        let nsteps: usize =  1000;                                      
+        for t in 0..nsteps {
+            let t = t as f64 * 1f64/(nsteps as f64);
+            //dbg!(bezier.eval(t/2.0));
+            //dbg!(left.eval(t));
+            // left
+            let mut err = bezier.eval(t/2.0) - left.eval(t);
+            //dbg!(err);
+            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+            // right
+            err = bezier.eval((t*0.5)+0.5) - right.eval(t);
+            //dbg!(err);
+            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );  
+        }
+    }
+
 
     #[test]
     fn circle_approximation_error() 
@@ -309,56 +365,44 @@ mod tests
 
 
     #[test]
-    fn eval_equivalence() {
-        // all eval methods should be approximately equivalent for well defined test cases
-        // and not equivalent where numerical stability becomes an issue for normal eval
-        let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
-                                  ctrl1: Point2{x:2.9f64, y:0f64},
-                                  ctrl2: Point2{x:4.3f64, y:-3f64},
-                                  end:   Point2{x:3.2f64,  y:4f64}};
+    fn circle_circumference_approximation() 
+    {
+        // define control points for 4 cubic bezier segments to best approximate a unit circle
+        // control points are chosen for minimum radial distance error, see circle_approximation_error() in this file
+        // given this, the circumference will also be close to 2*pi 
+        // (remember arclen also works by linear approximation, not the true integral, so we have to accept error)!
+        // This approximation is unfeasable if desired accuracy is greater than 2 decimal places (at 1000 steps)
+        // TODO don't hardcode values, solve for them
+        let c         = 0.551915024494;
+        let max_error = 1e-2;
+        let nsteps  = 1e3 as usize;
+        let pi        = 3.14159265359;
+        let tau       = 2.*pi;
 
-        let max_err = 1e-14;
-        let nsteps: usize =  1000;                                      
-        for t in 0..nsteps {
-            let t = t as f64 * 1f64/(nsteps as f64);
-            let p1 = bezier.eval(t);
-            let p2 = bezier.eval_casteljau(t);
-            let err = p2-p1;
-            //dbg!(p1);
-            //dbg!(p2);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
-        }
+        let bezier_quadrant_1= CubicBezier{ start:  Point2{x:0f64,  y:1f64},
+                                                ctrl1: Point2{x:c,     y:1f64},
+                                                ctrl2: Point2{x:1f64,  y:c},
+                                                end:   Point2{x:1f64,  y:0f64}};
+        let bezier_quadrant_2 = CubicBezier{ start:  Point2{x:1f64,  y:0f64},
+                                                ctrl1: Point2{x:1f64,     y:-c},
+                                                ctrl2: Point2{x:c,  y:-1f64},
+                                                end:   Point2{x:0f64,  y:-1f64}};
+        let bezier_quadrant_3 = CubicBezier{ start:  Point2{x:0f64,  y:-1f64},
+                                                ctrl1: Point2{x:-c,     y:-1f64},
+                                                ctrl2: Point2{x:-1f64,  y:-c},
+                                                end:   Point2{x:-1f64,  y:0f64}};
+        let bezier_quadrant_4 = CubicBezier{ start:  Point2{x:-1f64,    y:0f64},
+                                                ctrl1: Point2{x:-1f64,  y:c},
+                                                ctrl2: Point2{x:-c,     y:1f64},
+                                                end:   Point2{x:0f64,   y:1f64}};
+        let circumference = bezier_quadrant_1.arclen::<NativeFloat>(nsteps) +
+                                bezier_quadrant_2.arclen::<NativeFloat>(nsteps) +
+                                bezier_quadrant_3.arclen::<NativeFloat>(nsteps) +
+                                bezier_quadrant_4.arclen::<NativeFloat>(nsteps);
+        //dbg!(circumference);
+        //dbg!(tau);
+        assert!( ((tau + max_error) > circumference) && ((tau - max_error) < circumference) );
+
     }
 
-    #[test]
-    fn split_equivalence() {
-        // chose some arbitrary control points and construct a cubic bezier
-        let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
-                                  ctrl1: Point2{x:2.9f64, y:0f64},
-                                  ctrl2: Point2{x:4.3f64, y:-3f64},
-                                  end:   Point2{x:3.2f64,  y:4f64}};
-        // split it at an arbitrary point
-        let at = 0.5;
-        let (left, right) = bezier.split(at);
-        // compare left and right subcurves with parent curve
-        // this is tricky as we have to map t->t/2 (for left) which will 
-        // inevitably contain rounding errors from floating point ops.
-        // instead, take the difference of the two points which must not exceed the absolute error
-        // TODO update test to use norm() instead, once implemented for Point (maybe as trait?)
-        let max_err = 1e-14;
-        let nsteps: usize =  1000;                                      
-        for t in 0..nsteps {
-            let t = t as f64 * 1f64/(nsteps as f64);
-            //dbg!(bezier.eval(t/2.0));
-            //dbg!(left.eval(t));
-            // left
-            let mut err = bezier.eval(t/2.0) - left.eval(t);
-            //dbg!(err);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
-            // right
-            err = bezier.eval((t*0.5)+0.5) - right.eval(t);
-            //dbg!(err);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );  
-        }
-    }
 }
