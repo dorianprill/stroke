@@ -28,29 +28,43 @@ pub trait Distance {
     fn distance(&self, other: Self) -> Self::ScalarDist;
 }
 
-#[cfg(target_pointer_width = "64")]
-impl Distance for Point2<f64> {
-    type ScalarDist = f64;
-    fn distance(&self, other: Self) -> f64 {
-        ( ((self.x - other.x) * (self.x - other.x))
-            + ((self.y - other.y) * (self.y - other.y)) ) .sqrt()
-    }
-}
 // conditionally compiled newtype pattern used to determine which size float to use in arclen() and for tests
 // so that the library can abstract over both 32 and 64 bit architectures
+// TODO there has to be a better architectural solution to this... if not, generate impls with macro
 #[cfg(target_pointer_width = "64")]
-type NativeWidthFloat = f64;
-
+type NativeFloat = f64;
+// same thing for 32 bit
 #[cfg(target_pointer_width = "32")]
-impl Distance for Point2<f32> {
-    type ScalarDist = f32;
-    fn distance(&self, other: Self) -> f32 {
+type NativeFloat = f32;
+
+
+
+impl Distance for Point2<f64> {
+    type ScalarDist = NativeFloat;
+    fn distance(&self, other: Self) -> NativeFloat {
         ( ((self.x - other.x) * (self.x - other.x))
             + ((self.y - other.y) * (self.y - other.y)) ) .sqrt()
     }
 }
-#[cfg(target_pointer_width = "32")]
-type NativeWidthFloat = f32;
+
+impl Distance for Point2<i64> {
+    type ScalarDist = NativeFloat;
+    fn distance(&self, other: Self) -> NativeFloat {
+        ( ((self.x - other.x) * (self.x - other.x)) as NativeFloat
+            + ((self.y - other.y) * (self.y - other.y)) as NativeFloat) .sqrt()
+    }
+}
+
+impl Distance for Point2<u64> {
+    type ScalarDist = NativeFloat;
+    fn distance(&self, other: Self) -> NativeFloat {
+        ( ((self.x - other.x) * (self.x - other.x)) as NativeFloat
+            + ((self.y - other.y) * (self.y - other.y)) as NativeFloat ) .sqrt()
+    }
+}
+
+
+
 
 
 impl<T> PartialEq for Point2<T> 
@@ -118,7 +132,7 @@ pub struct CubicBezier<P>
 #[allow(dead_code)]
 impl<P> CubicBezier<P> 
 where 
-    P: Add + Sub + Copy + Distance<ScalarDist = NativeWidthFloat>,
+    P: Add + Sub + Copy + Distance<ScalarDist = NativeFloat>,
 {
 
     pub fn new(start: P, ctrl1: P, ctrl2: P,  end: P) -> Self {
@@ -180,10 +194,10 @@ where
     f32: Sub<F, Output = F> + Mul<F, Output = F> + Into<F>,
     f64: Sub<F, Output = F> + Mul<F, Output = F> + Into<F>
     {
-        let stepsize: NativeWidthFloat = 1.0/(nsteps as NativeWidthFloat);
-        let mut arclen: NativeWidthFloat = 0.0;
+        let stepsize: NativeFloat = 1.0/(nsteps as NativeFloat);
+        let mut arclen: NativeFloat = 0.0;
         for t in 1..nsteps {
-            let t = t as NativeWidthFloat * 1.0.into()/(nsteps as NativeWidthFloat).into();
+            let t = t as NativeFloat * 1.0.into()/(nsteps as NativeFloat).into();
             let p1 = self.eval_casteljau(t);
             let p2 = self.eval_casteljau(t+stepsize.into());
 
