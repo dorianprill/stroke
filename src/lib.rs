@@ -24,6 +24,7 @@ where T: Add + Add<T,Output=T> + Sub + Mul + Mul<T,Output=T> + Clone {
     }
 }
 
+
 pub trait Coordinate {
     type Coordinate;
     fn x(&self) -> Self::Coordinate;
@@ -174,19 +175,34 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     }
 
     /// Sample the x coordinate of the segment at t (expecting t between 0 and 1).
-    pub fn x(&self, t: NativeFloat) -> NativeFloat {
-        self.start.x() + (self.end.x() - self.start.x()) * t
+    pub fn x<F>(&self, t: F) -> F 
+    where
+    F : Float,
+    P: Mul<NativeFloat, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F> 
+        + Into<F>
+    {
+        self.start.x() + (self.end.x() - self.start.x().into()) * t
     }
 
     /// Sample the y coordinate of the segment at t (expecting t between 0 and 1).
-    #[inline]
-    pub fn y(&self, t: NativeFloat) -> NativeFloat {
-        self.start.y() + (self.end.y() - self.start.y()) * t
+    pub fn y<F>(&self, t: F) -> F 
+    where
+    F : Float,
+    P: Mul<NativeFloat, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F> 
+        + Into<F>
+    {
+        self.start.y() + (self.end.y() - self.start.y().into()) * t
     }
 
     /// Return the derivative function.
-    /// The derivative is also a bezier curve but of degree n-1 - In the case of a line it is just a point.
-    /// Since a point is a constant, eval() does NOT need to be called separately
+    /// The derivative is also a bezier curve but of degree n-1 - In the case of a line just a scalar (the slope).
+    /// Since its already a scalar, eval() does NOT need to be called separately
     pub fn derivative(&self) -> Point2<NativeFloat>
     where
     P:  Sub<P, Output = P>
@@ -196,7 +212,7 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         + Mul<NativeFloat, Output = NativeFloat>
         + Float
     {
-        return Point2 {
+        return Point2{
             x: self.end.x() - self.start.x(),
             y: self.end.y() - self.start.y()
         }
@@ -256,47 +272,112 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     }
 
     /// Sample the x coordinate of the curve at t (expecting t between 0 and 1).
-    pub fn x(&self, t: NativeFloat) -> NativeFloat {
-        let t2:     NativeFloat = t * t;
-        let one_t:  NativeFloat = 1 as NativeFloat - t;
-        let one_t2: NativeFloat = one_t * one_t;
+    pub fn x<F>(&self, t: F) -> F 
+    where
+    F : Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F> 
+        + Into<F>
+    {
+        let t2 = t * t;
+        let one_t = 1 as NativeFloat - t;
+        let one_t2 = one_t * one_t;
 
-        self.start.x() * one_t2 + self.ctrl.x() * 2 as NativeFloat * one_t * t + self.end.x() * t2
+        self.start.x() * one_t2 + self.ctrl.x() * 2.0.into() * one_t * t + self.end.x() * t2
     }
 
     /// Sample the y coordinate of the curve at t (expecting t between 0 and 1).
-    pub fn y(&self, t: NativeFloat) -> NativeFloat {
-        let t2:     NativeFloat = t * t;
-        let one_t:  NativeFloat = 1 as NativeFloat - t;
-        let one_t2: NativeFloat = one_t * one_t;
+    pub fn y<F>(&self, t: F) -> F 
+    where
+    F : Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F> 
+        + Into<F>
+    {
+        let t2 = t * t;
+        let one_t = 1 as NativeFloat - t;
+        let one_t2 = one_t * one_t;
 
-        self.start.y() * one_t2 + self.ctrl.y() * 2 as NativeFloat* one_t * t + self.end.y() * t2
+        self.start.y() * one_t2 + self.ctrl.y() * 2.0.into() * one_t * t + self.end.y() * t2
     }
 
     /// Return the derivative function.
     /// The derivative is also a bezier curve but of degree n-1 - In the case of quadratic it is just a line.
     /// Since it returns the derivative function, eval() needs to be called separately
-    pub fn derivative(&self) -> Line<P>
+    pub fn derivative<F>(&self) -> Line<P>
     where
+    F: Float,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
-        + Mul<NativeFloat, Output = P>,
-    NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-        + Mul<NativeFloat, Output = NativeFloat>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Into<F>
     {
         return Line{
-            start: (self.ctrl - self.start) * 2 as NativeFloat,
-            end:   (self.end - self.ctrl)   * 2 as NativeFloat
+            start: (self.ctrl - self.start) * 2.0.into(),
+            end:   (self.end - self.ctrl)   * 2.0.into()
         }
     }
 
-    pub fn curvature(&self, t: NativeFloat) -> NativeFloat
+
+    /// Sample the x coordinate of the curve's derivative at t (expecting t between 0 and 1).
+    /// Convenience function for .derivative().eval(t).x()
+    pub fn dx<F>(&self, t: F) -> F
     where
+    F: Float,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
-        + Mul<NativeFloat, Output = P>,
-    NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-        + Mul<NativeFloat, Output = NativeFloat>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
+    {
+        let c0: F = t * 2.0.into() - 2.0.into();
+        let c1: F =  2.0.into() - 4.0.into() * t;
+        let c2: F = 2.0.into() * t;
+        return self.start.x().into() * c0 + self.ctrl.x().into() * c1 + self.end.x().into() * c2;
+    }
+
+
+    /// Sample the y coordinate of the curve's derivative at t (for t between 0 and 1).
+    pub fn dy<F>(&self, t: F) -> F
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F>
+        + Into<F>
+    {
+        let c0: F = t * 2.0.into() - 2.0.into();
+        let c1: F =  2.0.into() - 4.0.into() * t;
+        let c2: F = 2.0.into() * t;
+        return self.start.y().into() * c0 + self.ctrl.y().into() * c1 + self.end.y().into() * c2;
+    }
+
+
+    pub fn curvature<F>(&self, t: F) -> F
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Into<F>
     {
         let d = self.derivative();
         let dd = d.derivative();
@@ -304,20 +385,51 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         let dy = d.y(t);
         let ddx = dd.x();
         let ddy = dd.y();
-        let numerator = dx * ddy - ddx * dy;
-        let denominator = (dx*dx + dy*dy).powf(1.5);
+        let numerator = dx * ddy.into() - ddx * dy;
+        let denominator = (dx*dx + dy*dy).powf(1.5.into());
         return numerator / denominator
     }
 
-    pub fn radius(&self, t: NativeFloat) -> NativeFloat
-    where 
+    pub fn radius<F>(&self, t: F) -> F
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Into<F>
+    {
+        return 1.0.into() / self.curvature(t)
+    }
+
+
+    /// Solve for the roots of the bezier curve
+    /// Will return an array of roots in the order: [x1, y1, x2, y2] 
+    /// All roots not positive will return NaN an need to be checked
+    /// All roots not in [0,1] are also not meaningful in this context and can be discarded
+    pub fn roots(&self) -> [NativeFloat; 4] 
+    where
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<NativeFloat, Output = P>,
     NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
         + Mul<NativeFloat, Output = NativeFloat>
-    {
-        return 1 as NativeFloat / self.curvature(t)
+        {
+        // by substituion we get the coefficients for the quadratic formula
+        // r1,2 = ( -b +/- sqrt(b^2 - 4ac) ) / 2a 
+        let a: P = self.start - (self.ctrl * 2. as NativeFloat) + self.end;
+        let b: P = (self.ctrl - self.start) * 2. as NativeFloat;
+        let c: P = self.start;
+        let rx1: NativeFloat =  (b.x() * (-1.) + (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
+        let rx2: NativeFloat =  (b.x() * (-1.) - (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
+
+        let ry1: NativeFloat =  (b.x() * (-1.) + (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
+        let ry2: NativeFloat =  (b.x() * (-1.) - (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
+
+        return [rx1, ry1, rx2, ry2];
+        
     }
 }
 
@@ -340,6 +452,7 @@ where
     P: Add 
         + Sub 
         + Copy 
+        + Mul<NativeFloat, Output = P>
         + Distance<ScalarDist = NativeFloat> 
         + Coordinate<Coordinate = NativeFloat>,
 {
@@ -361,7 +474,8 @@ where
     P: Add<P, Output = P>
         + Sub<P, Output = P>
         + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> + Mul<F, Output = F>
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F>
     {
         return self.start * ((1.0-t) * (1.0-t) * (1.0-t))
                 + self.ctrl1 * (3.0 * t * (1.0-t) * (1.0-t))
@@ -376,7 +490,8 @@ where
     P: Add<P, Output = P>
         + Sub<P, Output = P>
         + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> + Mul<F, Output = F>
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F>
     {
         // unrolled de casteljau algorithm
         // _1ab is the first iteration from first (a) to second (b) control point and so on
@@ -393,39 +508,43 @@ where
     }
 
 
-    pub fn x(&self, t: NativeFloat) -> NativeFloat
+    pub fn x<F>(&self, t: F) -> F
     where
+    F : Float,
     P: Mul<NativeFloat, Output = P>,
-    NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-        + Mul<NativeFloat, Output = NativeFloat> 
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F> 
+        + Into<F>
     {
-        let t2: NativeFloat     = t * t;
-        let t3: NativeFloat     = t2 * t;
-        let one_t: NativeFloat  = (1.0 as NativeFloat) - t;
-        let one_t2: NativeFloat = one_t * one_t;
-        let one_t3: NativeFloat = one_t2 * one_t;
+        let t2 = t * t;
+        let t3  = t2 * t;
+        let one_t  = (1.0 as NativeFloat) - t;
+        let one_t2 = one_t * one_t;
+        let one_t3 = one_t2 * one_t;
 
-        self.start.x() * one_t3
-            + self.ctrl1.x() * 3.0 as NativeFloat * one_t2 * t
-            + self.ctrl2.x() * 3.0 as NativeFloat * one_t * t2
+        self.start.x().into() * one_t3
+            + self.ctrl1.x().into() * 3.0.into() * one_t2 * t
+            + self.ctrl2.x().into() * 3.0.into() * one_t * t2
             + self.end.x() * t3
     }
 
-    pub fn y(&self, t: NativeFloat) -> NativeFloat
+    pub fn y<F>(&self, t: F) -> F
     where
+    F : Float,
     P: Mul<NativeFloat, Output = P>,
-    NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-        + Mul<NativeFloat, Output = NativeFloat> 
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F> 
+        + Into<F>
     {
-        let t2: NativeFloat     = t * t;
-        let t3: NativeFloat     = t2 * t;
-        let one_t: NativeFloat  = (1.0 as NativeFloat) - t;
-        let one_t2: NativeFloat = one_t * one_t;
-        let one_t3: NativeFloat = one_t2 * one_t;
+        let t2 = t * t;
+        let t3  = t2 * t;
+        let one_t  = (1.0 as NativeFloat) - t;
+        let one_t2 = one_t * one_t;
+        let one_t3 = one_t2 * one_t;
 
-        self.start.y() * one_t3
-            + self.ctrl1.y() * 3.0 as NativeFloat * one_t2 * t
-            + self.ctrl2.y() * 3.0 as NativeFloat * one_t * t2
+        self.start.y().into() * one_t3
+            + self.ctrl1.y().into() * 3.0.into() * one_t2 * t
+            + self.ctrl2.y().into() * 3.0.into() * one_t * t2
             + self.end.y() * t3
     }
 
@@ -433,13 +552,16 @@ where
     /// This works quite well, at ~32 segments it should already provide an error < 0.5
     /// Remember arclen also works by linear approximation, not the integral, so we have to accept error!
     /// This approximation is unfeasable if desired accuracy is greater than 2 decimal places
-    fn arclen(&self, nsteps: usize) -> NativeFloat
-    where 
-    P: Add<P, Output = P>
-        + Sub<P, Output = P>
-        + Mul<NativeFloat, Output = P>,
-    NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-        + Mul<NativeFloat, Output = NativeFloat>
+    fn arclen<F>(&self, nsteps: usize) -> F
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
     {
         let stepsize: NativeFloat = 1.0/(nsteps as NativeFloat);
         let mut arclen: NativeFloat = 0.0;
@@ -451,7 +573,7 @@ where
             arclen = arclen + p1.distance(p2);
         
         }
-        return arclen
+        return arclen.into()
     }
 
 
@@ -494,29 +616,89 @@ where
     /// Return the derivative function.
     /// The derivative is also a bezier curve but of degree n-1 (cubic->quadratic)
     /// ince it returns the derivative function, eval() needs to be called separately
-    pub fn derivative(&self) -> QuadraticBezier<P>
+    pub fn derivative<F>(&self) -> QuadraticBezier<P>
     where
+    F: Float,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
-        + Mul<NativeFloat, Output = P>,
-    NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-        + Mul<NativeFloat, Output = NativeFloat>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Into<F>
     {
         return QuadraticBezier{
-            start: (self.ctrl1 - self.start) * 3 as NativeFloat,
-            ctrl:  (self.ctrl2 - self.ctrl1) * 3 as NativeFloat,
-            end:   (self.end - self.ctrl2)   * 3 as NativeFloat
+            start: (self.ctrl1 - self.start) * 3.0.into(),
+            ctrl:  (self.ctrl2 - self.ctrl1) * 3.0.into(),
+            end:   (self.end - self.ctrl2)   * 3.0.into()
         }
     }
 
 
-    pub fn curvature(&self, t: NativeFloat) -> NativeFloat
+
+    /// Sample the x coordinate of the curve's derivative at t (expecting t between 0 and 1).
+    /// Convenience function for .derivative().eval(t).x()
+    pub fn dx<F>(&self, t: F) -> F 
     where
+    F: Float,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
-        + Mul<NativeFloat, Output = P>,
-    NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-        + Mul<NativeFloat, Output = NativeFloat>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
+    {
+        let t2 = t*t;
+        let c0 = -3.0.into() * t + 6.0.into() * t - 3.0.into();
+        let c1 = 9.0.into() * t2 - 12.0.into() * t + 3.0.into();
+        let c2 = -9.0.into() * t2 + 6.0.into() * t;
+        let c3 = 3.0.into() * t2;
+        return self.start.x().into() * c0 
+                + self.ctrl1.x().into() * c1 
+                + self.ctrl2.x().into() * c2 
+                + self.end.x().into() * c3
+    }
+
+
+
+    /// Sample the y coordinate of the curve's derivative at t (expecting t between 0 and 1).
+    /// Convenience function for .derivative().eval(t).x()
+    pub fn dy<F>(&self, t: F) -> F 
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
+    {
+        let t2 = t*t;
+        let c0 = -3.0.into() * t + 6.0.into() * t - 3.0.into();
+        let c1 = 9.0.into() * t2 - 12.0.into() * t + 3.0.into();
+        let c2 = -9.0.into() * t2 + 6.0.into() * t;
+        let c3 = 3.0.into() * t2;
+        return self.start.y().into() * c0 
+                + self.ctrl1.y().into() * c1 
+                + self.ctrl2.y().into() * c2 
+                + self.end.y().into() * c3
+    }
+
+
+
+    pub fn curvature<F>(&self, t: F) -> F
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
     {
         let d = self.derivative();
         let dd = d.derivative();
@@ -524,21 +706,27 @@ where
         let dy = d.y(t);
         let ddx = dd.x(t);
         let ddy = dd.y(t);
-        let numerator = dx * ddy - ddx * dy;
-        let denominator = (dx*dx + dy*dy).powf(1.5);
+        let numerator = dx * ddy.into() - ddx * dy;
+        let denominator = (dx*dx + dy*dy).powf(1.5.into());
         return numerator / denominator
     }
 
-    pub fn radius(&self, t: NativeFloat) -> NativeFloat
-    where 
+    pub fn radius<F>(&self, t: F) -> F
+    where
+    F: Float,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
-        + Mul<NativeFloat, Output = P>,
-    NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-        + Mul<NativeFloat, Output = NativeFloat>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
     {
-        return 1 as NativeFloat / self.curvature(t)
+        return 1.0.into() / self.curvature(t)
     }
+
+
 }
 
 
@@ -719,10 +907,10 @@ mod tests
                                                 ctrl1: Point2{x:-1f64,  y:c},
                                                 ctrl2: Point2{x:-c,     y:1f64},
                                                 end:   Point2{x:0f64,   y:1f64}};
-        let circumference = bezier_quadrant_1.arclen(nsteps) +
-                                bezier_quadrant_2.arclen(nsteps) +
-                                bezier_quadrant_3.arclen(nsteps) +
-                                bezier_quadrant_4.arclen(nsteps);
+        let circumference = bezier_quadrant_1.arclen::<NativeFloat>(nsteps) +
+                                bezier_quadrant_2.arclen::<NativeFloat>(nsteps) +
+                                bezier_quadrant_3.arclen::<NativeFloat>(nsteps) +
+                                bezier_quadrant_4.arclen::<NativeFloat>(nsteps);
         //dbg!(circumference);
         //dbg!(tau);
         assert!( ((tau + max_error) > circumference) && ((tau - max_error) < circumference) );
