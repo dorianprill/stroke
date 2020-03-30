@@ -217,9 +217,3 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     }
 }
 
-#[cfg(test)]
-mod tests 
-{
-    use super::*;
-    use crate::num_traits::{Pow};
-}

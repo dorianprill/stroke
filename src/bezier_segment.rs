@@ -1,4 +1,5 @@
 use super::*;
+#[allow(unused_imports)]
 use super::point2::{Point2, Coordinate, Distance};
 use super::line::Line; 
 use super::quadratic_bezier::QuadraticBezier; 
