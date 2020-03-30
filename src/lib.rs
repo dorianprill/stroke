@@ -217,6 +217,19 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
             y: self.end.y() - self.start.y()
         }
     }
+
+    pub fn roots(&self) -> NativeFloat
+    where
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<NativeFloat, Output = P>,
+    NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
+        + Mul<NativeFloat, Output = NativeFloat>
+    {
+        let slope = (self.end.y() - self.start.y()) / (self.end.x() - self.end.y());
+        let intercept = self.start.y() - slope * self.start.x();
+        return -intercept/slope
+    }
 }
 
 
@@ -425,8 +438,8 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         let rx1: NativeFloat =  (b.x() * (-1.) + (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
         let rx2: NativeFloat =  (b.x() * (-1.) - (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
 
-        let ry1: NativeFloat =  (b.x() * (-1.) + (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
-        let ry2: NativeFloat =  (b.x() * (-1.) - (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
+        let ry1: NativeFloat =  (b.y() * (-1.) + (b.y() * b.y() - a.y() * c.y() * 4.).sqrt() ) / (a.y() * 2.);
+        let ry2: NativeFloat =  (b.y() * (-1.) - (b.y() * b.y() - a.y() * c.y() * 4.).sqrt() ) / (a.y() * 2.);
 
         return [rx1, ry1, rx2, ry2];
         
@@ -738,6 +751,7 @@ pub enum BezierSegment<P> {
     Quadratic(  QuadraticBezier<P>),
     Cubic(      CubicBezier<P>),
 }
+
 
 impl<P> BezierSegment<P>
 where 
