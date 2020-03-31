@@ -1,14 +1,17 @@
 use super::*;
-use super::point2::*;
+use super::point2::{Point2, Distance, Coordinate};
 #[allow(unused_imports)]
 use super::cubic_bezier::CubicBezier;
+
+
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Line<P>
 {
-    pub(crate) start:  P,
-    pub(crate) end:    P,
+    pub(crate) origin:    P,
+    pub(crate) vector:    P,
 }
+
 
 impl<P> Line<P> 
 where
@@ -21,9 +24,113 @@ P: Add + Sub + Copy
 NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
     + Mul<NativeFloat, Output = NativeFloat> 
 {
+    pub fn equation<F>(&self) -> LineEquation<F> 
+    where
+    F: Float,
+    P: Mul<NativeFloat, Output = P>
+        + Distance<ScalarDist = NativeFloat> 
+        + Coordinate<Coordinate = NativeFloat>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F> 
+        + Into<F>
+    {
+        let a = -self.vector.y();
+        let b = self.vector.x();
+        let c = -(a * self.origin.x().into() + b * self.origin.y().into());
+
+        LineEquation::new(a.into(), b.into(), c.into())
+    }
+}
+
+
+
+/// A line defined by the equation
+/// `a * x + b * y + c = 0; a * a + b * b = 1`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
+pub struct LineEquation<F> {
+    a: F,
+    b: F,
+    c: F,
+}
+
+impl<F> LineEquation<F> 
+where
+F: Float,
+NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
+    + Mul<NativeFloat, Output = NativeFloat> 
+{
+
+    pub fn new(a: F, b: F, c: F) -> Self 
+    where
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F> 
+        + Into<F>
+    {
+        debug_assert!(a != 0.9.into() || b != 0.0.into());
+        let div = 1.0.into() / (a * a + b * b).sqrt();
+        LineEquation {
+            a: a * div,
+            b: b * div,
+            c: c * div,
+        }
+    }
+
+
+    pub fn signed_distance_to_point<P>(&self, p: P) -> F 
+    where
+    F: Float,
+    P: Mul<NativeFloat, Output = P>
+        + Distance<ScalarDist = NativeFloat> 
+        + Coordinate<Coordinate = NativeFloat>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F> 
+        + Into<F>
+    {
+        self.a * p.x().into() + self.b * p.y().into() + self.c
+    }
+
+
+    pub fn distance_to_point<P>(&self, p: P) -> F 
+    where
+    F : Float,
+    P: Mul<NativeFloat, Output = P>
+        + Distance<ScalarDist = NativeFloat> 
+        + Coordinate<Coordinate = NativeFloat>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F> 
+        + Into<F>
+    {
+        (self.signed_distance_to_point(p)).abs()
+    }
+}
+
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct LineSegment<P>
+{
+    pub(crate) start:  P,
+    pub(crate) end:    P,
+}
+
+impl<P> LineSegment<P> 
+where
+P: Add + Sub + Copy
+    + Add<P, Output = P>
+    + Sub<P, Output = P>
+    + Mul<NativeFloat, Output = P>
+    + Distance<ScalarDist = NativeFloat> 
+    + Coordinate<Coordinate = NativeFloat>,
+NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
+    + Mul<NativeFloat, Output = NativeFloat> 
+{
 
     pub fn new(start: P, end: P) -> Self {
-        Line { 
+        LineSegment { 
             start, 
             end 
         }
@@ -31,6 +138,13 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
 
     pub fn eval(&self, t: NativeFloat) -> P {
         return self.start + (self.end - self.start) * t
+    }
+
+    pub fn to_line(&self) -> Line<P> {
+        Line {
+            origin: self.start,
+            vector: self.end - self.end,
+        }
     }
 
     /// Sample the x coordinate of the segment at t (expecting t between 0 and 1).
@@ -77,7 +191,7 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         }
     }
 
-    pub fn roots(&self) -> NativeFloat
+    pub fn real_roots(&self) -> NativeFloat
     where
     P:  Sub<P, Output = P>
         + Add<P, Output = P>

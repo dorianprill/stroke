@@ -10,3 +10,7 @@ edition = "2018"
 version = "0.2"
 default-features = false
 features = ["libm"]    # <--- Uncomment if you wish to use `Float` and `Real` without `std`
+
+[dependencies.arrayvec]
+version = "0.5.1"
+default-features = false

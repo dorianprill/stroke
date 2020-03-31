@@ -4,6 +4,9 @@ use core::ops::{Add, Sub, Mul};
 extern crate num_traits;
 use num_traits::{float::Float};
 
+extern crate arrayvec;
+use arrayvec::ArrayVec;
+
 pub mod point2;
 pub mod line;
 pub mod quadratic_bezier;

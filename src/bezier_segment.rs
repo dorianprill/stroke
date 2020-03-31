@@ -1,13 +1,14 @@
 use super::*;
 #[allow(unused_imports)]
 use super::point2::{Point2, Coordinate, Distance};
-use super::line::Line; 
+#[allow(unused_imports)]
+use super::line::{Line, LineSegment}; 
 use super::quadratic_bezier::QuadraticBezier; 
 use super::cubic_bezier::CubicBezier;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum BezierSegment<P> {
-    Linear(     Line<P>),
+    Linear(     LineSegment<P>),
     Quadratic(  QuadraticBezier<P>),
     Cubic(      CubicBezier<P>),
 }

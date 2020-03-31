@@ -1,7 +1,8 @@
 use super::*;
 #[allow(unused_imports)]
 use super::point2::{Point2, Coordinate, Distance};
-use super::line::Line; 
+#[allow(unused_imports)]
+use super::line::{Line, LineSegment}; 
 #[allow(unused_imports)]
 use super::cubic_bezier::CubicBezier;
 
@@ -96,7 +97,7 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     /// Return the derivative function.
     /// The derivative is also a bezier curve but of degree n-1 - In the case of quadratic it is just a line.
     /// Since it returns the derivative function, eval() needs to be called separately
-    pub fn derivative<F>(&self) -> Line<P>
+    pub fn derivative<F>(&self) -> LineSegment<P>
     where
     F: Float,
     P:  Sub<P, Output = P>
@@ -107,7 +108,7 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         + Mul<F, Output = F>
         + Into<F>
     {
-        return Line{
+        return LineSegment{
             start: (self.ctrl - self.start) * 2.0.into(),
             end:   (self.end - self.ctrl)   * 2.0.into()
         }
@@ -190,10 +191,10 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
 
 
     /// Solve for the roots of the bezier curve
-    /// Will return an array of roots in the order: [x1, y1, x2, y2] 
+    /// Will return an array of roots in the order: [[x1, x2], [y1, y2]] 
     /// All roots not positive will return NaN an need to be checked
     /// All roots not in [0,1] are also not meaningful in this context and can be discarded
-    pub fn roots(&self) -> [NativeFloat; 4] 
+    pub fn real_roots(&self) -> [[NativeFloat; 2]; 2] 
     where
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
@@ -206,14 +207,25 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         let a: P = self.start - (self.ctrl * 2. as NativeFloat) + self.end;
         let b: P = (self.ctrl - self.start) * 2. as NativeFloat;
         let c: P = self.start;
-        let rx1: NativeFloat =  (b.x() * (-1.) + (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
-        let rx2: NativeFloat =  (b.x() * (-1.) - (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
+        let mut rx1: NativeFloat =  (b.x() * (-1.) + (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
+        let mut rx2: NativeFloat =  (b.x() * (-1.) - (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
 
-        let ry1: NativeFloat =  (b.y() * (-1.) + (b.y() * b.y() - a.y() * c.y() * 4.).sqrt() ) / (a.y() * 2.);
-        let ry2: NativeFloat =  (b.y() * (-1.) - (b.y() * b.y() - a.y() * c.y() * 4.).sqrt() ) / (a.y() * 2.);
+        let mut ry1: NativeFloat =  (b.y() * (-1.) + (b.y() * b.y() - a.y() * c.y() * 4.).sqrt() ) / (a.y() * 2.);
+        let mut ry2: NativeFloat =  (b.y() * (-1.) - (b.y() * b.y() - a.y() * c.y() * 4.).sqrt() ) / (a.y() * 2.);
 
-        return [rx1, ry1, rx2, ry2];
-        
+        //clean up any NaN values by replacing with its sibling value (to not mess up ordering later on)
+        if rx1.is_nan() && !rx2.is_nan() {
+            rx1 = rx2;
+        } else if !rx1.is_nan() && rx2.is_nan() {
+            rx2 = rx1
+        }
+
+        if ry1.is_nan() && !ry2.is_nan() {
+            ry1 = ry2;
+        } else if !ry1.is_nan() && ry2.is_nan() {
+            ry2 = ry1
+        }
+
+        return [[rx1, rx2], [ry1, ry2]];
     }
 }
-

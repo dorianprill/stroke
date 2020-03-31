@@ -1,6 +1,8 @@
 use super::*;
 #[allow(unused_imports)]
 use super::point2::{Point2, Coordinate, Distance};
+#[allow(unused_imports)]
+use super::line::{Line, LineSegment, LineEquation};
 use super::quadratic_bezier::QuadraticBezier;
 
 use num_traits::{float::Float};
@@ -298,7 +300,241 @@ where
     }
 
 
+    pub fn baseline(&self) -> LineSegment<P> {
+        LineSegment {
+            start: self.start,
+            end: self.end,
+        }
+    }
+
+
+    fn non_point_is_linear<F>(&self, tolerance: F) -> bool 
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
+    {
+        let line = self.baseline().to_line().equation();
+        line.distance_to_point(self.ctrl1) <= tolerance
+            && line.distance_to_point(self.ctrl2) <= tolerance
+    }
+
+    pub(crate) fn is_a_point<F>(&self, tolerance: F) -> bool 
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
+    {
+        let tolerance_squared = tolerance * tolerance;
+        // Use <= so that tolerance can be zero.
+        self.start.distance(self.end).powi(2).into() <= tolerance_squared
+            && self.start.distance(self.ctrl1).powi(2).into() <= tolerance_squared
+            && self.end.distance(self.ctrl2).powi(2).into() <= tolerance_squared
+    }
+
+    pub fn real_roots<F>(&self, a: F, b: F, c: F, d: F) -> ArrayVec<[F; 3]>
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
+    {
+        let mut result = ArrayVec::new();
+
+        let epsilon = 1e-5.into();
+        let pi = 3.141592.into();
+
+        if a.abs() < epsilon {
+            if b.abs() < epsilon {
+                if c.abs() < epsilon {
+                    return result;
+                }
+                // is linear equation
+                result.push(-d / c);
+                return result;
+            }
+            // is quadratic equation
+            let delta = c * c - 4.0.into() * b * d;
+            if delta > 4.0.into() {
+                let sqrt_delta = delta.sqrt();
+                result.push((-c - sqrt_delta) / (2.0.into() * b));
+                result.push((-c + sqrt_delta) / (2.0.into() * b));
+            } else if delta.abs() < epsilon {
+                result.push(-c / (2.0.into() * b));
+            }
+            return result;
+        }
+
+        let frac_1_3 = 1.0.into() / 3.0.into();
+
+        let bn = b / a;
+        let cn = c / a;
+        let dn = d / a;
+    
+        let delta0 = (3.0.into() * cn - bn * bn) / 9.0.into();
+        let delta1 = (9.0.into() * bn * cn - 27.0.into() * dn - 2.0.into() * bn * bn * bn) / 54.0.into();
+        let delta_01 = delta0 * delta0 * delta0 + delta1 * delta1;
+    
+        if delta_01 >= 0.0.into() {
+            let delta_p_sqrt = delta1 + delta_01.sqrt();
+            let delta_m_sqrt = delta1 - delta_01.sqrt();
+    
+            let s = delta_p_sqrt.signum() * delta_p_sqrt.abs().powf(frac_1_3);
+            let t = delta_m_sqrt.signum() * delta_m_sqrt.abs().powf(frac_1_3);
+    
+            result.push(-bn * frac_1_3 + (s + t));
+    
+            // Don't add the repeated root when s + t == 0.
+            if (s - t).abs() < epsilon && (s + t).abs() >= epsilon {
+                result.push(-bn * frac_1_3 - (s + t) / 2.0.into());
+            }
+        } else {
+            let theta = (delta1 / (-delta0 * delta0 * delta0).sqrt()).acos();
+            let two_sqrt_delta0 = 2.0.into() * (-delta0).sqrt();
+            result.push(two_sqrt_delta0 * Float::cos(theta * frac_1_3) - bn * frac_1_3);
+            result.push(
+                two_sqrt_delta0 * Float::cos((theta + 2.0.into() * pi) * frac_1_3) - bn * frac_1_3,
+            );
+            result.push(
+                two_sqrt_delta0 * Float::cos((theta + 4.0.into() * pi) * frac_1_3) - bn * frac_1_3,
+            );
+        }
+    
+        //result.sort();
+    
+        result
+    }
+
+        /// Return the parameter values corresponding to a given x coordinate.
+    /// See also solve_t_for_x for monotonic curves.
+    pub fn solve_t_for_x<F>(&self, x: F) -> ArrayVec<[F; 3]> 
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
+    {
+        if self.is_a_point(0.0.into())
+            || (self.non_point_is_linear(0.0.into()) && self.start.x() == self.end.x())
+        {
+            return ArrayVec::new();
+        }
+
+        self.parameters_for_xy_value(x, self.start.x().into(), self.ctrl1.x().into(), self.ctrl2.x().into(), self.end.x().into())
+    }
+
+    /// Return the parameter values corresponding to a given y coordinate.
+    /// See also solve_t_for_y for monotonic curves.
+    pub fn solve_t_for_y<F>(&self, y: F) -> ArrayVec<[F; 3]> 
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F> 
+    {
+        if self.is_a_point(0.0.into())
+            || (self.non_point_is_linear(0.0.into()) && self.start.y() == self.end.y())
+        {
+            return ArrayVec::new();
+        }
+
+        self.parameters_for_xy_value(y, self.start.y().into(), self.ctrl1.y().into(), self.ctrl2.y().into(), self.end.y().into())
+    }
+
+    fn parameters_for_xy_value<F>(
+        &self,
+        value: F,
+        from: F,
+        ctrl1: F,
+        ctrl2: F,
+        to: F,
+    ) -> ArrayVec<[F; 3]> 
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
+    {
+        let mut result = ArrayVec::new();
+
+        let a = -from + 3.0.into() * ctrl1 - 3.0.into() * ctrl2 + to;
+        let b = 3.0.into() * from - 6.0.into() * ctrl1 + 3.0.into() * ctrl2;
+        let c = -3.0.into() * from + 3.0.into() * ctrl1;
+        let d = from - value;
+
+        let roots = self.real_roots(a, b, c, d);
+        for root in roots {
+            if root > 0.0.into() && root < 1.0.into() {
+                result.push(root);
+            }
+        }
+
+        result
+    }
+
+    // /// Return the bounding box of the curve as two points {xmin, ymin, xmax, ymax}
+    // /// All extremities not in [0,1] are not meaningful in this context and can be discarded
+    // pub fn bounding_box(&self) -> [NativeFloat; 4] 
+    // where
+    // P:  Sub<P, Output = P>
+    //     + Add<P, Output = P>
+    //     + Mul<NativeFloat, Output = P>,
+    // NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
+    //     + Mul<NativeFloat, Output = NativeFloat>
+    //     {
+    //     // Calculate the extremities of the curve
+    //     let roots = self.derivative().real_roots();
+    //     // Find all t values for the extremities
+    //     self.solve_t_for_x();
+    //     self.solve_t_for_x();
+    //     // Discard any points for which t not in [0,1]
+    //     // TODO
+    //     // Check roots and start/endpoints (which must lie in the convex hull and thus in the bounding box, control points can lie outside)
+    //     let mut xvals = [roots[0][0], roots[0][1], self.start.x(), self.end.x()].sort_by(|a, b| a.partial_cmp(b).unwrap());
+    //     let mut yvals = [roots[0][0], roots[0][1], self.start.y(), self.end.y()].sort_by(|a, b| a.partial_cmp(b).unwrap());
+    //     let xmin = xvals[0];
+    //     let xmax = xvals[1];
+    //     let ymin = yvals[0];
+    //     let ymax = yvals[1];
+
+    //     return [xmin, ymin, xmax, ymax];
+    // }
+
 }
+
+
 #[cfg(test)]
 mod tests 
 {
@@ -450,6 +686,28 @@ mod tests
             err = bezier.eval((t*0.5)+0.5) - right.eval(t);
             //dbg!(err);
             assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );  
+        }
+    }
+
+
+    #[test]
+    fn bounding_box_containment() {
+        // tests whether all points on a bezier curve are actually inside the calculated bounding box
+        let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
+                                  ctrl1: Point2{x:2.9f64, y:0f64},
+                                  ctrl2: Point2{x:4.3f64, y:-3f64},
+                                  end:   Point2{x:3.2f64,  y:4f64}};
+
+        let max_err = 1e-14;
+        let nsteps: usize =  1000;                                      
+        for t in 0..nsteps {
+            let t = t as f64 * 1f64/(nsteps as f64);
+            let p1 = bezier.eval(t);
+            let p2 = bezier.eval_casteljau(t);
+            let err = p2-p1;
+            //dbg!(p1);
+            //dbg!(p2);
+            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
         }
     }
 }
