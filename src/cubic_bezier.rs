@@ -69,8 +69,8 @@ where
         // unrolled de casteljau algorithm
         // _1ab is the first iteration from first (a) to second (b) control point and so on
         let ctrl_1ab = self.start + (self.ctrl1 - self.start) * t;
-        let ctrl_1bc   = self.ctrl1 + (self.ctrl2 - self.ctrl1) * t;
-        let ctrl_1cd   = self.ctrl2 + (self.end - self.ctrl2) * t;
+        let ctrl_1bc = self.ctrl1 + (self.ctrl2 - self.ctrl1) * t;
+        let ctrl_1cd = self.ctrl2 + (self.end - self.ctrl2)   * t;
         // second iteration
         let ctrl_2ab  = ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t;
         let ctrl_2bc  = ctrl_1bc + (ctrl_1cd - ctrl_1bc) * t;
@@ -344,6 +344,9 @@ where
             && self.end.distance(self.ctrl2).powi(2).into() <= tolerance_squared
     }
 
+    /// Compute the real roots of the cubic bezier function
+    /// of the form a*t^3 + b*t^2 + c*t + d
+    /// using cardano's algorithm
     pub fn real_roots<F>(&self, a: F, b: F, c: F, d: F) -> ArrayVec<[F; 3]>
     where
     F: Float,
@@ -361,9 +364,11 @@ where
         let epsilon = 1e-5.into();
         let pi = 3.141592.into();
 
+        // check if can be handled below cubic order
         if a.abs() < epsilon {
             if b.abs() < epsilon {
                 if c.abs() < epsilon {
+                    // no solutions
                     return result;
                 }
                 // is linear equation
@@ -382,6 +387,7 @@ where
             return result;
         }
 
+        // is cubic equation -> use cardano's algorithm
         let frac_1_3 = 1.0.into() / 3.0.into();
 
         let bn = b / a;
@@ -417,12 +423,10 @@ where
             );
         }
     
-        //result.sort();
-    
         result
     }
 
-        /// Return the parameter values corresponding to a given x coordinate.
+    /// Return the parameter values corresponding to a given x coordinate.
     /// See also solve_t_for_x for monotonic curves.
     pub fn solve_t_for_x<F>(&self, x: F) -> ArrayVec<[F; 3]> 
     where
@@ -442,7 +446,7 @@ where
             return ArrayVec::new();
         }
 
-        self.parameters_for_xy_value(x, self.start.x().into(), self.ctrl1.x().into(), self.ctrl2.x().into(), self.end.x().into())
+        self.solve_t_for_xy(x, self.start.x().into(), self.ctrl1.x().into(), self.ctrl2.x().into(), self.end.x().into())
     }
 
     /// Return the parameter values corresponding to a given y coordinate.
@@ -465,10 +469,14 @@ where
             return ArrayVec::new();
         }
 
-        self.parameters_for_xy_value(y, self.start.y().into(), self.ctrl1.y().into(), self.ctrl2.y().into(), self.end.y().into())
+        self.solve_t_for_xy(y, self.start.y().into(), self.ctrl1.y().into(), self.ctrl2.y().into(), self.end.y().into())
     }
 
-    fn parameters_for_xy_value<F>(
+    /// Solves the cubic bezier function given the control points' x OR y values
+    /// by solving the roots for x or y axis functions
+    /// Returns those roots of the function that are in the interval [0.0, 1.0].
+    /// This function is not exposed, it has wrappers solve_t_for_x() and solve_t_for_y()
+    fn solve_t_for_xy<F>(
         &self,
         value: F,
         from: F,
@@ -504,33 +512,78 @@ where
         result
     }
 
-    // /// Return the bounding box of the curve as two points {xmin, ymin, xmax, ymax}
-    // /// All extremities not in [0,1] are not meaningful in this context and can be discarded
-    // pub fn bounding_box(&self) -> [NativeFloat; 4] 
-    // where
-    // P:  Sub<P, Output = P>
-    //     + Add<P, Output = P>
-    //     + Mul<NativeFloat, Output = P>,
-    // NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-    //     + Mul<NativeFloat, Output = NativeFloat>
-    //     {
-    //     // Calculate the extremities of the curve
-    //     let roots = self.derivative().real_roots();
-    //     // Find all t values for the extremities
-    //     self.solve_t_for_x();
-    //     self.solve_t_for_x();
-    //     // Discard any points for which t not in [0,1]
-    //     // TODO
-    //     // Check roots and start/endpoints (which must lie in the convex hull and thus in the bounding box, control points can lie outside)
-    //     let mut xvals = [roots[0][0], roots[0][1], self.start.x(), self.end.x()].sort_by(|a, b| a.partial_cmp(b).unwrap());
-    //     let mut yvals = [roots[0][0], roots[0][1], self.start.y(), self.end.y()].sort_by(|a, b| a.partial_cmp(b).unwrap());
-    //     let xmin = xvals[0];
-    //     let xmax = xvals[1];
-    //     let ymin = yvals[0];
-    //     let ymax = yvals[1];
+    /// Return the bounding box of the curve as two tuples ( (xmin, ymin), (xmax, ymax) )
+    pub fn bounding_box<F>(&self) -> ((F,F), (F,F)) 
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
+    {
+        // calculate coefficients for at^3 + bt^2 + ct + d 
+        // from the expansion of the cubic bezier curve: sum_i=0_to_3( binomial(3, i) * t^i * (1-t)^(n-i) )
+        // yields coeffcients
+        // po: [1, -3,  3, -1]
+        // p1: [0,  3, -6,  3]
+        // p2: [0,  0,  3, -3]
+        // p3: [0,  0,  0,  1]
+        //      d   c   b   a
+        let a = self.start * -1.0.into() + self.ctrl1 * 3.0.into() - self.ctrl2 * 3.0.into() + self.end;
+        let b = self.start * 3.0.into() - self.ctrl1 * 6.0.into() + self.ctrl2 * 3.0.into();
+        let c = self.start * -3.0.into() + self.ctrl1 * 3.0.into();
+        let d = self.start;
 
-    //     return [xmin, ymin, xmax, ymax];
-    // }
+        // calculate roots for t over x axis and plug them into the bezier function
+        //  to get x,y values (make vec a bit bigger for t=0,t=1 values)
+        let mut xtremities: ArrayVec<[F; 5]> = ArrayVec::new();
+        xtremities.extend(self.real_roots(a.x().into(), 
+                                                b.x().into(), 
+                                                c.x().into(), 
+                                                d.x().into()
+                                            ).into_iter()
+                        );
+        // only retain roots for which t is in [0..1]
+        xtremities.retain(|root| -> bool {root > &mut 0.0.into() && root < &mut 1.0.into()});
+        for t in xtremities.iter_mut() {
+            *t = self.eval_casteljau(*t).x().into();
+        }
+        // add y-values for start and end point as candidates
+        xtremities.push(self.start.x().into()); 
+        xtremities.push(self.end.x().into());
+        // sort to get min and max values for bounding box
+        xtremities.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+
+        // same for y...
+        let mut ytremities: ArrayVec<[F; 5]> = ArrayVec::new();
+        ytremities.extend(self.real_roots(a.y().into(), 
+                                                b.y().into(), 
+                                                c.y().into(), 
+                                                d.y().into()
+                                            ).into_iter()
+                        );
+        // only retain roots for which t is in [0..1]
+        ytremities.retain(|root| -> bool {root > &mut 0.0.into() && root < &mut 1.0.into()});
+        for t in ytremities.iter_mut() {
+            *t = self.eval_casteljau(*t).y().into();
+        }
+        // add y-values for start and end point as candidates
+        ytremities.push(self.start.y().into()); 
+        ytremities.push(self.end.y().into());
+        // sort to get min and max values for bounding box
+        ytremities.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+
+
+        // determine xmin, xmax, ymin, ymax, from the set {B(xroots), B(yroots), B(0), B(1)} 
+        // (Intermediate control points can't form a boundary)
+        let min = (xtremities[0], ytremities[0]);
+        let max = (*xtremities.last().unwrap(), *ytremities.last().unwrap()); // can never be empty as we at least have the endpoints
+        return (min, max)
+    }
 
 }
 
@@ -660,10 +713,12 @@ mod tests
     #[test]
     fn split_equivalence() {
         // chose some arbitrary control points and construct a cubic bezier
-        let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
-                                  ctrl1: Point2{x:2.9f64, y:0f64},
-                                  ctrl2: Point2{x:4.3f64, y:-3f64},
-                                  end:   Point2{x:3.2f64,  y:4f64}};
+        let bezier = CubicBezier{ 
+                                start:  Point2{x:0f64,  y:1.77f64},
+                                ctrl1: Point2{x:2.9f64, y:0f64},
+                                ctrl2: Point2{x:4.3f64, y:3f64},
+                                end:   Point2{x:3.2f64, y:-4f64}
+                            };
         // split it at an arbitrary point
         let at = 0.5;
         let (left, right) = bezier.split(at);
@@ -708,6 +763,34 @@ mod tests
             //dbg!(p1);
             //dbg!(p2);
             assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+        }
+    }
+
+
+
+    #[test]
+    fn bounding_box_contains() {
+        // check if bounding box for a curve contains all points (with some approximation error)
+        let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
+                                  ctrl1: Point2{x:2.9f64, y:0f64},
+                                  ctrl2: Point2{x:4.3f64, y:-3f64},
+                                  end:   Point2{x:3.2f64,  y:4f64}};
+
+        let ((xmin, ymin), (xmax, ymax)) = bezier.bounding_box::<f64>();
+
+        let max_err = 1e-2;
+
+        let nsteps: usize =  100;                                      
+        for t in 0..nsteps {
+            let t = t as f64 * 1f64/(nsteps as f64);
+            let p = bezier.eval_casteljau(t);
+            dbg!(t);
+            dbg!(p);
+            dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
+
+            assert!( (p.x() >= (xmin-max_err) ) && (p.y() >= (ymin-max_err)) );
+            assert!( (p.x() <= (xmax+max_err) ) && (p.y() <= (ymax+max_err)) );
+
         }
     }
 }

@@ -1,4 +1,4 @@
-#![no_std]
+//#![no_std]
 use core::ops::{Add, Sub, Mul};
 
 extern crate num_traits;
@@ -19,15 +19,6 @@ pub mod bezier_segment;
 // TODO there has to be a better architectural solution to this... if not, generate impls with macro
 #[cfg(target_pointer_width = "64")]
 type NativeFloat = f64;
-#[cfg(target_pointer_width = "64")]
-type NativeInt   = i64;
-#[cfg(target_pointer_width = "64")]
-type NativeUInt  = u64;
-
 // same thing for 32 bit
 #[cfg(target_pointer_width = "32")]
 type NativeFloat = f32;
-#[cfg(target_pointer_width = "32")]
-type NativeInt   = i32;
-#[cfg(target_pointer_width = "32")]
-type NativeUInt  = u32;

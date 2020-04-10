@@ -1,4 +1,5 @@
 use super::*;
+use num_traits::Float;
 
 #[derive(Debug, Copy, Clone)]
 #[allow(dead_code)]
@@ -9,7 +10,14 @@ pub struct Point2<T>
 }
 
 impl<T> Point2<T> 
-where T: Add + Add<T,Output=T> + Sub + Mul + Mul<T,Output=T> + Clone {
+where T: Add 
+        + Add<T,Output=T> 
+        + Sub 
+        + Mul 
+        + Mul<T,Output=T> 
+        + Clone 
+        + Float 
+    {
     /// Creates a new Point2<T>, which requires that 
     /// T implements Add, Sub, Mul, and Clone
     pub fn new(x: T, y: T) -> Self {
@@ -18,6 +26,7 @@ where T: Add + Add<T,Output=T> + Sub + Mul + Mul<T,Output=T> + Clone {
             y,
         }
     }
+
 }
 
 
@@ -31,6 +40,7 @@ pub trait Coordinate {
 pub trait Distance {
     type ScalarDist;
     fn distance(&self, other: Self) -> Self::ScalarDist;
+    fn abs(&self) -> Self::ScalarDist;
 }
 
 
@@ -40,24 +50,12 @@ impl Distance for Point2<NativeFloat> {
         ( ((self.x - other.x) * (self.x - other.x))
             + ((self.y - other.y) * (self.y - other.y)) ) .sqrt()
     }
-}
 
-impl Distance for Point2<NativeInt> {
-    type ScalarDist = NativeFloat;
-    fn distance(&self, other: Self) -> NativeFloat {
-        ( ((self.x - other.x) * (self.x - other.x)) as NativeFloat
-            + ((self.y - other.y) * (self.y - other.y)) as NativeFloat) .sqrt()
+    /// Interprets the Point2 as a vector and returns its norm (distance from origin)
+    fn abs(&self) -> NativeFloat {
+        ((self.x * self.x) + (self.y * self.y) ).sqrt()
     }
 }
-
-impl Distance for Point2<NativeUInt> {
-    type ScalarDist = NativeFloat;
-    fn distance(&self, other: Self) -> NativeFloat {
-        ( ((self.x - other.x) * (self.x - other.x)) as NativeFloat
-            + ((self.y - other.y) * (self.y - other.y)) as NativeFloat ) .sqrt()
-    }
-}
-
 
 impl Coordinate for Point2<NativeFloat> {
     type Coordinate = NativeFloat;
