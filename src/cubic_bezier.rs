@@ -571,7 +571,7 @@ where
         // only retain roots for which t is in [0..1] 
         ytremities.retain(|root| -> bool {root > &mut 0.0.into() && root < &mut 1.0.into()});
         // evaluates roots in original function
-        for t in xtremities.iter_mut() {
+        for t in ytremities.iter_mut() {
             *t = self.eval_casteljau(*t).y().into();
         }
         // add y-values for start and end point as candidates
