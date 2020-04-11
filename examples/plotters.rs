@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // setup the chart
     let mut chart = ChartBuilder::on(&root)
-        .caption("Cubic Bezier Curve with Bounding Box", ("sans-serif", 21).into_font())
+        .caption("Cubic Bezier Curve", ("sans-serif", 21).into_font())
         .margin(5)
         .x_label_area_size(30)
         .y_label_area_size(30)
@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )
             },
         ))?
-        .label("p_i")
+        .label("Control Points")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
 
     // draw the actual bezier curve
@@ -103,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &BLUE.mix(0.0),
             ).border_style(&BLUE)
         )?
-        .label("CH(p)")
+        .label("Control Polygon")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
 
     chart

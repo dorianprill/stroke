@@ -693,10 +693,12 @@ mod tests
     fn eval_equivalence() {
         // all eval methods should be approximately equivalent for well defined test cases
         // and not equivalent where numerical stability becomes an issue for normal eval
-        let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
-                                  ctrl1: Point2{x:2.9f64, y:0f64},
-                                  ctrl2: Point2{x:4.3f64, y:-3f64},
-                                  end:   Point2{x:3.2f64,  y:4f64}};
+        let bezier = CubicBezier::new( 
+            Point2::new(0f64,  1.77f64),
+            Point2::new(1.1f64, -1f64),
+            Point2::new(4.3f64,3f64),
+            Point2::new(3.2f64, -4f64),
+        );
 
         let max_err = 1e-14;
         let nsteps: usize =  1000;                                      
