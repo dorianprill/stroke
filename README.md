@@ -4,6 +4,8 @@ WIP minimalistic implementation of up to cubic bezier curves (on generic point t
 
 Brezel is the German word for "pretzel" - I'm sure you appreaciate the parallels to those delicious curvy snacks
 
+![A Cubic Bezier Curve with Bounding Box and Convex Hull rendered by plotters.rs](https://github.com/dorianprill/brezel/blob/master/cubic_bezier_bounding_box.png)
+
 ## Goals
 
 - [x] Support no-std for both 32 and 64 bit targets
