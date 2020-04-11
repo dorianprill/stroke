@@ -1,4 +1,4 @@
-//#![no_std]
+#![no_std]
 use core::ops::{Add, Sub, Mul};
 
 extern crate num_traits;

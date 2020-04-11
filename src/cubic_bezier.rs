@@ -377,7 +377,7 @@ where
             }
             // is quadratic equation
             let delta = c * c - 4.0.into() * b * d;
-            if delta > 4.0.into() {
+            if delta > 0.0.into() {
                 let sqrt_delta = delta.sqrt();
                 result.push((-c - sqrt_delta) / (2.0.into() * b));
                 result.push((-c + sqrt_delta) / (2.0.into() * b));
@@ -577,7 +577,6 @@ where
         // sort to get min and max values for bounding box
         ytremities.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
 
-
         // determine xmin, xmax, ymin, ymax, from the set {B(xroots), B(yroots), B(0), B(1)} 
         // (Intermediate control points can't form a boundary)
         let min = (xtremities[0], ytremities[0]);
@@ -746,29 +745,6 @@ mod tests
 
 
     #[test]
-    fn bounding_box_containment() {
-        // tests whether all points on a bezier curve are actually inside the calculated bounding box
-        let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
-                                  ctrl1: Point2{x:2.9f64, y:0f64},
-                                  ctrl2: Point2{x:4.3f64, y:-3f64},
-                                  end:   Point2{x:3.2f64,  y:4f64}};
-
-        let max_err = 1e-14;
-        let nsteps: usize =  1000;                                      
-        for t in 0..nsteps {
-            let t = t as f64 * 1f64/(nsteps as f64);
-            let p1 = bezier.eval(t);
-            let p2 = bezier.eval_casteljau(t);
-            let err = p2-p1;
-            //dbg!(p1);
-            //dbg!(p2);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
-        }
-    }
-
-
-
-    #[test]
     fn bounding_box_contains() {
         // check if bounding box for a curve contains all points (with some approximation error)
         let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
@@ -784,9 +760,9 @@ mod tests
         for t in 0..nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             let p = bezier.eval_casteljau(t);
-            dbg!(t);
-            dbg!(p);
-            dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
+            // dbg!(t);
+            // dbg!(p);
+            // dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
 
             assert!( (p.x() >= (xmin-max_err) ) && (p.y() >= (ymin-max_err)) );
             assert!( (p.x() <= (xmax+max_err) ) && (p.y() <= (ymax+max_err)) );
