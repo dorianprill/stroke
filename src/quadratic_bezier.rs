@@ -152,7 +152,8 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         return self.start.y().into() * c0 + self.ctrl.y().into() * c1 + self.end.y().into() * c2;
     }
 
-
+    /// Calculates the curvature of the curve at point t
+    /// The curvature is the inverse of the radius of the tangential circle at t: k=1/r
     pub fn curvature<F>(&self, t: F) -> F
     where
     F: Float,
@@ -175,6 +176,8 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         return numerator / denominator
     }
 
+    /// Calculates the radius of the tangential circle at t
+    /// It is the inverse of the curvature at t: r=1/k
     pub fn radius<F>(&self, t: F) -> F
     where
     F: Float,
@@ -190,42 +193,45 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     }
 
 
-    /// Solve for the roots of the bezier curve
-    /// Will return an array of roots in the order: [[x1, x2], [y1, y2]] 
-    /// All roots not positive will return NaN an need to be checked
-    /// All roots not in [0,1] are also not meaningful in this context and can be discarded
-    pub fn real_roots(&self) -> [[NativeFloat; 2]; 2] 
+    /// Solve for the roots of the polynomial at^2 + bt + c
+    /// Returns an ArrayVec of roots in the order
+    /// needs to be called for x and y components separately
+    pub(crate) fn real_roots<F>(&self, a: F, b: F, c: F) -> ArrayVec<[F; 2]>
     where
+    F: Float,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<NativeFloat, Output = P>,
-    NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-        + Mul<NativeFloat, Output = NativeFloat>
-        {
-        // by substituion we get the coefficients for the quadratic formula
-        // r1,2 = ( -b +/- sqrt(b^2 - 4ac) ) / 2a 
-        let a: P = self.start - (self.ctrl * 2. as NativeFloat) + self.end;
-        let b: P = (self.ctrl - self.start) * 2. as NativeFloat;
-        let c: P = self.start;
-        let mut rx1: NativeFloat =  (b.x() * (-1.) + (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
-        let mut rx2: NativeFloat =  (b.x() * (-1.) - (b.x() * b.x() - a.x() * c.x() * 4.).sqrt() ) / (a.x() * 2.);
+        NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
+    {
 
-        let mut ry1: NativeFloat =  (b.y() * (-1.) + (b.y() * b.y() - a.y() * c.y() * 4.).sqrt() ) / (a.y() * 2.);
-        let mut ry2: NativeFloat =  (b.y() * (-1.) - (b.y() * b.y() - a.y() * c.y() * 4.).sqrt() ) / (a.y() * 2.);
+        let mut result = ArrayVec::new();
+        let epsilon = 1e-5.into();
 
-        //clean up any NaN values by replacing with its sibling value (to not mess up ordering later on)
-        if rx1.is_nan() && !rx2.is_nan() {
-            rx1 = rx2;
-        } else if !rx1.is_nan() && rx2.is_nan() {
-            rx2 = rx1
+        // check if can be handled below cubic order
+        if a.abs() < epsilon {
+            if b.abs() < epsilon {
+                // no solutions
+                return result;
+            }
+            // is linear equation
+            result.push(-c / b);
+            return result;
         }
-
-        if ry1.is_nan() && !ry2.is_nan() {
-            ry1 = ry2;
-        } else if !ry1.is_nan() && ry2.is_nan() {
-            ry2 = ry1
+        // is quadratic equation
+        let delta = b * b - 4.0.into() * a * c;
+        if delta > 0.0.into() {
+            let sqrt_delta = delta.sqrt();
+            result.push((-b - sqrt_delta) / (2.0.into() * a));
+            result.push((-b + sqrt_delta) / (2.0.into() * a));
+        } else if delta.abs() < epsilon {
+            result.push(-b / (2.0.into() * a));
         }
-
-        return [[rx1, rx2], [ry1, ry2]];
+        return result;
     }
+
 }

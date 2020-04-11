@@ -347,7 +347,7 @@ where
     /// Compute the real roots of the cubic bezier function
     /// of the form a*t^3 + b*t^2 + c*t + d
     /// using cardano's algorithm
-    pub fn real_roots<F>(&self, a: F, b: F, c: F, d: F) -> ArrayVec<[F; 3]>
+    fn real_roots<F>(&self, a: F, b: F, c: F, d: F) -> ArrayVec<[F; 3]>
     where
     F: Float,
     P:  Sub<P, Output = P>
@@ -525,30 +525,32 @@ where
         + Float
         + Into<F>
     {
-        // calculate coefficients for at^3 + bt^2 + ct + d 
+        // calculate coefficients for the derivative: at^2 + bt + c
         // from the expansion of the cubic bezier curve: sum_i=0_to_3( binomial(3, i) * t^i * (1-t)^(n-i) )
         // yields coeffcients
-        // po: [1, -3,  3, -1]
-        // p1: [0,  3, -6,  3]
-        // p2: [0,  0,  3, -3]
-        // p3: [0,  0,  0,  1]
-        //      d   c   b   a
-        let a = self.start * -1.0.into() + self.ctrl1 * 3.0.into() - self.ctrl2 * 3.0.into() + self.end;
-        let b = self.start * 3.0.into() - self.ctrl1 * 6.0.into() + self.ctrl2 * 3.0.into();
-        let c = self.start * -3.0.into() + self.ctrl1 * 3.0.into();
-        let d = self.start;
+        // po: [1, -2,  1]
+        // p1: [0,  2, -2]
+        // p2: [0,  0,  1]
+        //      c   b   a
+
+        let derivative = self.derivative();
+        // calculate coefficients for derivative
+        let a = derivative.start + derivative.ctrl * -2.0.into() + self.end;
+        let b = derivative.start * -2.0.into() + derivative.ctrl * 2.0.into();
+        let c = self.start;
 
         // calculate roots for t over x axis and plug them into the bezier function
-        //  to get x,y values (make vec a bit bigger for t=0,t=1 values)
-        let mut xtremities: ArrayVec<[F; 5]> = ArrayVec::new();
-        xtremities.extend(self.real_roots(a.x().into(), 
-                                                b.x().into(), 
-                                                c.x().into(), 
-                                                d.x().into()
+        //  to get x,y values (make vec 2 bigger for t=0,t=1 values)
+        let mut xtremities: ArrayVec<[F; 4]> = ArrayVec::new();
+        xtremities.extend(derivative.real_roots(
+                                            a.x().into(), 
+                                            b.x().into(), 
+                                            c.x().into(), 
                                             ).into_iter()
                         );
-        // only retain roots for which t is in [0..1]
+        // only retain roots for which t is in [0..1] 
         xtremities.retain(|root| -> bool {root > &mut 0.0.into() && root < &mut 1.0.into()});
+        // evaluates roots in original function
         for t in xtremities.iter_mut() {
             *t = self.eval_casteljau(*t).x().into();
         }
@@ -559,16 +561,17 @@ where
         xtremities.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
 
         // same for y...
-        let mut ytremities: ArrayVec<[F; 5]> = ArrayVec::new();
-        ytremities.extend(self.real_roots(a.y().into(), 
-                                                b.y().into(), 
-                                                c.y().into(), 
-                                                d.y().into()
+        let mut ytremities: ArrayVec<[F; 4]> = ArrayVec::new();
+        ytremities.extend(derivative.real_roots(
+                                            a.y().into(), 
+                                            b.y().into(), 
+                                            c.y().into(), 
                                             ).into_iter()
                         );
-        // only retain roots for which t is in [0..1]
+        // only retain roots for which t is in [0..1] 
         ytremities.retain(|root| -> bool {root > &mut 0.0.into() && root < &mut 1.0.into()});
-        for t in ytremities.iter_mut() {
+        // evaluates roots in original function
+        for t in xtremities.iter_mut() {
             *t = self.eval_casteljau(*t).y().into();
         }
         // add y-values for start and end point as candidates
@@ -576,7 +579,6 @@ where
         ytremities.push(self.end.y().into());
         // sort to get min and max values for bounding box
         ytremities.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-
         // determine xmin, xmax, ymin, ymax, from the set {B(xroots), B(yroots), B(0), B(1)} 
         // (Intermediate control points can't form a boundary)
         let min = (xtremities[0], ytremities[0]);
@@ -760,9 +762,9 @@ mod tests
         for t in 0..nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             let p = bezier.eval_casteljau(t);
-            // dbg!(t);
-            // dbg!(p);
-            // dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
+            dbg!(t);
+            dbg!(p);
+            dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
 
             assert!( (p.x() >= (xmin-max_err) ) && (p.y() >= (ymin-max_err)) );
             assert!( (p.x() <= (xmax+max_err) ) && (p.y() <= (ymax+max_err)) );
