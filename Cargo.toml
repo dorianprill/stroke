@@ -14,3 +14,7 @@ features = ["libm"]    # <--- Uncomment if you wish to use `Float` and `Real` wi
 [dependencies.arrayvec]
 version = "0.5.1"
 default-features = false
+
+# these are just for development (e.g. integration tests and examples)
+[dev-dependencies]
+plotters = "^0.2.12"
