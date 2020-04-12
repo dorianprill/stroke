@@ -535,9 +535,9 @@ where
 
         let derivative = self.derivative();
         // calculate coefficients for derivative
-        let a = derivative.start + derivative.ctrl * -2.0.into() + self.end;
+        let a = derivative.start + derivative.ctrl * -2.0.into() + derivative.end;
         let b = derivative.start * -2.0.into() + derivative.ctrl * 2.0.into();
-        let c = self.start;
+        let c = derivative.start;
 
         // calculate roots for t over x axis and plug them into the bezier function
         //  to get x,y values (make vec 2 bigger for t=0,t=1 values)
