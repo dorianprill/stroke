@@ -1,5 +1,5 @@
-# brezel
-
+# brezel  
+![Rust](https://github.com/dorianprill/brezel/workflows/Rust/badge.svg)  
 WIP minimalistic implementation of up to cubic bezier curves (on generic 2D-point types with a minimal exposed trait) for general use on all platforms including embedded and wasm through #![no_std]
 
 Brezel is the German word for "pretzel" - I'm sure you appreciate the parallels to those delicious curvy snacks
