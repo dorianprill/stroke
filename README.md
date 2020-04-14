@@ -5,6 +5,7 @@ WIP minimalistic implementation of up to cubic bezier curves (on generic 2D-poin
 Brezel is the German word for "pretzel" - I'm sure you appreciate the parallels to those delicious curvy snacks
 
 ![A Cubic Bezier Curve with Bounding Box and Convex Hull rendered by plotters.rs](https://github.com/dorianprill/brezel/blob/master/cubic_bezier_bounding_box.png)
+made with [plotters.rs](https://github.com/38/plotters)  
 
 ## Goals
 
@@ -25,5 +26,5 @@ Also for me to truly learn rusts' advanced concepts as well as touch up on berns
 - Pushing it to crates.io and maintaining it
 
 ## Related 
-If you're looking for a published crate you can check out [Lyon](https://github.com/nical/lyon) from which I draw some inspiration.
+If you're looking for a published crate with gpu support you should check out [Lyon](https://github.com/nical/lyon) from which I draw some inspiration, it's really good.
   
