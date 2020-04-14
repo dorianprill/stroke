@@ -14,7 +14,7 @@ pub mod cubic_bezier;
 pub mod bezier_segment;
 
 
-// conditionally compiled newtype pattern used to determine which size float to use in arclen() and for tests
+// conditionally compiled newtype pattern used to determine which size float to use and for tests
 // so that the library can abstract over both 32 and 64 bit architectures
 // TODO there has to be a better architectural solution to this... if not, generate impls with macro
 #[cfg(target_pointer_width = "64")]

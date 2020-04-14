@@ -191,17 +191,59 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         }
     }
 
-    pub fn real_roots(&self) -> NativeFloat
+    pub(crate) fn root<F>(&self, a: F, b: F) -> ArrayVec<[F; 1]>
     where
+    F: Float,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<NativeFloat, Output = P>,
-    NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-        + Mul<NativeFloat, Output = NativeFloat>
+        NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
     {
-        let slope = (self.end.y() - self.start.y()) / (self.end.x() - self.end.y());
-        let intercept = self.start.y() - slope * self.start.x();
-        return -intercept/slope
+        let mut r = ArrayVec::new();
+        if a.abs() < 1e-5.into() {
+            return r;
+        }
+        r.push(-b/a);
+        return r
+    }
+
+    /// Returns the bounding box of a line segment
+    pub fn bounding_box<F>(&self) -> ((F,F), (F,F)) 
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
+    {
+        let xmin;
+        let xmax;
+        let ymin;
+        let ymax;
+
+        if self.start.x() < self.end.x() {
+            xmin = self.start.x();
+            xmax = self.end.x()
+        } else {
+            xmin = self.end.x();
+            xmax = self.start.x();
+        }
+        if self.start.y() < self.end.y() {
+            ymin = self.start.y();
+            ymax = self.end.y()
+        } else {
+            ymin = self.end.y();
+            ymax = self.start.y();
+        }
+        return ((xmin.into(), ymin.into()), (xmax.into(), ymax.into()))
     }
 }
 

@@ -22,12 +22,12 @@ pub struct CubicBezier<P>
 #[allow(dead_code)]
 impl<P> CubicBezier<P> 
 where 
-    P: Add 
-        + Sub 
-        + Copy 
-        + Mul<NativeFloat, Output = P>
-        + Distance<ScalarDist = NativeFloat> 
-        + Coordinate<Coordinate = NativeFloat>,
+P: Add 
+    + Sub 
+    + Copy 
+    + Mul<NativeFloat, Output = P>
+    + Distance<ScalarDist = NativeFloat> 
+    + Coordinate<Coordinate = NativeFloat>,
 {
 
     pub fn new(start: P, ctrl1: P, ctrl2: P,  end: P) -> Self 
@@ -497,6 +497,7 @@ where
     {
         let mut result = ArrayVec::new();
 
+        // these are just the x or y components of the points
         let a = -from + 3.0.into() * ctrl1 - 3.0.into() * ctrl2 + to;
         let b = 3.0.into() * from - 6.0.into() * ctrl1 + 3.0.into() * ctrl2;
         let c = -3.0.into() * from + 3.0.into() * ctrl1;
