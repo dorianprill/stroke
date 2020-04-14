@@ -4,7 +4,8 @@ WIP minimalistic implementation of up to cubic bezier curves (on generic 2D-poin
 
 Brezel is the German word for "pretzel" - I'm sure you appreciate the parallels to those delicious curvy snacks
 
-![A Cubic Bezier Curve with Bounding Box and Convex Hull rendered by plotters.rs](https://github.com/dorianprill/brezel/blob/master/cubic_bezier_bounding_box.png)
+![A Cubic Bezier Curve with Bounding Box and Convex Hull rendered by plotters.rs](https://github.com/dorianprill/brezel/blob/master/cubic_bezier_bounding_box.png)  
+
 made with [plotters.rs](https://github.com/38/plotters)  
 
 ## Goals
