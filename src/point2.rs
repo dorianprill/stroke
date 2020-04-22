@@ -1,8 +1,8 @@
 use super::*;
 use num_traits::Float;
+use super::point::Point;
 
 #[derive(Debug, Copy, Clone)]
-#[allow(dead_code)]
 pub struct Point2<T>
 {
     pub(crate) x: T,
@@ -30,44 +30,6 @@ where T: Add
 }
 
 
-pub trait Coordinate {
-    type Coordinate;
-    fn x(&self) -> Self::Coordinate;
-    fn y(&self) -> Self::Coordinate;
-}
-
-
-pub trait Distance {
-    type ScalarDist;
-    fn distance(&self, other: Self) -> Self::ScalarDist;
-    fn abs(&self) -> Self::ScalarDist;
-}
-
-
-impl Distance for Point2<NativeFloat> {
-    type ScalarDist = NativeFloat;
-    fn distance(&self, other: Self) -> NativeFloat {
-        ( ((self.x - other.x) * (self.x - other.x))
-            + ((self.y - other.y) * (self.y - other.y)) ) .sqrt()
-    }
-
-    /// Interprets the Point2 as a vector and returns its norm (distance from origin)
-    fn abs(&self) -> NativeFloat {
-        ((self.x * self.x) + (self.y * self.y) ).sqrt()
-    }
-}
-
-impl Coordinate for Point2<NativeFloat> {
-    type Coordinate = NativeFloat;
-    fn x(&self) -> NativeFloat {
-        self.x
-    }
-    fn y(&self) -> NativeFloat {
-        self.y
-    }
-}
-
-
 impl<T> PartialEq for Point2<T> 
 where T: PartialOrd {
     fn eq(&self, other: &Self) -> bool {
@@ -89,6 +51,8 @@ where
         }
     }
 }
+
+
 
 impl<T> Sub for Point2<T>
 where 
@@ -117,4 +81,31 @@ where
     fn mul(self, _rhs: U) -> Point2<T> {
         return Point2{x: self.x * _rhs.clone(), y: self.y * _rhs}
     }
+}
+
+
+
+impl Point for Point2<NativeFloat>
+{
+    type Scalar = NativeFloat;
+
+    fn x(&self) -> Self::Scalar {
+        self.x
+    }
+
+    fn y(&self) -> Self::Scalar {
+        self.y
+    }
+
+    /// Returns the distance between self and other
+    fn distance(&self, other: Self) -> Self::Scalar {
+        ( ((self.x - other.x) * (self.x - other.x))
+            + ((self.y - other.y) * (self.y - other.y)) ) .sqrt()
+    }
+
+    /// Interprets the Point2 as a vector and returns its norm (distance from origin)
+    fn abs(&self) -> Self::Scalar {
+        ((self.x * self.x) + (self.y * self.y) ).sqrt()
+    }
+
 }

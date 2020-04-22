@@ -1,8 +1,5 @@
 use super::*;
-use super::point2::{Point2, Distance, Coordinate};
-#[allow(unused_imports)]
-use super::cubic_bezier::CubicBezier;
-
+use super::point::Point;
 
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -19,17 +16,14 @@ P: Add + Sub + Copy
     + Add<P, Output = P>
     + Sub<P, Output = P>
     + Mul<NativeFloat, Output = P>
-    + Distance<ScalarDist = NativeFloat> 
-    + Coordinate<Coordinate = NativeFloat>,
+    + Point<Scalar = NativeFloat>,
 NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
     + Mul<NativeFloat, Output = NativeFloat> 
 {
     pub fn equation<F>(&self) -> LineEquation<F> 
     where
     F: Float,
-    P: Mul<NativeFloat, Output = P>
-        + Distance<ScalarDist = NativeFloat> 
-        + Coordinate<Coordinate = NativeFloat>,
+    P: Mul<NativeFloat, Output = P>,
     NativeFloat: Sub<F, Output = F> 
         + Add<F, Output = F>
         + Mul<F, Output = F> 
@@ -83,8 +77,7 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     where
     F: Float,
     P: Mul<NativeFloat, Output = P>
-        + Distance<ScalarDist = NativeFloat> 
-        + Coordinate<Coordinate = NativeFloat>,
+        + Point<Scalar = NativeFloat>,
     NativeFloat: Sub<F, Output = F> 
         + Add<F, Output = F>
         + Mul<F, Output = F> 
@@ -98,8 +91,7 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     where
     F : Float,
     P: Mul<NativeFloat, Output = P>
-        + Distance<ScalarDist = NativeFloat> 
-        + Coordinate<Coordinate = NativeFloat>,
+        + Point<Scalar = NativeFloat>,
     NativeFloat: Sub<F, Output = F> 
         + Add<F, Output = F>
         + Mul<F, Output = F> 
@@ -123,8 +115,7 @@ P: Add + Sub + Copy
     + Add<P, Output = P>
     + Sub<P, Output = P>
     + Mul<NativeFloat, Output = P>
-    + Distance<ScalarDist = NativeFloat> 
-    + Coordinate<Coordinate = NativeFloat>,
+    + Point<Scalar = NativeFloat>,
 NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
     + Mul<NativeFloat, Output = NativeFloat> 
 {
@@ -136,7 +127,15 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         }
     }
 
-    pub fn eval(&self, t: NativeFloat) -> P {
+    pub fn eval<F>(&self, t: F) -> P 
+    where 
+    F: Float,
+    P: Add<P, Output = P>
+        + Sub<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F>
+    {
         return self.start + (self.end - self.start) * t
     }
 
@@ -176,19 +175,19 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     /// Return the derivative function.
     /// The derivative is also a bezier curve but of degree n-1 - In the case of a line just a scalar (the slope).
     /// Since its already a scalar, eval() does NOT need to be called separately
-    pub fn derivative(&self) -> Point2<NativeFloat>
+    pub fn derivative<F>(&self) -> (F, F)
     where
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<NativeFloat, Output = P>,
-    NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-        + Mul<NativeFloat, Output = NativeFloat>
-        + Float
+    F: Float,
+    P: Add<P, Output = P>
+        + Sub<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F>
+        + Into<F>
     {
-        return Point2{
-            x: self.end.x() - self.start.x(),
-            y: self.end.y() - self.start.y()
-        }
+        return (self.end.x() - self.start.x().into(),
+                self.end.y() - self.start.y().into()
+            )
     }
 
     pub(crate) fn root<F>(&self, a: F, b: F) -> ArrayVec<[F; 1]>

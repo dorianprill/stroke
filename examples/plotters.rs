@@ -3,7 +3,8 @@ use plotters::prelude::*;
 
 extern crate brezel;
 use brezel::cubic_bezier::CubicBezier;
-use brezel::point2::{Point2, Coordinate, Distance};
+use brezel::point2::Point2;
+use brezel::point::Point;
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

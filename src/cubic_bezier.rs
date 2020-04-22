@@ -1,8 +1,6 @@
 use super::*;
-#[allow(unused_imports)]
-use super::point2::{Point2, Coordinate, Distance};
-#[allow(unused_imports)]
-use super::line::{Line, LineSegment, LineEquation};
+use super::point::Point;
+use super::line::LineSegment;
 use super::quadratic_bezier::QuadraticBezier;
 
 use num_traits::{float::Float};
@@ -26,8 +24,7 @@ P: Add
     + Sub 
     + Copy 
     + Mul<NativeFloat, Output = P>
-    + Distance<ScalarDist = NativeFloat> 
-    + Coordinate<Coordinate = NativeFloat>,
+    + Point<Scalar = NativeFloat>,
 {
 
     pub fn new(start: P, ctrl1: P, ctrl2: P,  end: P) -> Self 
@@ -48,7 +45,7 @@ P: Add
         + Sub<P, Output = P>
         + Mul<F, Output = P>,
     NativeFloat: Sub<F, Output = F> 
-        + Mul<F, Output = F>
+                + Mul<F, Output = F>
     {
         return self.start * ((1.0-t) * (1.0-t) * (1.0-t))
                 + self.ctrl1 * (3.0 * t * (1.0-t) * (1.0-t))
@@ -347,6 +344,7 @@ P: Add
     /// Compute the real roots of the cubic bezier function
     /// of the form a*t^3 + b*t^2 + c*t + d
     /// using cardano's algorithm
+    /// code taken from github.com/nical/lyon
     fn real_roots<F>(&self, a: F, b: F, c: F, d: F) -> ArrayVec<[F; 3]>
     where
     F: Float,
@@ -594,6 +592,7 @@ P: Add
 mod tests 
 {
     use super::*;
+    use super::point2::Point2;
     use crate::num_traits::{Pow};
     #[test]
     fn circle_approximation_error() 
@@ -765,9 +764,9 @@ mod tests
         for t in 0..nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             let p = bezier.eval_casteljau(t);
-            dbg!(t);
-            dbg!(p);
-            dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
+            //dbg!(t);
+            //dbg!(p);
+            //dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
 
             assert!( (p.x() >= (xmin-max_err) ) && (p.y() >= (ymin-max_err)) );
             assert!( (p.x() <= (xmax+max_err) ) && (p.y() <= (ymax+max_err)) );

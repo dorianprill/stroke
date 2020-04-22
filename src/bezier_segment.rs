@@ -1,13 +1,12 @@
 use super::*;
-#[allow(unused_imports)]
-use super::point2::{Point2, Coordinate, Distance};
-#[allow(unused_imports)]
-use super::line::{Line, LineSegment}; 
+use super::point::Point;
+use super::line::LineSegment; 
 use super::quadratic_bezier::QuadraticBezier; 
 use super::cubic_bezier::CubicBezier;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum BezierSegment<P> {
+pub enum BezierSegment<P: Point>
+{
     Linear(     LineSegment<P>),
     Quadratic(  QuadraticBezier<P>),
     Cubic(      CubicBezier<P>),
@@ -19,9 +18,7 @@ where
 P:  Sub<P, Output = P>
     + Add<P, Output = P>
     + Mul<NativeFloat, Output = P>
-    + Distance<ScalarDist = NativeFloat>
-    + Coordinate< Coordinate = NativeFloat>
-    + Copy,
+    + Point<Scalar = NativeFloat>,
 NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
 + Mul<NativeFloat, Output = NativeFloat> {
     pub fn eval(&self, t: NativeFloat) -> P {

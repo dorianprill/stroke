@@ -1,6 +1,5 @@
 use super::*;
-#[allow(unused_imports)]
-use super::point2::{Point2, Coordinate, Distance};
+use super::point::Point;
 #[allow(unused_imports)]
 use super::line::{Line, LineSegment}; 
 #[allow(unused_imports)]
@@ -20,8 +19,7 @@ P: Add + Sub + Copy
     + Add<P, Output = P>
     + Sub<P, Output = P>
     + Mul<NativeFloat, Output = P>
-    + Distance<ScalarDist = NativeFloat> 
-    + Coordinate<Coordinate = NativeFloat>,
+    + Point<Scalar = NativeFloat>,
 {
 
     pub fn new(start: P, ctrl: P, end: P) -> Self {
@@ -37,7 +35,8 @@ P: Add + Sub + Copy
     F: Float,
     P: Add<P, Output = P>
         + Sub<P, Output = P>
-        + Mul<F, Output = P>,
+        + Mul<F, Output = P>
+        + Point,
     NativeFloat: Sub<F, Output = F> 
         + Mul<F, Output = F> 
     {
@@ -120,6 +119,7 @@ P: Add + Sub + Copy
     NativeFloat: Sub<F, Output = F> 
         + Add<F, Output = F>
         + Mul<F, Output = F>
+        + Float
         + Into<F>
     {
         return LineSegment{
@@ -183,8 +183,7 @@ P: Add + Sub + Copy
         let dd = d.derivative();
         let dx = d.x(t);
         let dy = d.y(t);
-        let ddx = dd.x();
-        let ddy = dd.y();
+        let (ddx, ddy) = dd;
         let numerator = dx * ddy.into() - ddx * dy;
         let denominator = (dx*dx + dy*dy).powf(1.5.into());
         return numerator / denominator
@@ -501,7 +500,8 @@ P: Add + Sub + Copy
 mod tests 
 {
     use super::*;
-    use crate::num_traits::{Pow};
+    //use crate::num_traits::{Pow};
+    use super::point2::Point2;
     //TODO test needs to be adapted for 8 segments of quadratic order
     // #[test]
     // fn circle_approximation_error() 
@@ -664,9 +664,9 @@ mod tests
         for t in 0..nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             let p = bezier.eval_casteljau(t);
-            dbg!(t);
-            dbg!(p);
-            dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
+            //dbg!(t);
+            //dbg!(p);
+            //dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
 
             assert!( (p.x() >= (xmin-max_err) ) && (p.y() >= (ymin-max_err)) );
             assert!( (p.x() <= (xmax+max_err) ) && (p.y() <= (ymax+max_err)) );
