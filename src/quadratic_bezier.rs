@@ -22,6 +22,7 @@ P: Add + Sub + Copy
     + Point<Scalar = NativeFloat>,
 {
 
+    /// Creates a new Instance of QuadraticBezier from the given control points
     pub fn new(start: P, ctrl: P, end: P) -> Self {
         QuadraticBezier { 
             start, 
@@ -30,6 +31,7 @@ P: Add + Sub + Copy
         }
     }
 
+    /// Evaluates the quadratic bezier curve at t using direct evaluation, which may not be numerically stable
     pub fn eval<F>(&self, t: F) -> P 
     where 
     F: Float,
@@ -39,6 +41,7 @@ P: Add + Sub + Copy
         + Point,
     NativeFloat: Sub<F, Output = F> 
         + Mul<F, Output = F> 
+        + Into<F>
     {
         let t2          = t * t;
         let one_t  = 1.0 - t;
@@ -49,7 +52,7 @@ P: Add + Sub + Copy
             + self.end * t2
     }
 
-        /// Evaluate a CubicBezier curve at t using the numerically stable De Casteljau algorithm
+    /// Evaluates the cubic bezier curve at t using the numerically stable De Casteljau algorithm
     pub fn eval_casteljau<F>(&self, t: F) -> P
     where 
     F: Float,

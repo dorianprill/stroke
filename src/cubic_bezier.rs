@@ -5,9 +5,10 @@ use super::quadratic_bezier::QuadraticBezier;
 
 use num_traits::{float::Float};
 
-/// Describes a cubic bezier curve through its control points.
-/// To actually render the curve, the eval() function must be called at desired points t
-/// t is an interpolation parameter between [0,1] (0% and 100%)
+/// A 2d  cubic Bezier curve defined by four points: the starting point, two successive
+/// control points and the ending point.
+/// The curve is defined by equation:
+/// ```∀ t ∈ [0..1],  P(t) = (1 - t)³ * start + 3 * (1 - t)² * t * ctrl1 + 3 * t² * (1 - t) * ctrl2 + t³ * end```
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct CubicBezier<P>
 {
@@ -46,6 +47,7 @@ P: Add
         + Mul<F, Output = P>,
     NativeFloat: Sub<F, Output = F> 
                 + Mul<F, Output = F>
+                + Into<F>
     {
         return self.start * ((1.0-t) * (1.0-t) * (1.0-t))
                 + self.ctrl1 * (3.0 * t * (1.0-t) * (1.0-t))

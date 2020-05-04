@@ -13,6 +13,7 @@ pub mod line;
 pub mod quadratic_bezier;
 pub mod cubic_bezier;
 pub mod bezier_segment;
+pub mod rational_bezier;
 
 
 // conditionally compiled newtype pattern used to determine which size float to use and for tests

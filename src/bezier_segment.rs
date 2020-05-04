@@ -21,11 +21,18 @@ P:  Sub<P, Output = P>
     + Point<Scalar = NativeFloat>,
 NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
 + Mul<NativeFloat, Output = NativeFloat> {
-    pub fn eval(&self, t: NativeFloat) -> P {
+    pub fn eval<F>(&self, t: F) -> P
+    where 
+    F: Float 
+    + Into<NativeFloat>,
+    NativeFloat: Sub<F, Output = F> 
+    + Add<F, Output = F>
+    + Mul<F, Output = F> 
+    + Into<F> {
         match self {
-            BezierSegment::Linear(segment) => segment.eval(t),
-            BezierSegment::Quadratic(segment) => segment.eval(t),
-            BezierSegment::Cubic(segment) => segment.eval(t),
+            BezierSegment::Linear(segment) => segment.eval(t.into()),
+            BezierSegment::Quadratic(segment) => segment.eval(t.into()),
+            BezierSegment::Cubic(segment) => segment.eval(t.into()),
         }
     }
 }
