@@ -20,8 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     (4.3f64, 3f64),
                     (0f64,  1.77f64)];
 
-    // TODO point2 needs a constructor for tuples
-    // TODO beziers need a convex_hull() fn that returns tuples
+
     let bezier = CubicBezier::new( 
                 Point2::new(0f64,  1.77f64),
                 Point2::new(1.1f64, -1f64),
@@ -32,11 +31,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ((xmin, ymin), (xmax, ymax)) = bezier.bounding_box::<f64>();
 
     let nsteps: usize =  1000;                            
-    let mut bezier_path: Vec<(f64, f64)> = Vec::with_capacity(nsteps);       
+    let mut bezier_graph: Vec<(f64, f64)> = Vec::with_capacity(nsteps);       
     for t in 0..nsteps {
         let t = t as f64 * 1f64/(nsteps as f64);
         let p = bezier.eval_casteljau(t);
-        bezier_path.push((p.x(), p.y()));
+        bezier_graph.push((p.x(), p.y()));
     }
 
     let root = BitMapBackend::new("cubic_bezier_bounding_box.png", (640, 480)).into_drawing_area();
@@ -74,7 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // draw the actual bezier curve
     chart
         .draw_series(LineSeries::new(
-            bezier_path,
+            bezier_graph,
             &RED,
         ))?
         .label("B(t)")

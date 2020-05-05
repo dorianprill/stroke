@@ -30,31 +30,22 @@ P:  Sub<P, Output = P>
 NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
 + Mul<NativeFloat, Output = NativeFloat> {
 
-    /// Creates a quadratic rational Bezier curve out of an existing cubic bezier curve
-    pub fn from_linear<F>(&self, curve: LineSegment<P>, weights: [NativeFloat; 2]) -> RationalBezier<P>
-    where
-    F: Float,
-    NativeFloat: Float + Into<F>
+    /// Creates a quadratic rational Bezier curve out of an existing linear bezier curve (just a line)
+    pub fn from_linear(curve: LineSegment<P>, weights: &[NativeFloat; 2]) -> RationalBezier<P>
     {
-        return RationalBezier::Linear(curve, weights)
+        return RationalBezier::Linear(curve, *weights)
     }
 
-    /// Creates a quadratic rational Bezier curve out of an existing cubic bezier curve
-    pub fn from_quadratic<F>(&self, curve: QuadraticBezier<P>, weights: [NativeFloat; 3]) -> RationalBezier<P>
-    where
-    F: Float,
-    NativeFloat: Float + Into<F>
+    /// Creates a quadratic rational Bezier curve out of an existing quadratic bezier curve
+    pub fn from_quadratic(curve: QuadraticBezier<P>, weights: &[NativeFloat; 3]) -> RationalBezier<P>
     {
-        return RationalBezier::Quadratic(curve, weights)
+        return RationalBezier::Quadratic(curve, *weights)
     }
 
     /// Creates a cubic rational Bezier curve out of an existing cubic bezier curve
-    pub fn from_cubic<F>(&self, curve: CubicBezier<P>, weights: [NativeFloat; 4]) -> RationalBezier<P>
-    where
-    F: Float,
-    NativeFloat: Float + Into<F>
+    pub fn from_cubic(curve: CubicBezier<P>, weights: &[NativeFloat; 4]) -> RationalBezier<P>
     {
-        return RationalBezier::Cubic(curve, weights)
+        return RationalBezier::Cubic(curve, *weights)
     }
 
 
@@ -100,4 +91,47 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     }
 
 
+}
+
+
+#[cfg(test)]
+mod tests 
+{
+    use super::*;
+    use super::point2::Point2;
+    //use crate::num_traits::{Pow};
+    #[test]
+    /// Calls all available from_ constructors to catch some type/trait bound errors while coding
+    fn from_constructors() {
+
+        let line = LineSegment::new(
+            Point2::new(0f64,  1.77f64),
+            Point2::new(3.2f64, -4f64),
+        );
+        let rational_lin = RationalBezier::from_linear(line, &[1.1, 2.2]);
+
+        let quad = QuadraticBezier::new( 
+            Point2::new(0f64,  1.77f64),
+            Point2::new(4.3f64,3f64),
+            Point2::new(3.2f64, -4f64),
+        );
+        let rational_quad = RationalBezier::from_quadratic(quad, &[1.1, 7.5, 2.2]);
+
+        let cubic = CubicBezier::new( 
+            Point2::new(0f64,  1.77f64),
+            Point2::new(1.1f64, -1f64),
+            Point2::new(4.3f64,3f64),
+            Point2::new(3.2f64, -4f64),
+        );
+        let rational_cubic = RationalBezier::from_cubic(cubic, &[1.1, 9.7, 7.5, 2.2]);
+
+        // just to make sure we can actually call the eval method as intended
+        let nsteps: usize =  10;                                
+        for t in 0..nsteps {
+            let t = t as f64 * 1f64/(nsteps as f64);
+            let _ = rational_lin.eval(t);
+            let _ = rational_quad.eval(t);
+            let _ = rational_cubic.eval(t);
+        }
+    }
 }
