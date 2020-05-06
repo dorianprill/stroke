@@ -13,8 +13,8 @@ pub struct Line<P>
 impl<P> Line<P> 
 where
 P: Add + Sub + Copy
-    + Add<P, Output = P>
-    + Sub<P, Output = P>
+    // + Add<P, Output = P>
+    // + Sub<P, Output = P>
     + Mul<NativeFloat, Output = P>
     + Point<Scalar = NativeFloat>,
 NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
@@ -130,13 +130,33 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     pub fn eval<F>(&self, t: F) -> P 
     where 
     F: Float,
-    P: Add<P, Output = P>
-        + Sub<P, Output = P>
-        + Mul<F, Output = P>,
+    P: Mul<F, Output = P>,
     NativeFloat: Sub<F, Output = F> 
         + Mul<F, Output = F>
     {
         return self.start + (self.end - self.start) * t
+    }
+
+    pub fn split<F>(&self, t: F) -> (Self, Self)
+    where
+    F: Float + Mul<NativeFloat, Output=F> + Sub<NativeFloat, Output=F>,
+    P: Mul<F, Output = P>,
+    // NativeFloat: Sub<F, Output = F> 
+    //     + Mul<F, Output = F>,
+    {
+        // compute the split point by interpolation
+        let ctrl_ab = self.start + (self.start - self.end) * t;
+
+        return (
+            LineSegment {
+                start: self.start,
+                end: ctrl_ab,
+            },
+            LineSegment {
+                start: ctrl_ab,
+                end: self.end,
+            },
+        );
     }
 
     pub fn to_line(&self) -> Line<P> {

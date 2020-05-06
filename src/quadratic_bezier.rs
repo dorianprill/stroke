@@ -1,9 +1,7 @@
 use super::*;
 use super::point::Point;
-#[allow(unused_imports)]
-use super::line::{Line, LineSegment}; 
-#[allow(unused_imports)]
-use super::cubic_bezier::CubicBezier;
+use super::line::LineSegment; 
+//use super::cubic_bezier::CubicBezier;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct QuadraticBezier<P>
@@ -70,6 +68,36 @@ P: Add + Sub + Copy
         let ctrl_2ab  = ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t;
     
         return ctrl_2ab
+    }
+
+    pub fn split<F>(&self, t: F) -> (Self, Self)
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F>,
+    {
+       // unrolled de casteljau algorithm
+        // _1ab is the first iteration from first (a) to second (b) control point and so on
+        let ctrl_1ab = self.start + (self.ctrl - self.start) * t;
+        let ctrl_1bc   = self.ctrl + (self.end - self.ctrl) * t;
+        // second iteration
+        let ctrl_2ab = ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t;
+
+        return (
+            QuadraticBezier {
+                start: self.start,
+                ctrl: ctrl_1ab,
+                end: ctrl_2ab,
+            },
+            QuadraticBezier {
+                start: ctrl_2ab,
+                ctrl: ctrl_1bc,
+                end: self.end,
+            },
+        );
     }
 
     /// Sample the x coordinate of the curve at t (expecting t between 0 and 1).
@@ -208,35 +236,6 @@ P: Add + Sub + Copy
         return 1.0.into() / self.curvature(t)
     }
 
-    pub fn split<F>(&self, t: F) -> (Self, Self)
-    where
-    F: Float,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Mul<F, Output = F>,
-    {
-       // unrolled de casteljau algorithm
-        // _1ab is the first iteration from first (a) to second (b) control point and so on
-        let ctrl_1ab = self.start + (self.ctrl - self.start) * t;
-        let ctrl_1bc   = self.ctrl + (self.end - self.ctrl) * t;
-        // second iteration
-        let ctrl_2ab = ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t;
-
-        return (
-            QuadraticBezier {
-                start: self.start,
-                ctrl: ctrl_1ab,
-                end: ctrl_2ab,
-            },
-            QuadraticBezier {
-                start: ctrl_2ab,
-                ctrl: ctrl_1bc,
-                end: self.end,
-            },
-        );
-    }
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.
     /// This works quite well, at ~32 segments it should already provide an error < 0.5
@@ -316,12 +315,32 @@ P: Add + Sub + Copy
     }
 
 
-    fn non_point_is_linear<F>(&self, tolerance: F) -> bool 
+
+    pub fn is_linear<F>(&self, tolerance: F) -> bool 
     where
     F: Float,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
+    P: Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F> 
+    {
+        let epsilon = 1e-5;
+        // if start and end are (nearly) the same
+        if self.start.distance(self.end) < epsilon {
+            return false;
+        } 
+        // else check if ctrl points lie on baseline i.e. all points are colinear
+        self.are_points_colinear(tolerance)
+    }
+
+
+
+    fn are_points_colinear<F>(&self, tolerance: F) -> bool 
+    where
+    F: Float,
+    P: Mul<F, Output = P>,
     NativeFloat: Sub<F, Output = F> 
         + Add<F, Output = F>
         + Mul<F, Output = F>
@@ -365,7 +384,7 @@ P: Add + Sub + Copy
         + Into<F>
     {
         if self.is_a_point(0.0.into())
-            || (self.non_point_is_linear(0.0.into()) && self.start.x() == self.end.x())
+            || (self.are_points_colinear(0.0.into()) && self.start.x() == self.end.x())
         {
             return ArrayVec::new();
         }
@@ -388,7 +407,7 @@ P: Add + Sub + Copy
         + Into<F> 
     {
         if self.is_a_point(0.0.into())
-            || (self.non_point_is_linear(0.0.into()) && self.start.y() == self.end.y())
+            || (self.are_points_colinear(0.0.into()) && self.start.y() == self.end.y())
         {
             return ArrayVec::new();
         }

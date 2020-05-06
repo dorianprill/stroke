@@ -76,17 +76,33 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     pub fn eval<F>(&self, t: F) -> P 
     where
     F: Float
-        + Into<NativeFloat>,
-    P: Point<Scalar = NativeFloat>,
-    NativeFloat: Sub<F, Output = F> 
-        + Add<F, Output = F>
-        + Mul<F, Output = F> 
-        + Into<F>
+        + Into<NativeFloat>
+        + From<NativeFloat>,
+    // NativeFloat: Sub<F, Output = F> 
+    //     + Add<F, Output = F>
+    //     + Mul<F, Output = F> 
+    //     + Into<F>
     {
         match self {
             Self::Linear(segment, _) => segment.eval(t.into()) * self.normalization_factor(t).into(),
             Self::Quadratic(segment, _) => segment.eval(t.into()) * self.normalization_factor(t).into(),
             Self::Cubic(segment, _) => segment.eval(t.into()) * self.normalization_factor(t).into(),
+        }
+    }
+
+    /// Evalues the Bezier segment using the numerically stable De Casteljau algorithm
+    /// For the linear case (degree = 1), it defaults to direct evaluation using simple interpolation
+    pub fn eval_casteljau<F>(&self, t: F) -> P 
+    where
+    F: Float
+        + Into<NativeFloat>
+        + From<NativeFloat>,
+    {
+        match self {
+            // for the linear case, de casteljau's algorithm equals direct evaluation (simple interpolation)
+            Self::Linear(segment, _) => segment.eval(t.into()) * self.normalization_factor(t).into(),
+            Self::Quadratic(segment, _) => segment.eval_casteljau(t.into()) * self.normalization_factor(t).into(),
+            Self::Cubic(segment, _) => segment.eval_casteljau(t.into()) * self.normalization_factor(t).into(),
         }
     }
 

@@ -1,9 +1,7 @@
 use super::*;
 use super::point::Point;
-use super::line::LineSegment;
+use super::line::LineSegment; 
 use super::quadratic_bezier::QuadraticBezier;
-
-use num_traits::{float::Float};
 
 /// A 2d  cubic Bezier curve defined by four points: the starting point, two successive
 /// control points and the ending point.
@@ -12,18 +10,18 @@ use num_traits::{float::Float};
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct CubicBezier<P>
 {
-    start:  P,
-    ctrl1:  P,
-    ctrl2:  P,
-    end:    P,
+    pub (crate) start:  P,
+    pub (crate) ctrl1:  P,
+    pub (crate) ctrl2:  P,
+    pub (crate) end:    P,
 }
 
 #[allow(dead_code)]
 impl<P> CubicBezier<P> 
 where 
-P: Add 
-    + Sub 
-    + Copy 
+P: Add + Sub + Copy
+    + Add<P, Output = P>
+    + Sub<P, Output = P>
     + Mul<NativeFloat, Output = P>
     + Point<Scalar = NativeFloat>,
 {
@@ -79,7 +77,8 @@ P: Add
         return ctrl_3ab
     }
 
-
+    /// Returns the x coordinate of the curve evaluated at t
+    /// Convenience shortcut for bezier.eval(t).x()
     pub fn x<F>(&self, t: F) -> F
     where
     F : Float,
@@ -100,6 +99,8 @@ P: Add
             + self.end.x() * t3
     }
 
+    /// Returns the y-coordinate of the curve evaluated at t
+    /// Convenience shortcut for bezier.eval(t).y()
     pub fn y<F>(&self, t: F) -> F
     where
     F : Float,
@@ -121,7 +122,6 @@ P: Add
     }
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.
-    /// This works quite well, at ~32 segments it should already provide an error < 0.5
     /// Remember arclen also works by linear approximation, not the integral, so we have to accept error!
     /// This approximation is unfeasable if desired accuracy is greater than 2 decimal places
     pub fn arclen<F>(&self, nsteps: usize) -> F
@@ -306,22 +306,39 @@ P: Add
         }
     }
 
-
-    fn non_point_is_linear<F>(&self, tolerance: F) -> bool 
+    pub fn is_linear<F>(&self, tolerance: F) -> bool 
     where
     F: Float,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
+    P: Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Float
+        + Into<F> 
+    {
+        let epsilon = 1e-5;
+        // if start and end are (nearly) the same
+        if self.start.distance(self.end) < epsilon {
+            return false;
+        } 
+        // else check if ctrl points lie on baseline
+        self.are_points_colinear(tolerance)
+    }
+
+
+    fn are_points_colinear<F>(&self, tolerance: F) -> bool
+    where
+    F: Float,
+    P: Mul<F, Output = P>,
     NativeFloat: Sub<F, Output = F> 
         + Add<F, Output = F>
         + Mul<F, Output = F>
         + Float
         + Into<F>
     {
-        let line = self.baseline().to_line().equation();
-        line.distance_to_point(self.ctrl1) <= tolerance
-            && line.distance_to_point(self.ctrl2) <= tolerance
+        let lineeq = self.baseline().to_line().equation();
+        lineeq.distance_to_point(self.ctrl1) <= tolerance
+            && lineeq.distance_to_point(self.ctrl2) <= tolerance
     }
 
     pub(crate) fn is_a_point<F>(&self, tolerance: F) -> bool 
@@ -441,7 +458,7 @@ P: Add
         + Into<F>
     {
         if self.is_a_point(0.0.into())
-            || (self.non_point_is_linear(0.0.into()) && self.start.x() == self.end.x())
+            || (self.are_points_colinear(0.0.into()) && self.start.x() == self.end.x())
         {
             return ArrayVec::new();
         }
@@ -464,7 +481,7 @@ P: Add
         + Into<F> 
     {
         if self.is_a_point(0.0.into())
-            || (self.non_point_is_linear(0.0.into()) && self.start.y() == self.end.y())
+            || (self.are_points_colinear(0.0.into()) && self.start.y() == self.end.y())
         {
             return ArrayVec::new();
         }
