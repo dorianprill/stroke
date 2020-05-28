@@ -212,7 +212,8 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
 
     pub(crate) fn root<F>(&self, a: F, b: F) -> ArrayVec<[F; 1]>
     where
-    F: Float,
+    F:  Float 
+        + core::default::Default,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<NativeFloat, Output = P>,
@@ -220,7 +221,7 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         + Add<F, Output = F>
         + Mul<F, Output = F>
         + Float
-        + Into<F>
+        + Into<F>, F: 
     {
         let mut r = ArrayVec::new();
         if a.abs() < 1e-5.into() {

@@ -1,3 +1,6 @@
+use core::default::Default;
+use core::iter::Extend;
+
 use super::*;
 use super::point::Point;
 use super::line::LineSegment; 
@@ -366,7 +369,8 @@ P: Add + Sub + Copy
     /// code taken from github.com/nical/lyon
     fn real_roots<F>(&self, a: F, b: F, c: F, d: F) -> ArrayVec<[F; 3]>
     where
-    F: Float,
+    F:  Float
+        + Default,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<F, Output = P>,
@@ -447,7 +451,8 @@ P: Add + Sub + Copy
     /// See also solve_t_for_x for monotonic curves.
     pub fn solve_t_for_x<F>(&self, x: F) -> ArrayVec<[F; 3]> 
     where
-    F: Float,
+    F:  Float
+        + Default,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<F, Output = P>,
@@ -470,7 +475,8 @@ P: Add + Sub + Copy
     /// See also solve_t_for_y for monotonic curves.
     pub fn solve_t_for_y<F>(&self, y: F) -> ArrayVec<[F; 3]> 
     where
-    F: Float,
+    F:  Float
+        + Default,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<F, Output = P>,
@@ -502,7 +508,8 @@ P: Add + Sub + Copy
         to: F,
     ) -> ArrayVec<[F; 3]> 
     where
-    F: Float,
+    F:  Float
+        + Default,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<F, Output = P>,
@@ -533,7 +540,8 @@ P: Add + Sub + Copy
     /// Return the bounding box of the curve as two tuples ( (xmin, ymin), (xmax, ymax) )
     pub fn bounding_box<F>(&self) -> ((F,F), (F,F)) 
     where
-    F: Float,
+    F: Float
+     + Default,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<F, Output = P>,

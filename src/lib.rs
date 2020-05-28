@@ -4,8 +4,8 @@ use core::ops::{Add, Sub, Mul};
 extern crate num_traits;
 use num_traits::{float::Float};
 
-extern crate arrayvec;
-use arrayvec::ArrayVec;
+extern crate tinyvec;
+use tinyvec::ArrayVec;
 
 pub mod point;
 pub mod point2;
@@ -14,6 +14,7 @@ pub mod quadratic_bezier;
 pub mod cubic_bezier;
 pub mod bezier_segment;
 pub mod rational_bezier;
+pub mod bspline;
 
 
 // conditionally compiled newtype pattern used to determine which size float to use and for tests

@@ -11,8 +11,8 @@ version = "0.2"
 default-features = false
 features = ["libm"]    # <--- Uncomment if you wish to use `Float` and `Real` without `std`
 
-[dependencies.arrayvec]
-version = "0.5.1"
+[dependencies.tinyvec]
+tinyvec = "0.3.3"
 default-features = false
 
 # these are just for development (e.g. integration tests and examples)
