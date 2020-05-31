@@ -1,10 +1,10 @@
 extern crate plotters;
 use plotters::prelude::*;
 
-extern crate brezel;
-use brezel::cubic_bezier::CubicBezier;
-use brezel::point2::Point2;
-use brezel::point::Point;
+extern crate stroke;
+use stroke::cubic_bezier::CubicBezier;
+use stroke::point2::Point2;
+use stroke::point::Point;
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
