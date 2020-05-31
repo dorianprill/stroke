@@ -1,4 +1,7 @@
 #![no_std]
+#![allow(incomplete_features)]
+#![feature(const_generics)]
+
 use core::ops::{Add, Sub, Mul};
 
 extern crate num_traits;

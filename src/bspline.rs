@@ -3,10 +3,19 @@ use core::slice::*;
 use super::*;
 use super::point::Point;
 
-/// General Implementation of a BSpline with choosable degree, control points and knots,
-/// subject to restrictions by definition
-#[derive(Clone, Debug)]
-pub struct BSpline<'a, P, F> 
+/// General Implementation of a BSpline with choosable degree, control points and knots.
+/// Generic parameters:
+/// P: Generic points 'P' as defined by there Point trait
+/// F: Any float value used for the knots and interpolation (usually the same as the internal generic parameter within P<F>).
+/// const generic parameters:
+/// C: Number of control points
+/// K: Number of Knots
+/// D: Degree of the piecewise function used for interpolation 
+/// While C, K, D relate to each other in the following manner
+///     K = C + D + 1
+/// it does (currently?) not compile using summation of const generic arguments for the backing arrays
+#[derive(Clone)]
+pub struct BSpline<P, F, const C: usize, const K: usize, const D: usize> 
 where 
 P: Point + Copy,
 F: Float + Into<NativeFloat>
@@ -14,12 +23,12 @@ F: Float + Into<NativeFloat>
     /// Degree of the polynomial pieces
     degree: usize,
     /// Control points (reference to any slice of points)
-    control_points: &'a [P],
+    control_points: [P; C],
     /// The knot vector (reference to any slice of floats)
-    knots: &'a [F],
+    knots: [F; K],
 }
 
-impl<'a, P, F> BSpline<'a, P, F> 
+impl<P, F, const C: usize, const K: usize, const D: usize> BSpline<P, F, {C}, {K}, {D}> 
 where
 P: Point + Copy,
 F: Float + Into<NativeFloat> 
@@ -31,7 +40,7 @@ F: Float + Into<NativeFloat>
     /// Desired curve must have a valid number of control points and knots in relation to its degree or the constructor will return None. 
     /// A B-Spline curve requires at least one more control point than the degree (`control_points.len() >
     /// degree`) and the number of knots should be equal to `control_points.len() + degree + 1`.
-    pub fn new(degree: usize, control_points: &'a [P], knots: &'a [F]) -> Option< BSpline<'a, P, F> > {
+    pub fn new(degree: usize, control_points: [P; C], knots: [F; K]) -> Option< BSpline<P, F, {C}, {K}, {D}> > {
         if control_points.len() <= degree {
             //panic!("Too few control points for curve");
             None
@@ -135,4 +144,33 @@ F: Float + Into<NativeFloat>
         }
     }
 
+}
+
+
+#[cfg(test)]
+mod tests 
+{
+    //use std;
+    use super::*;
+    use super::point2::Point2;
+    use crate::num_traits::{Pow};
+    #[test]
+    fn constructors() {
+        // degree 3, 4 control points => 4+3+1=8 knots
+        let degree: usize = 3;
+        let points = [
+                Point2::new(0f64,  1.77f64),
+                Point2::new(1.1f64, -1f64),
+                Point2::new(4.3f64,3f64),
+                Point2::new(3.2f64, -4f64)];
+        let knots: [f64; 8] = [0., 0., 0., 1., 2., 3., 3., 3.];
+        // try to initialize an object
+        let b: Option<BSpline<Point2<f64>, f64, 4, 8, 3 >> = BSpline::new(degree, points, knots);
+        let curve = match b {
+            None => return,
+            Some(b) => b
+        };
+        // do something with it in case its valid
+        curve.knots();
+    }
 }

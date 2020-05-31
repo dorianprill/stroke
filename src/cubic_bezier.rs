@@ -1,5 +1,4 @@
 use core::default::Default;
-use core::iter::Extend;
 
 use super::*;
 use super::point::Point;
