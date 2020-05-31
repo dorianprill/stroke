@@ -1,5 +1,5 @@
 [package]
-name = "brezel"
+name = "stroke"
 version = "0.1.0"
 authors = ["Dorian Prill"]
 #edition = "2018"
