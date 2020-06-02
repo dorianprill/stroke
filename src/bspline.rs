@@ -10,12 +10,12 @@ use super::point::Point;
 /// const generic parameters:
 /// C: Number of control points
 /// K: Number of Knots
-/// D: Degree of the piecewise function used for interpolation 
+/// O: Order of the piecewise function used for interpolation order = degree + 1
 /// While C, K, D relate to each other in the following manner
 ///     K = C + D + 1
 /// it does (currently?) not compile using summation of const generic arguments for the backing arrays
 #[derive(Clone)]
-pub struct BSpline<P, F, const C: usize, const K: usize, const D: usize> 
+pub struct BSpline<P, F, const C: usize, const K: usize, const O: usize> 
 where 
 P: Point + Copy,
 F: Float + Into<NativeFloat>
@@ -28,9 +28,13 @@ F: Float + Into<NativeFloat>
     knots: [F; K],
 }
 
-impl<P, F, const C: usize, const K: usize, const D: usize> BSpline<P, F, {C}, {K}, {D}> 
+impl<P, F, const C: usize, const K: usize, const O: usize> BSpline<P, F, {C}, {K}, {O}> 
 where
-P: Point + Copy,
+P: Add + Sub + Copy
+    + Add<P, Output = P>
+    + Sub<P, Output = P>
+    + Mul<NativeFloat, Output = P>
+    + Point<Scalar = NativeFloat>,
 F: Float + Into<NativeFloat> 
 {
     /// Create a new B-spline curve that interpolates
@@ -40,7 +44,7 @@ F: Float + Into<NativeFloat>
     /// Desired curve must have a valid number of control points and knots in relation to its degree or the constructor will return None. 
     /// A B-Spline curve requires at least one more control point than the degree (`control_points.len() >
     /// degree`) and the number of knots should be equal to `control_points.len() + degree + 1`.
-    pub fn new(degree: usize, control_points: [P; C], knots: [F; K]) -> Option< BSpline<P, F, {C}, {K}, {D}> > {
+    pub fn new(control_points: [P; C], knots: [F; K], degree: usize) -> Option< BSpline<P, F, {C}, {K}, {O}> > {
         if control_points.len() <= degree {
             //panic!("Too few control points for curve");
             None
@@ -53,7 +57,7 @@ F: Float + Into<NativeFloat>
             // TODO force sorting of the knots required for binary search (knot span) -> mutable reference required
             // FIX maybe dont sort and just use linear search for knot span, as knot vectors wont be really large anyway
             //.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            Some(BSpline { degree, control_points, knots })
+            Some(BSpline { control_points, knots, degree })
         }
         
     }
@@ -61,20 +65,20 @@ F: Float + Into<NativeFloat>
     /// Compute a point on the curve at `t`, the parameter **must** be in the inclusive range
     /// of values returned by `knot_domain`. If `t` is out of bounds this function will assert
     /// on debug builds and on release builds you'll likely get an out of bounds crash.
-    // pub fn eval(&self, t: F) -> P {
-    //     debug_assert!(t >= self.knot_domain().0 && t <= self.knot_domain().1);
-    //     // Find the knot span that contains t i.e. the first index with a knot value greater than the t we're searching for. 
-    //     // We need to find the knot span such that: knot[span] <= t < knot[span + 1]
-    //     // Note: A custom function is used to exploit binary search (knots are sorted)
-    //     let span = match self.upper_bounds(&self.knots[..], t) {
-    //         Some(x) if x == 0 => self.degree,
-    //         Some(x) if x >= self.knots.len() - self.degree - 1 =>
-    //             self.knots.len() - self.degree - 1,
-    //         Some(x) => x,
-    //         None => self.knots.len() - self.degree - 1,
-    //     };
-    //     self.de_boor_iterative(t, span)
-    // }
+    pub fn eval(&self, t: F) -> P {
+        debug_assert!(t >= self.knot_domain().0 && t <= self.knot_domain().1);
+        // Find the knot span that contains t i.e. the first index with a knot value greater than the t we're searching for. 
+        // We need to find the start of the knot span t is in, such that: knots[span] <= t < knots[span + 1]
+        // Note: A custom function is used to exploit binary search (knots are sorted)
+        let span = match self.upper_bounds(&self.knots[..], t) {
+            Some(x) if x == 0 => self.degree,
+            Some(x) if x >= self.knots.len() - self.degree - 1 =>
+                self.knots.len() - self.degree - 1,
+            Some(x) => x,
+            None => self.knots.len() - self.degree - 1,
+        };
+        self.de_boor_iterative(t, span)
+    }
 
 
     /// Returns an iterator over the control points.
@@ -101,23 +105,28 @@ F: Float + Into<NativeFloat>
     /// from the previous one to compute this level and store the results in the
     /// array indices we no longer need to compute the current level (the left one
     /// used computing node j).
-    // fn de_boor_iterative(&self, t: F, i_start: usize) -> P {
-    //     let mut tmp: ArrayVec<[P; self.degree + 1]> = ArrayVec::new();
-    //     for j in 0..=self.degree {
-    //         let p = j + i_start - self.degree - 1;
-    //         tmp.push(self.control_points[p]);
-    //     }
-    //     for lvl in 0..self.degree {
-    //         let k = lvl + 1;
-    //         for j in 0..self.degree - lvl {
-    //             let i = j + k + i_start - self.degree;
-    //             let alpha = (t - self.knots[i - 1]) / (self.knots[i + self.degree - k] - self.knots[i - 1]);
-    //             debug_assert!(!alpha.is_nan());
-    //             tmp[j] = tmp[j].interpolate(&tmp[j + 1], alpha);
-    //         }
-    //     }
-    //     tmp[0]
-    // }
+    fn de_boor_iterative(&self, t: F, start_knot: usize) -> P {
+        // Safety: every item in this array will get writtenbefore it is being used
+        unsafe {
+            let mut tmp: [P; {O}] = core::mem::MaybeUninit::uninit().assume_init();
+        
+        for j in 0..=self.degree {
+            let p = j + start_knot - self.degree - 1;
+            tmp[p] = self.control_points[p];
+        }
+        for lvl in 0..self.degree {
+            let k = lvl + 1;
+            for j in 0..self.degree - lvl {
+                let i = j + k + start_knot - self.degree;
+                let alpha = (t - self.knots[i - 1]) / (self.knots[i + self.degree - k] - self.knots[i - 1]);
+                debug_assert!(!alpha.is_nan());
+                tmp[j] = tmp[j] * (1.0 - alpha.into()) + tmp[j + 1] * alpha.into();
+            }
+        }
+        tmp[0]
+        } // unsafe
+    }
+
 
     /// Return the index of the first element greater than the value passed.
     /// Becaus the knot vector is sorted, this function uses binary search. 
@@ -153,9 +162,9 @@ mod tests
     //use std;
     use super::*;
     use super::point2::Point2;
-    use crate::num_traits::{Pow};
+    //use crate::num_traits::{Pow};
     #[test]
-    fn constructors() {
+    fn construct_and_eval() {
         // degree 3, 4 control points => 4+3+1=8 knots
         let degree: usize = 3;
         let points = [
@@ -165,12 +174,18 @@ mod tests
                 Point2::new(3.2f64, -4f64)];
         let knots: [f64; 8] = [0., 0., 0., 1., 2., 3., 3., 3.];
         // try to initialize an object
-        let b: Option<BSpline<Point2<f64>, f64, 4, 8, 3 >> = BSpline::new(degree, points, knots);
+        let b: Option<BSpline<Point2<f64>, f64, 4, 8, 3 >> = BSpline::new(points, knots, degree);
         let curve = match b {
             None => return,
             Some(b) => b
         };
-        // do something with it in case its valid
-        curve.knots();
+        // evaluate the curve, starting at first knot
+        let nsteps: usize =  100;  
+        let (min, max) = curve.knot_domain();
+        //dbg!(min, max);                                    
+        for t in min as usize..nsteps * (max as usize) {
+            let t = t as f64 * 1f64/(nsteps as f64);
+            curve.eval(t);
+        }
     }
 }

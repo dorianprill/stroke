@@ -2,7 +2,7 @@ use super::*;
 use num_traits::Float;
 use super::point::Point;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct Point2<T>
 {
     pub(crate) x: T,
