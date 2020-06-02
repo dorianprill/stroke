@@ -6,14 +6,15 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[dependencies]
+tinyvec = "^0.3.3"
+
+
 [dependencies.num-traits]
 version = "^0.2"
 default-features = false
 features = ["libm"]    # <--- Uncomment if you wish to use `Float` and `Real` without `std`
 
-[dependencies.tinyvec]
-tinyvec = "^0.3.3"
-default-features = false
 
 # these are just for development (e.g. integration tests and examples)
 [dev-dependencies]
