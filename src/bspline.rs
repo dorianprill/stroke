@@ -174,17 +174,18 @@ mod tests
                 Point2::new(3.2f64, -4f64)];
         let knots: [f64; 8] = [0., 0., 0., 1., 2., 3., 3., 3.];
         // try to initialize an object
-        let b: Option<BSpline<Point2<f64>, f64, 4, 8, 3 >> = BSpline::new(points, knots, degree);
+        let b: Option<BSpline<Point2<f64>, f64, 4, 8, 4 >> = BSpline::new(points, knots, degree);
         let curve = match b {
             None => return,
             Some(b) => b
         };
-        // evaluate the curve, starting at first knot
-        let nsteps: usize =  100;  
-        let (min, max) = curve.knot_domain();
-        //dbg!(min, max);                                    
-        for t in min as usize..nsteps * (max as usize) {
-            let t = t as f64 * 1f64/(nsteps as f64);
+        // evaluate the curve, t needs to be inside the knot domain!
+        // we need to map [0...1] to kmin..kmax
+        let (kmin, kmax) = curve.knot_domain();
+        let nsteps: usize = 100;                                
+        for t in 0 ..= nsteps {
+            let t = kmin + (t as f64 / kmax) * 1f64/(nsteps as f64);
+            //dbg!(kmin, kmax, t);  
             curve.eval(t);
         }
     }

@@ -633,7 +633,7 @@ mod tests
 
         let max_err = 1e-14;
         let nsteps: usize =  1000;                                      
-        for t in 0..nsteps {
+        for t in 0..=nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             let p1 = bezier.eval(t);
             let p2 = bezier.eval_casteljau(t);
@@ -661,8 +661,8 @@ mod tests
         // instead, take the difference of the two points which must not exceed the absolute error
         // TODO update test to use norm() instead, once implemented for Point (maybe as trait?)
         let max_err = 1e-14;
-        let nsteps: usize =  1000;                                      
-        for t in 0..nsteps {
+        let nsteps: usize = 1000;                                      
+        for t in 0..=nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             //dbg!(bezier.eval(t/2.0));
             //dbg!(left.eval(t));
@@ -690,7 +690,7 @@ mod tests
         let max_err = 1e-2;
 
         let nsteps: usize =  100;                                      
-        for t in 0..nsteps {
+        for t in 0..=nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             let p = bezier.eval_casteljau(t);
             //dbg!(t);

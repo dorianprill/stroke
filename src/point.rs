@@ -1,4 +1,4 @@
-use super::*;
+use core::ops::{Add, Sub};
 
 /// Trait defined over generic 2D points P which themselves are generic over F
 /// Many libraries already provide Point-types and the mathematical operations 
