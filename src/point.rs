@@ -8,7 +8,11 @@ pub trait Point: Add + Sub + Copy + PartialEq + Default
 {
     type Scalar;
     fn x(&self) -> Self::Scalar;
-    fn y(&self) -> Self::Scalar;
+    fn y(&self) -> Self::Scalar; // return 0.0 if dim < 2 ?
+    // TODO / TBD 
+    // - maybe add a z() function for most common use cases, returning 0.0 if dim < 3 ?
+    // - define an iterator for the dimensions, would make generic derivatives easier
+    //   OR define a dim() method to depend on that ?
     fn distance(&self, other: Self) -> Self::Scalar;
     fn abs(&self) -> Self::Scalar;
 }
