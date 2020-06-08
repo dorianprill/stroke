@@ -13,6 +13,7 @@ use tinyvec::ArrayVec;
 pub mod point;
 pub mod point2;
 pub mod line;
+pub mod bezier;
 pub mod quadratic_bezier;
 pub mod cubic_bezier;
 pub mod bezier_segment;
