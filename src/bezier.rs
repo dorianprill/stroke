@@ -51,13 +51,45 @@ P: Add + Sub + Copy
         // start with a copy of the original control points array and succesively use it for evaluation
         let mut p: [P; {N}] = self.control_points;
         // loop up to degree = control_points.len() -1
-        for i in 1..p.len() {
+        for i in 1..=p.len() {
             for j in 0..p.len() - i {
                 p[j] = p[j] * (1.0 - t) + p[j+1] * t;
             }
         }
         p[0]
     }
+
+
+    pub fn split<F>(&self, t: F) -> (Self, Self)
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F>,
+    {
+        // start with a copy of the original control points for now
+        // TODO how to initialize const generic array without using unsafe?
+        let mut left: [P; {N}] = self.control_points.clone();
+        let mut right: [P; {N}] = self.control_points.clone();
+        // these points get overriden each iteration; we save the intermediate results to 'left' and 'right'
+        let mut casteljau_points: [P; {N}] = self.control_points.clone();
+
+        for i in 1..=casteljau_points.len() 
+        {
+            // save start point of level
+            left[i-1] = casteljau_points[0];
+            // save end point of level
+            right[right.len()-i] = casteljau_points[right.len()-i];
+            // calculate next level of points (one less point each level until we reach one point, the one at t)
+            for j in 0..casteljau_points.len() - i {
+                casteljau_points[j] = casteljau_points[j] * (1.0-t) + casteljau_points[j+1] * t; 
+            }
+        }
+        return ( Bezier{ control_points: left }, Bezier{ control_points: right })
+    }
+
 }
 
 #[cfg(test)]
@@ -67,7 +99,7 @@ mod tests
     use super::point2::Point2;
     //use crate::num_traits::{Pow};
     #[test]
-    fn construct_and_eval() {
+    fn eval_endpoints() {
         let points = [
                 Point2::new(0f64,  1.77f64),
                 Point2::new(1.1f64, -1f64),
@@ -78,10 +110,56 @@ mod tests
         // try to initialize an object
         let curve: Bezier<Point2<f64>, 6> = Bezier::new(points);
 
-        let nsteps: usize = 100;                                
-        for t in 0 ..= nsteps {
-            let t = (t as f64) * 1f64/(nsteps as f64);
-            curve.eval(t);
+        // let nsteps: usize = 100;                                
+        // for t in 0 ..= nsteps {
+        //     let t = (t as f64) * 1f64/(nsteps as f64);
+        //     curve.eval(t);
+        // }
+        // check if start/end points match
+        let max_err = 1e-14;
+        let mut err: Point2<f64>;
+        let start = curve.eval(0.0);
+        err = start - points[0];
+        assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+        let end = curve.eval(1.0);
+        err = end - points[points.len() - 1 ];
+        assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+    }
+
+    #[test]
+    fn split_equivalence() {
+        // chose some arbitrary control points and construct a cubic bezier
+        let bezier = Bezier{control_points: 
+            [Point2{x:0f64,  y:1.77f64},
+            Point2{x:2.9f64, y:0f64},
+            Point2{x:4.3f64, y:3f64},
+            Point2{x:3.2f64, y:-4f64}]
+        };
+        // split it at an arbitrary point
+        let at = 0.5;
+        let (left, right) = bezier.split(at);
+        // compare left and right subcurves with parent curve
+        // this is tricky as we have to map t->t/2 (for left) which will 
+        // inevitably contain rounding errors from floating point ops.
+        // instead, take the difference of the two points which must not exceed the absolute error
+        // TODO update test to use norm() instead, once implemented for Point
+        let max_err = 1e-14;
+        let nsteps: usize =  1000;                                      
+        for t in 0..=nsteps {
+        let t = t as f64 * 1f64/(nsteps as f64);
+        // dbg!(t);
+        // dbg!(bezier.eval(t/2.0));
+        // dbg!(left.eval(t));
+        // dbg!(bezier.eval((t*0.5)+0.5));
+        // dbg!(right.eval(t));
+        // left
+        let mut err = bezier.eval(t/2.0) - left.eval(t);
+        //dbg!(err);
+        assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+        // right
+        err = bezier.eval((t*0.5)+0.5) - right.eval(t);
+        //dbg!(err);
+        assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );  
         }
     }
 }
