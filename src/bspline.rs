@@ -16,9 +16,6 @@ use super::point::Point;
 /// it does (currently?) not compile using summation of const generic arguments for the backing arrays
 #[derive(Clone)]
 pub struct BSpline<P, F, const C: usize, const K: usize, const O: usize> 
-where 
-P: Point + Copy,
-F: Float + Into<NativeFloat>
 {
     /// Degree of the polynomial pieces
     degree: usize,
@@ -153,6 +150,32 @@ F: Float + Into<NativeFloat>
         }
     }
 
+
+    /// Approximates the arc length of the curve by flattening it with straight line segments.
+    /// This approximation is unfeasable if desired accuracy is greater than 2 decimal places
+    pub fn arclen(&self, nsteps: usize) -> F
+    where
+    NativeFloat: Sub<F, Output = F> 
+        + Mul<F, Output = F>
+        + Float
+        + Into<F>
+    {
+        let stepsize: F = 1.0.into()/(nsteps as NativeFloat).into();
+        let mut arclen: F = 0.0.into();
+         // evaluate the curve, t needs to be inside the knot domain!
+        // we need to map [0...1] to kmin..kmax
+        let (kmin, kmax) = self.knot_domain();
+        let nsteps: usize = 100;                                
+        for t in 0 ..= nsteps {
+            let t = kmin + ( (t as NativeFloat).into() / kmax) * 1.0.into()/(nsteps as NativeFloat).into();
+            //dbg!(kmin, kmax, t);
+            let p1 = self.eval(t);
+            let p2 = self.eval(t+stepsize);
+            arclen = p1.distance(p2).into();
+        }
+        return arclen
+    }
+
 }
 
 
@@ -188,5 +211,7 @@ mod tests
             //dbg!(kmin, kmax, t);  
             curve.eval(t);
         }
+        // for now only check if has positive arclen
+        assert!(curve.arclen(100) > 0.);
     }
 }
