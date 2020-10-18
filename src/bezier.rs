@@ -90,6 +90,22 @@ P: Add + Sub + Copy
         return ( Bezier{ control_points: left }, Bezier{ control_points: right })
     }
 
+    // TODO expressions in const generics are not yet supported
+    // pub fn derivative<F>(&self) -> Bezier<P, {N-1}>
+    // where
+    // F: Float,
+    // P:  Sub<P, Output = P>
+    //     + Add<P, Output = P>
+    //     + Mul<F, Output = P>,
+    // NativeFloat: Sub<F, Output = F> 
+    //     + Add<F, Output = F>
+    //     + Mul<F, Output = F>
+    //     + Into<F>
+    // {
+    //     let new_points: [P; {N-1}]; 
+    //     return Bezier::new(new_points)
+    // }
+
 }
 
 #[cfg(test)]

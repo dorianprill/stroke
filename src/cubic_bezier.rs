@@ -755,7 +755,7 @@ mod tests
         // this is tricky as we have to map t->t/2 (for left) which will 
         // inevitably contain rounding errors from floating point ops.
         // instead, take the difference of the two points which must not exceed the absolute error
-        // TODO update test to use norm() instead, once implemented for Point
+        // TODO update test to use Point::distance() instead for error
         let max_err = 1e-14;
         let nsteps: usize =  1000;                                      
         for t in 0..=nsteps {
