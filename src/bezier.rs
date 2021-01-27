@@ -49,7 +49,7 @@ P: Add + Sub + Copy
         + Into<F>
     {
         // start with a copy of the original control points array and succesively use it for evaluation
-        let mut p: [P; {N}] = self.control_points;
+        let mut p: [P; N] = self.control_points;
         // loop up to degree = control_points.len() -1
         for i in 1..=p.len() {
             for j in 0..p.len() - i {
@@ -71,10 +71,10 @@ P: Add + Sub + Copy
     {
         // start with a copy of the original control points for now
         // TODO how to initialize const generic array without using unsafe?
-        let mut left: [P; {N}] = self.control_points.clone();
-        let mut right: [P; {N}] = self.control_points.clone();
+        let mut left: [P; N] = self.control_points.clone();
+        let mut right: [P; N] = self.control_points.clone();
         // these points get overriden each iteration; we save the intermediate results to 'left' and 'right'
-        let mut casteljau_points: [P; {N}] = self.control_points.clone();
+        let mut casteljau_points: [P; N] = self.control_points.clone();
 
         for i in 1..=casteljau_points.len() 
         {

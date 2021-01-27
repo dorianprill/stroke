@@ -5,7 +5,7 @@ use super::point::Point;
 
 /// General Implementation of a BSpline with choosable degree, control points and knots.
 /// Generic parameters:
-/// P: Generic points 'P' as defined by there Point trait
+/// P: Generic points 'P' as defined by the Point trait
 /// F: Any float value used for the knots and interpolation (usually the same as the internal generic parameter within P<F>).
 /// const generic parameters:
 /// C: Number of control points
@@ -105,7 +105,7 @@ F: Float + Into<NativeFloat>
     fn de_boor_iterative(&self, t: F, start_knot: usize) -> P {
         // Safety: every item in this array will get writtenbefore it is being used
         unsafe {
-            let mut tmp: [P; {O}] = core::mem::MaybeUninit::uninit().assume_init();
+            let mut tmp: [P; O] = core::mem::MaybeUninit::uninit().assume_init();
         
         for j in 0..=self.degree {
             let p = j + start_knot - self.degree - 1;
