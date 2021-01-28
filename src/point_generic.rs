@@ -96,10 +96,10 @@ where
 
 impl<T, const N: usize> IntoIterator for PointN<T, N> {
     type Item = T;
-    type IntoIter = core::array::IntoIter<Self::Item>;
+    type IntoIter = core::array::IntoIter<Self::Item, N>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        core::array::IntoIter::new(self.0)
     }
 }
 
