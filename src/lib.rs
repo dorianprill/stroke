@@ -1,6 +1,10 @@
 #![no_std]
 #![allow(incomplete_features)]
+// let's get daring...
 #![feature(const_generics)]
+#![feature(array_value_iter)]
+//use of unstable library feature 'array_value_iter'
+//see issue #65798 <https://github.com/rust-lang/rust/issues/65798> for more information
 
 use core::ops::{Add, Sub, Mul};
 
