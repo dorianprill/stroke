@@ -3,7 +3,7 @@
 ![Rust](https://github.com/dorianprill/brezel/workflows/Rust/badge.svg)  
 General implementations of Bézier curves and B-Splines and specialized implementations of up to cubic Bézier curves (on generic point types [WIP] with a minimal exposed trait) for general use on all platforms including embedded and wasm through #![no_std]
 
-![A Cubic Bézier Curve with Bounding Box and Convex Hull rendered by plotters.rs](https://github.com/dorianprill/brezel/blob/master/cubic_bezier_bounding_box.png)  
+![A Cubic Bézier Curve with Bounding Box and Convex Hull rendered by plotters.rs](https://raw.githubusercontent.com/dorianprill/stroke-rs/main/cubic_bezier_bounding_box.png)  
 
 made with [plotters.rs](https://github.com/38/plotters)  
 
