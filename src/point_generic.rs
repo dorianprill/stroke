@@ -94,6 +94,15 @@ where
 }
 
 
+impl<T, const N: usize> IntoIterator for PointN<T, N> {
+    type Item = T;
+    type IntoIter = core::array::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 
 impl<F, const N: usize> Point for PointN<F, N>
 where 
