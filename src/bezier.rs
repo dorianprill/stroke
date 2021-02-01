@@ -112,19 +112,19 @@ P: Add + Sub + Copy
 mod tests 
 {
     use super::*;
-    use super::point2::Point2;
+    use super::point_generic::PointN;
     //use crate::num_traits::{Pow};
     #[test]
     fn eval_endpoints() {
         let points = [
-                Point2::new(0f64,  1.77f64),
-                Point2::new(1.1f64, -1f64),
-                Point2::new(4.3f64,3f64),
-                Point2::new(3.2f64, -4f64),
-                Point2::new(7.3f64, 2.7f64),
-                Point2::new(8.9f64, 1.7f64)];
+                PointN::new([0f64,  1.77f64]),
+                PointN::new([1.1f64, -1f64]),
+                PointN::new([4.3f64,3f64]),
+                PointN::new([3.2f64, -4f64]),
+                PointN::new([7.3f64, 2.7f64]),
+                PointN::new([8.9f64, 1.7f64])];
         // try to initialize an object
-        let curve: Bezier<Point2<f64>, 6> = Bezier::new(points);
+        let curve: Bezier< PointN<f64,2>, 6> = Bezier::new(points);
 
         // let nsteps: usize = 100;                                
         // for t in 0 ..= nsteps {
@@ -133,23 +133,32 @@ mod tests
         // }
         // check if start/end points match
         let max_err = 1e-14;
-        let mut err: Point2<f64>;
+        
         let start = curve.eval(0.0);
-        err = start - points[0];
-        assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+        let mut err_start = start - points[0]; 
+
         let end = curve.eval(1.0);
-        err = end - points[points.len() - 1 ];
-        assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+        let mut err_end = end - points[points.len() - 1 ];
+
+        for axis in err_start {
+                assert!(axis.abs() < max_err);
+        }
+
+        for axis in err_end {
+            assert!(axis.abs() < max_err);
+        }
+
+        
     }
 
     #[test]
     fn split_equivalence() {
         // chose some arbitrary control points and construct a cubic bezier
         let bezier = Bezier{control_points: 
-            [Point2{x:0f64,  y:1.77f64},
-            Point2{x:2.9f64, y:0f64},
-            Point2{x:4.3f64, y:3f64},
-            Point2{x:3.2f64, y:-4f64}]
+            [PointN::new([0f64,  1.77f64]),
+            PointN::new([2.9f64, 0f64]),
+            PointN::new([4.3f64, 3f64]),
+            PointN::new([3.2f64, -4f64])]
         };
         // split it at an arbitrary point
         let at = 0.5;
@@ -162,20 +171,26 @@ mod tests
         let max_err = 1e-14;
         let nsteps: usize =  1000;                                      
         for t in 0..=nsteps {
-        let t = t as f64 * 1f64/(nsteps as f64);
-        // dbg!(t);
-        // dbg!(bezier.eval(t/2.0));
-        // dbg!(left.eval(t));
-        // dbg!(bezier.eval((t*0.5)+0.5));
-        // dbg!(right.eval(t));
-        // left
-        let mut err = bezier.eval(t/2.0) - left.eval(t);
-        //dbg!(err);
-        assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
-        // right
-        err = bezier.eval((t*0.5)+0.5) - right.eval(t);
-        //dbg!(err);
-        assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );  
+            let t = t as f64 * 1f64/(nsteps as f64);
+            // dbg!(t);
+            // dbg!(bezier.eval(t/2.0));
+            // dbg!(left.eval(t));
+            // dbg!(bezier.eval((t*0.5)+0.5));
+            // dbg!(right.eval(t));
+            // left
+
+            // check the left part of the split curve
+            let mut err = bezier.eval(t/2.0) - left.eval(t);
+            //dbg!(err);
+            for axis in err {
+                assert!(axis.abs() < max_err);
+            }
+            // check the right part of the split curve
+            err = bezier.eval((t*0.5)+0.5) - right.eval(t);
+            //dbg!(err);
+            for axis in err {
+                assert!(axis.abs() < max_err);
+            }
         }
     }
 }

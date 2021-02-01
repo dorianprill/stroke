@@ -530,7 +530,7 @@ mod tests
 {
     use super::*;
     //use crate::num_traits::{Pow};
-    use super::point2::Point2;
+    use super::point_generic::PointN;
     //TODO test needs to be adapted for 8 segments of quadratic order
     // #[test]
     // fn circle_approximation_error() 
@@ -626,9 +626,9 @@ mod tests
         // all eval methods should be approximately equivalent for well defined test cases
         // and not equivalent where numerical stability becomes an issue for normal eval
         let bezier = QuadraticBezier::new( 
-            Point2::new(0f64,  1.77f64),
-            Point2::new(4.3f64,3f64),
-            Point2::new(3.2f64, -4f64),
+            PointN::new([0f64,  1.77f64]),
+            PointN::new([4.3f64, 3f64]),
+            PointN::new([3.2f64, -4f64]),
         );
 
         let max_err = 1e-14;
@@ -640,7 +640,9 @@ mod tests
             let err = p2-p1;
             //dbg!(p1);
             //dbg!(p2);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+            for axis in err {
+                assert!(axis.abs() < max_err);
+            }
         }
     }
 
@@ -648,10 +650,10 @@ mod tests
     fn split_equivalence() {
         // chose some arbitrary control points and construct a cubic bezier
         let bezier = QuadraticBezier{ 
-                                start:  Point2{x:0f64,  y:1.77f64},
-                                ctrl: Point2{x:4.3f64, y:3f64},
-                                end:   Point2{x:3.2f64, y:-4f64}
-                            };
+                        start:  PointN::new([0f64, 1.77f64]),
+                        ctrl:   PointN::new([4.3f64, 3f64]),
+                        end:    PointN::new([3.2f64, -4f64])
+        };
         // split it at an arbitrary point
         let at = 0.5;
         let (left, right) = bezier.split(at);
@@ -668,12 +670,15 @@ mod tests
             //dbg!(left.eval(t));
             // left
             let mut err = bezier.eval(t/2.0) - left.eval(t);
-            //dbg!(err);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+            for axis in err {
+                assert!(axis.abs() < max_err);
+            }
             // right
             err = bezier.eval((t*0.5)+0.5) - right.eval(t);
             //dbg!(err);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );  
+            for axis in err {
+                assert!(axis.abs() < max_err);
+            }
         }
     }
 
@@ -681,9 +686,11 @@ mod tests
     #[test]
     fn bounding_box_contains() {
         // check if bounding box for a curve contains all points (with some approximation error)
-        let bezier = QuadraticBezier{ start:  Point2{x:0f64,  y:1.77f64},
-                                  ctrl: Point2{x:4.3f64, y:-3f64},
-                                  end:   Point2{x:3.2f64,  y:4f64}};
+        let bezier = QuadraticBezier{ 
+                    start:  PointN::new([0f64, 1.77f64]),
+                    ctrl:   PointN::new([4.3f64, -3f64]),
+                    end:    PointN::new([3.2f64, 4f64])
+        };
 
         let ((xmin, ymin), (xmax, ymax)) = bezier.bounding_box::<f64>();
 
