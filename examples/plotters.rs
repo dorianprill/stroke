@@ -3,7 +3,7 @@ use plotters::prelude::*;
 
 extern crate stroke;
 use stroke::cubic_bezier::CubicBezier;
-use stroke::point2::Point2;
+use stroke::point_generic::PointN;
 use stroke::point::Point;
 
 
@@ -22,10 +22,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
     let bezier = CubicBezier::new( 
-                Point2::new(0f64,  1.77f64),
-                Point2::new(1.1f64, -1f64),
-                Point2::new(4.3f64,3f64),
-                Point2::new(3.2f64, -4f64),
+                PointN::new([0f64,  1.77f64]),
+                PointN::new([1.1f64, -1f64]),
+                PointN::new([4.3f64,3f64]),
+                PointN::new([3.2f64, -4f64]),
             );
 
     let ((xmin, ymin), (xmax, ymax)) = bezier.bounding_box::<f64>();

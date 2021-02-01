@@ -12,7 +12,7 @@ use super::point::Point;
 pub struct PointN<T, const N: usize>([T; N]);
 
 impl<T, const N: usize> PointN<T, N> {
-    fn new(array: [T;N]) -> Self {
+    pub fn new(array: [T;N]) -> Self {
         return PointN(array)
     }
 
@@ -110,14 +110,6 @@ F: Float + Add + Copy + Default + Into<NativeFloat>,
 NativeFloat: Add + Into<F>,
 {
     type Scalar = NativeFloat;
-
-    fn x(&self) -> Self::Scalar {
-        0.0
-    }
-
-    fn y(&self) -> Self::Scalar {
-        0.0
-    }
 
     /// Returns the distance between self and other
     fn distance(&self, other: Self) -> Self::Scalar {

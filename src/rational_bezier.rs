@@ -114,30 +114,30 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
 mod tests 
 {
     use super::*;
-    use super::point2::Point2;
+    use super::point_generic::PointN;
     //use crate::num_traits::{Pow};
     #[test]
     /// Calls all available from_ constructors to catch some type/trait bound errors while coding
     fn from_constructors() {
 
         let line = LineSegment::new(
-            Point2::new(0f64,  1.77f64),
-            Point2::new(3.2f64, -4f64),
+            PointN::new([0f64,  1.77f64]),
+            PointN::new([3.2f64, -4f64]),
         );
         let rational_lin = RationalBezier::from_linear(line, &[1.1, 2.2]);
 
         let quad = QuadraticBezier::new( 
-            Point2::new(0f64,  1.77f64),
-            Point2::new(4.3f64,3f64),
-            Point2::new(3.2f64, -4f64),
+            PointN::new([0f64,  1.77f64]),
+            PointN::new([4.3f64, 3f64]),
+            PointN::new([3.2f64, -4f64]),
         );
         let rational_quad = RationalBezier::from_quadratic(quad, &[1.1, 7.5, 2.2]);
 
         let cubic = CubicBezier::new( 
-            Point2::new(0f64,  1.77f64),
-            Point2::new(1.1f64, -1f64),
-            Point2::new(4.3f64,3f64),
-            Point2::new(3.2f64, -4f64),
+            PointN::new([0f64,  1.77f64]),
+            PointN::new([1.1f64, -1f64]),
+            PointN::new([4.3f64, 3f64]),
+            PointN::new([3.2f64, -4f64]),
         );
         let rational_cubic = RationalBezier::from_cubic(cubic, &[1.1, 9.7, 7.5, 2.2]);
 

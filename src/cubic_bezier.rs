@@ -142,7 +142,7 @@ P: Add + Sub + Copy
         for t in 1..nsteps {
             let t = t as NativeFloat * 1.0/(nsteps as NativeFloat);
             let p1 = self.eval_casteljau(t);
-            let p2 = self.eval_casteljau(t+stepsize);
+            let p2 = self.eval_casteljau(t.into()+stepsize.into());
 
             arclen = arclen + p1.distance(p2);
         
@@ -362,10 +362,10 @@ P: Add + Sub + Copy
             && self.end.distance(self.ctrl2).powi(2).into() <= tolerance_squared
     }
 
-    /// Compute the real roots of the cubic bezier function
-    /// of the form a*t^3 + b*t^2 + c*t + d
-    /// using cardano's algorithm
-    /// code taken from github.com/nical/lyon
+    /// Compute the real roots of the cubic bezier function with
+    /// parameters of the form a*t^3 + b*t^2 + c*t + d for each dimension
+    /// using cardano's algorithm (code adapted from github.com/nical/lyon)
+    /// returns an ArrayVec of the present roots (max 3)
     fn real_roots<F>(&self, a: F, b: F, c: F, d: F) -> ArrayVec<[F; 3]>
     where
     F:  Float
@@ -448,6 +448,7 @@ P: Add + Sub + Copy
 
     /// Return the parameter values corresponding to a given x coordinate.
     /// See also solve_t_for_x for monotonic curves.
+    /// TODO to be removed
     pub fn solve_t_for_x<F>(&self, x: F) -> ArrayVec<[F; 3]> 
     where
     F:  Float
@@ -472,6 +473,7 @@ P: Add + Sub + Copy
 
     /// Return the parameter values corresponding to a given y coordinate.
     /// See also solve_t_for_y for monotonic curves.
+    /// TODO to be removed
     pub fn solve_t_for_y<F>(&self, y: F) -> ArrayVec<[F; 3]> 
     where
     F:  Float
@@ -498,6 +500,7 @@ P: Add + Sub + Copy
     /// by solving the roots for x or y axis functions
     /// Returns those roots of the function that are in the interval [0.0, 1.0].
     /// This function is not exposed, it has wrappers solve_t_for_x() and solve_t_for_y()
+    /// TODO to be replaced by some form of solve_t_for_axis(index) to works with generic points
     fn solve_t_for_xy<F>(
         &self,
         value: F,
@@ -618,15 +621,15 @@ P: Add + Sub + Copy
 mod tests 
 {
     use super::*;
-    use super::point2::Point2;
+    use super::point_generic::PointN;
     use crate::num_traits::{Pow};
     #[test]
     fn circle_approximation_error() 
     {
         // define closure for unit circle 
-        let circle = |p: Point2<f64>| -> f64 { ( p.x.pow(2) as f64 
-                                                + p.y.pow(2) as f64)
-                                                .sqrt() - 1f64};
+        let circle = |p: PointN<f64, 2>| -> f64 { 
+            p.into_iter().map(|x| x*x).sum::<f64>().sqrt() - 1f64
+        };
 
         // define control points for 4 bezier segments 
         // control points are chosen for minimum radial distance error
@@ -636,22 +639,30 @@ mod tests
         let max_drift_perc  = 0.019608; // radial drift percent
         let max_error       = max_drift_perc * 0.01; // absolute max radial error
 
-        let bezier_quadrant_1= CubicBezier{ start:  Point2{x:0f64,  y:1f64},
-                                                ctrl1: Point2{x:c,     y:1f64},
-                                                ctrl2: Point2{x:1f64,  y:c},
-                                                end:   Point2{x:1f64,  y:0f64}};
-        let bezier_quadrant_2 = CubicBezier{ start:  Point2{x:1f64,  y:0f64},
-                                                ctrl1: Point2{x:1f64,     y:-c},
-                                                ctrl2: Point2{x:c,  y:-1f64},
-                                                end:   Point2{x:0f64,  y:-1f64}};
-        let bezier_quadrant_3 = CubicBezier{ start:  Point2{x:0f64,  y:-1f64},
-                                                ctrl1: Point2{x:-c,     y:-1f64},
-                                                ctrl2: Point2{x:-1f64,  y:-c},
-                                                end:   Point2{x:-1f64,  y:0f64}};
-        let bezier_quadrant_4 = CubicBezier{ start:  Point2{x:-1f64,    y:0f64},
-                                                ctrl1: Point2{x:-1f64,  y:c},
-                                                ctrl2: Point2{x:-c,     y:1f64},
-                                                end:   Point2{x:0f64,   y:1f64}};
+        let bezier_quadrant_1= CubicBezier{ 
+                                    start:  PointN::new([0f64, 1f64]),
+                                    ctrl1:  PointN::new([c, 1f64]),
+                                    ctrl2:  PointN::new([1f64, c]),
+                                    end:    PointN::new([1f64, 0f64])
+        };
+        let bezier_quadrant_2 = CubicBezier{ 
+                                    start:  PointN::new([1f64, 0f64]),
+                                    ctrl1:  PointN::new([1f64, -c]),
+                                    ctrl2:  PointN::new([c,  -1f64]),
+                                    end:    PointN::new([0f64, -1f64])
+        };
+        let bezier_quadrant_3 = CubicBezier{ 
+                                    start:  PointN::new([0f64, -1f64]),
+                                    ctrl1:  PointN::new([-c, -1f64]),
+                                    ctrl2:  PointN::new([-1f64, -c]),
+                                    end:    PointN::new([-1f64, 0f64])
+        };
+        let bezier_quadrant_4 = CubicBezier{ 
+                                    start:  PointN::new([-1f64, 0f64]),
+                                    ctrl1:  PointN::new([-1f64, c]),
+                                    ctrl2:  PointN::new([-c, 1f64]),
+                                    end:    PointN::new([0f64, 1f64])
+        };
         let nsteps =  1000;                                      
         for t in 0..=nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
@@ -690,22 +701,30 @@ mod tests
         let pi        = 3.14159265359;
         let tau       = 2.*pi;
 
-        let bezier_quadrant_1= CubicBezier{ start:  Point2{x:0f64,  y:1f64},
-                                                ctrl1: Point2{x:c,     y:1f64},
-                                                ctrl2: Point2{x:1f64,  y:c},
-                                                end:   Point2{x:1f64,  y:0f64}};
-        let bezier_quadrant_2 = CubicBezier{ start:  Point2{x:1f64,  y:0f64},
-                                                ctrl1: Point2{x:1f64,     y:-c},
-                                                ctrl2: Point2{x:c,  y:-1f64},
-                                                end:   Point2{x:0f64,  y:-1f64}};
-        let bezier_quadrant_3 = CubicBezier{ start:  Point2{x:0f64,  y:-1f64},
-                                                ctrl1: Point2{x:-c,     y:-1f64},
-                                                ctrl2: Point2{x:-1f64,  y:-c},
-                                                end:   Point2{x:-1f64,  y:0f64}};
-        let bezier_quadrant_4 = CubicBezier{ start:  Point2{x:-1f64,    y:0f64},
-                                                ctrl1: Point2{x:-1f64,  y:c},
-                                                ctrl2: Point2{x:-c,     y:1f64},
-                                                end:   Point2{x:0f64,   y:1f64}};
+        let bezier_quadrant_1= CubicBezier{ 
+                                start:  PointN::new([0f64, 1f64]),
+                                ctrl1:  PointN::new([c, 1f64]),
+                                ctrl2:  PointN::new([1f64, c]),
+                                end:    PointN::new([1f64, 0f64])
+        };
+        let bezier_quadrant_2 = CubicBezier{ 
+                                start:  PointN::new([1f64, 0f64]),
+                                ctrl1:  PointN::new([1f64, -c]),
+                                ctrl2:  PointN::new([c, -1f64]),
+                                end:    PointN::new([0f64, -1f64])
+        };
+        let bezier_quadrant_3 = CubicBezier{ 
+                                start:  PointN::new([0f64, -1f64]),
+                                ctrl1:  PointN::new([-c,   -1f64]),
+                                ctrl2:  PointN::new([-1f64, -c]),
+                                end:    PointN::new([-1f64, 0f64])
+        };
+        let bezier_quadrant_4 = CubicBezier{ 
+                                start:  PointN::new([-1f64, 0f64]),
+                                ctrl1:  PointN::new([-1f64, c]),
+                                ctrl2:  PointN::new([-c, 1f64]),
+                                end:    PointN::new([0f64, 1f64])
+        };
         let circumference = bezier_quadrant_1.arclen::<NativeFloat>(nsteps) +
                                 bezier_quadrant_2.arclen::<NativeFloat>(nsteps) +
                                 bezier_quadrant_3.arclen::<NativeFloat>(nsteps) +
@@ -720,10 +739,10 @@ mod tests
         // all eval methods should be approximately equivalent for well defined test cases
         // and not equivalent where numerical stability becomes an issue for normal eval
         let bezier = CubicBezier::new( 
-            Point2::new(0f64,  1.77f64),
-            Point2::new(1.1f64, -1f64),
-            Point2::new(4.3f64,3f64),
-            Point2::new(3.2f64, -4f64),
+            PointN::new([0f64,  1.77f64]),
+            PointN::new([1.1f64, -1f64]),
+            PointN::new([4.3f64,3f64]),
+            PointN::new([3.2f64, -4f64]),
         );
 
         let max_err = 1e-14;
@@ -735,7 +754,10 @@ mod tests
             let err = p2-p1;
             //dbg!(p1);
             //dbg!(p2);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+            for axis in err {
+                assert!(axis.abs() < max_err);
+            }
+            
         }
     }
 
@@ -743,10 +765,10 @@ mod tests
     fn split_equivalence() {
         // chose some arbitrary control points and construct a cubic bezier
         let bezier = CubicBezier{ 
-                                start:  Point2{x:0f64,  y:1.77f64},
-                                ctrl1: Point2{x:2.9f64, y:0f64},
-                                ctrl2: Point2{x:4.3f64, y:3f64},
-                                end:   Point2{x:3.2f64, y:-4f64}
+                                start:  PointN::new([0f64, 1.77f64]),
+                                ctrl1:  PointN::new([2.9f64, 0f64]),
+                                ctrl2:  PointN::new([4.3f64, 3f64]),
+                                end:    PointN::new([3.2f64, -4f64])
                             };
         // split it at an arbitrary point
         let at = 0.5;
@@ -765,11 +787,15 @@ mod tests
             // left
             let mut err = bezier.eval(t/2.0) - left.eval(t);
             //dbg!(err);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+            for axis in err {
+                assert!(axis.abs() < max_err);
+            }
             // right
             err = bezier.eval((t*0.5)+0.5) - right.eval(t);
             //dbg!(err);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );  
+            for axis in err {
+                assert!(axis.abs() < max_err);
+            }  
         }
     }
 
@@ -777,10 +803,12 @@ mod tests
     #[test]
     fn bounding_box_contains() {
         // check if bounding box for a curve contains all points (with some approximation error)
-        let bezier = CubicBezier{ start:  Point2{x:0f64,  y:1.77f64},
-                                  ctrl1: Point2{x:2.9f64, y:0f64},
-                                  ctrl2: Point2{x:4.3f64, y:-3f64},
-                                  end:   Point2{x:3.2f64,  y:4f64}};
+        let bezier = CubicBezier{ 
+                        start:  PointN::new([0f64, 1.77f64]),
+                        ctrl1: PointN::new([2.9f64, 0f64]),
+                        ctrl2: PointN::new([4.3f64, -3f64]),
+                        end:   PointN::new([3.2f64, 4f64])
+        };
 
         let ((xmin, ymin), (xmax, ymax)) = bezier.bounding_box::<f64>();
 
