@@ -2,6 +2,9 @@
 #![allow(incomplete_features)]
 // let's get daring...
 #![feature(const_generics)]
+// this is needed to use expressions in const generics such as N-1 (see curve derivatives)
+#![feature(const_evaluatable_checked)]
+// this feature is currently necessary to build an iterator over a const generic array (see PointN impl)
 #![feature(array_value_iter)]
 //use of unstable library feature 'array_value_iter'
 //see issue #65798 <https://github.com/rust-lang/rust/issues/65798> for more information

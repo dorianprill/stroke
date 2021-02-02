@@ -46,7 +46,7 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
 pub struct LineEquation<F> {
     a: F,
     b: F,
-    c: F,
+    c: F
 }
 
 impl<F> LineEquation<F> 

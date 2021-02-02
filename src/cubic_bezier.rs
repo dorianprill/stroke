@@ -21,11 +21,11 @@ pub struct CubicBezier<P>
 #[allow(dead_code)]
 impl<P> CubicBezier<P> 
 where 
-P: Add + Sub + Copy
+P: Point<Scalar = NativeFloat>
+    + Copy
     + Add<P, Output = P>
     + Sub<P, Output = P>
-    + Mul<NativeFloat, Output = P>
-    + Point<Scalar = NativeFloat>,
+    + Mul<NativeFloat, Output = P>,
 {
 
     pub fn new(start: P, ctrl1: P, ctrl2: P,  end: P) -> Self 
@@ -188,7 +188,7 @@ P: Add + Sub + Copy
 
 
 
-    /// Sample the axis coordinate at 'axis' of the curve's derivative at t.
+    /// Direct Derivative - Sample the axis coordinate at 'axis' of the curve's derivative at t.
     /// Parameters: 
     /// t: the sampling parameter on the curve interval [0..1]
     /// axis: the index of the coordinate axis [0..N]
@@ -452,10 +452,10 @@ P: Add + Sub + Copy
     }
 
     /// Return the bounding box of the curve as two tuples ( (xmin, ymin), (xmax, ymax) )
-    pub fn bounding_box<F>(&self) -> ((F,F), (F,F)) 
+    pub fn bounding_box<F>(&self) -> [(F, F); P::DIM] 
     where
     F: Float
-     + Default,
+        + Default,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<F, Output = P>,
@@ -472,58 +472,42 @@ P: Add + Sub + Copy
         // p1: [0,  2, -2]
         // p2: [0,  0,  1]
         //      c   b   a
-
+        let mut bounds = [(0.0.into(), 0.0.into()); P::DIM];
         let derivative = self.derivative();
         // calculate coefficients for derivative
-        let a = derivative.start + derivative.ctrl * -2.0.into() + derivative.end;
-        let b = derivative.start * -2.0.into() + derivative.ctrl * 2.0.into();
-        let c = derivative.start;
+        let a: P = derivative.start + derivative.ctrl * -2.0.into() + derivative.end;
+        let b: P = derivative.start * -2.0.into() + derivative.ctrl * 2.0.into();
+        let c: P = derivative.start;
 
         // calculate roots for t over x axis and plug them into the bezier function
         //  to get x,y values (make vec 2 bigger for t=0,t=1 values)
-        let mut xtremities: ArrayVec<[F; 4]> = ArrayVec::new();
-        xtremities.extend(derivative.real_roots(
-                                            a.x().into(), 
-                                            b.x().into(), 
-                                            c.x().into(), 
-                                            ).into_iter()
-                        );
-        // only retain roots for which t is in [0..1] 
-        xtremities.retain(|root| -> bool {root > &mut 0.0.into() && root < &mut 1.0.into()});
-        // evaluates roots in original function
-        for t in xtremities.iter_mut() {
-            *t = self.eval_casteljau(*t).x().into();
-        }
-        // add y-values for start and end point as candidates
-        xtremities.push(self.start.x().into()); 
-        xtremities.push(self.end.x().into());
-        // sort to get min and max values for bounding box
-        xtremities.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+        // loop over any of the points dimensions (they're all the same)
+        for (dim, _) in a.into_iter().enumerate() {
+            let mut extrema: ArrayVec<[F; 4]> = ArrayVec::new();
+            extrema.extend(derivative.real_roots(
+                                                a.axis(dim).into(), 
+                                                b.axis(dim).into(), 
+                                                c.axis(dim).into(), 
+                                                ).into_iter());
+            // only retain roots for which t is in [0..1] 
+            extrema.retain(|root| -> bool {root > &mut 0.0.into() && root < &mut 1.0.into()});
+            // evaluates roots in original function
+            for t in extrema.iter_mut() {
+                *t = self.eval_casteljau(*t).axis(dim).into();
+            }
+            // add y-values for start and end point as candidates
+            extrema.push(self.start.axis(dim).into()); 
+            extrema.push(self.end.axis(dim).into());
+            // sort to get min and max values for bounding box
+            extrema.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
 
-        // same for y...
-        let mut ytremities: ArrayVec<[F; 4]> = ArrayVec::new();
-        ytremities.extend(derivative.real_roots(
-                                            a.y().into(), 
-                                            b.y().into(), 
-                                            c.y().into(), 
-                                            ).into_iter()
-                        );
-        // only retain roots for which t is in [0..1] 
-        ytremities.retain(|root| -> bool {root > &mut 0.0.into() && root < &mut 1.0.into()});
-        // evaluates roots in original function
-        for t in ytremities.iter_mut() {
-            *t = self.eval_casteljau(*t).y().into();
+
+            // determine xmin, xmax, ymin, ymax, from the set {B(xroots), B(yroots), B(0), B(1)} 
+            // (Intermediate control points can't form a boundary)
+            // .unwrap() is ok as it can never be empty as it always at least contains the endpoints
+            bounds[dim] = (extrema[0], *extrema.last().unwrap());
         }
-        // add y-values for start and end point as candidates
-        ytremities.push(self.start.y().into()); 
-        ytremities.push(self.end.y().into());
-        // sort to get min and max values for bounding box
-        ytremities.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-        // determine xmin, xmax, ymin, ymax, from the set {B(xroots), B(yroots), B(0), B(1)} 
-        // (Intermediate control points can't form a boundary)
-        let min = (xtremities[0], ytremities[0]);
-        let max = (*xtremities.last().unwrap(), *ytremities.last().unwrap()); // can never be empty as we at least have the endpoints
-        return (min, max)
+        return bounds
     }
 
 }
@@ -534,7 +518,6 @@ mod tests
 {
     use super::*;
     use super::point_generic::PointN;
-    use crate::num_traits::{Pow};
     #[test]
     fn circle_approximation_error() 
     {
@@ -722,7 +705,7 @@ mod tests
                         end:   PointN::new([3.2f64, 4f64])
         };
 
-        let ((xmin, ymin), (xmax, ymax)) = bezier.bounding_box::<f64>();
+        let bounds = bezier.bounding_box::<f64>();
 
         let max_err = 1e-2;
 
@@ -733,10 +716,9 @@ mod tests
             //dbg!(t);
             //dbg!(p);
             //dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
-
-            //assert!( (p.x() >= (xmin-max_err) ) && (p.y() >= (ymin-max_err)) );
-            //assert!( (p.x() <= (xmax+max_err) ) && (p.y() <= (ymax+max_err)) );
-
+            for (idx, axis) in p.into_iter().enumerate() {
+                assert!( (axis >= (bounds[idx].0 - max_err)) && (axis <= (bounds[idx].1 + max_err)) )
+            }
         }
     }
 }

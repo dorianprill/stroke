@@ -74,6 +74,8 @@ where
     }
 }
 
+
+
 impl<T, const N:usize, U> Mul<U> for PointN<T, N>
 where
     // How you have the mulitplication done is mulitpling T * U => T, this
@@ -104,12 +106,13 @@ impl<T, const N: usize> IntoIterator for PointN<T, N> {
 }
 
 
-impl<F, const N: usize> Point for PointN<F, N>
+impl<T, const N: usize> Point for PointN<T, N>
 where 
-F: Float + Add + Copy + Default + Into<NativeFloat>,
-NativeFloat: Add + Into<F>,
+T: Float + Add + Copy + Default + Into<NativeFloat>,
+NativeFloat: Add + Into<T>,
 {
     type Scalar = NativeFloat;
+    const DIM: usize = {N};
 
     fn axis(&self, index: usize) -> Self::Scalar {
         return self.0[index].into()
