@@ -7,9 +7,16 @@ use core::ops::{Add, Sub};
 pub trait Point: Add + Sub + Copy + PartialEq + Default + IntoIterator      
 {
     type Scalar;
-    // TODO
-    // define an iterator for the dimensions, would make generic derivatives easier
-    // define a dim() method to get the number of dimensions (~ len())
+
+    // Returns the component of the Point on its axis corresponding to index e.g. [0, 1, 2] -> [x, y, z]
+    // TODO naming: component/axis/at/dim ?
+    fn axis(&self, index: usize) -> Self::Scalar;
+
+    // Returns the distance between the two Points self and other
+    // TODO maybe squared distance is enough (simpler computation) 
     fn distance(&self, other: Self) -> Self::Scalar;
+
+    // Returns the L2 Norm of the Point interpreted as a Vector
+    // TODO naming abs/len/l2
     fn abs(&self) -> Self::Scalar;
 }

@@ -111,6 +111,10 @@ NativeFloat: Add + Into<F>,
 {
     type Scalar = NativeFloat;
 
+    fn axis(&self, index: usize) -> Self::Scalar {
+        return self.0[index].into()
+    }
+
     /// Returns the distance between self and other
     fn distance(&self, other: Self) -> Self::Scalar {
         let mut sqr_dist: Self::Scalar = 0.0;
