@@ -167,7 +167,7 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     }
 
     /// Sample the x coordinate of the segment at t (expecting t between 0 and 1).
-    pub fn x<F>(&self, t: F) -> F 
+    pub fn axis<F>(&self, t: F, axis: usize) -> F 
     where
     F : Float,
     P: Mul<NativeFloat, Output = P>,
@@ -176,26 +176,13 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         + Mul<F, Output = F> 
         + Into<F>
     {
-        self.start.x() + (self.end.x() - self.start.x().into()) * t
-    }
-
-    /// Sample the y coordinate of the segment at t (expecting t between 0 and 1).
-    pub fn y<F>(&self, t: F) -> F 
-    where
-    F : Float,
-    P: Mul<NativeFloat, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Add<F, Output = F>
-        + Mul<F, Output = F> 
-        + Into<F>
-    {
-        self.start.y() + (self.end.y() - self.start.y().into()) * t
+        self.start.axis(axis) + (self.end.axis(axis) - self.start.axis(axis).into()) * t
     }
 
     /// Return the derivative function.
     /// The derivative is also a bezier curve but of degree n-1 - In the case of a line just a scalar (the slope).
     /// Since its already a scalar, eval() does NOT need to be called separately
-    pub fn derivative<F>(&self) -> (F, F)
+    pub fn derivative<F>(&self) -> P
     where
     F: Float,
     P: Add<P, Output = P>
@@ -205,9 +192,8 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         + Mul<F, Output = F>
         + Into<F>
     {
-        return (self.end.x() - self.start.x().into(),
-                self.end.y() - self.start.y().into()
-            )
+        return self.end - self.start
+                
     }
 
     pub(crate) fn root<F>(&self, a: F, b: F) -> ArrayVec<[F; 1]>

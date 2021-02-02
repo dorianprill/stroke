@@ -15,7 +15,6 @@ extern crate tinyvec;
 use tinyvec::ArrayVec;
 
 pub mod point;
-//pub mod point2;
 pub mod point_generic;
 pub mod line;
 pub mod bezier;

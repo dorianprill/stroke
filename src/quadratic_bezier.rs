@@ -103,7 +103,7 @@ P: Add + Sub + Copy
     }
 
     /// Sample the x coordinate of the curve at t (expecting t between 0 and 1).
-    pub fn x<F>(&self, t: F) -> F 
+    pub fn axis<F>(&self, t: F, axis: usize) -> F 
     where
     F : Float,
     P:  Sub<P, Output = P>
@@ -118,27 +118,11 @@ P: Add + Sub + Copy
         let one_t = 1 as NativeFloat - t;
         let one_t2 = one_t * one_t;
 
-        self.start.x() * one_t2 + self.ctrl.x() * 2.0.into() * one_t * t + self.end.x() * t2
+        return self.start.axis(axis) * one_t2 
+            + self.ctrl.axis(axis) * 2.0.into() * one_t * t 
+            + self.end.axis(axis) * t2
     }
 
-    /// Sample the y coordinate of the curve at t (expecting t between 0 and 1).
-    pub fn y<F>(&self, t: F) -> F 
-    where
-    F : Float,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Add<F, Output = F>
-        + Mul<F, Output = F> 
-        + Into<F>
-    {
-        let t2 = t * t;
-        let one_t = 1 as NativeFloat - t;
-        let one_t2 = one_t * one_t;
-
-        self.start.y() * one_t2 + self.ctrl.y() * 2.0.into() * one_t * t + self.end.y() * t2
-    }
 
     /// Return the derivative function.
     /// The derivative is also a bezier curve but of degree n-1 - In the case of quadratic it is just a line.
@@ -178,7 +162,7 @@ P: Add + Sub + Copy
         let c0: F = t * 2.0.into() - 2.0.into();
         let c1: F =  2.0.into() - 4.0.into() * t;
         let c2: F = 2.0.into() * t;
-        return self.start.x().into() * c0 + self.ctrl.x().into() * c1 + self.end.x().into() * c2;
+        return self.start.axis(0).into() * c0 + self.ctrl.axis(0).into() * c1 + self.end.axis(0).into() * c2;
     }
 
 
@@ -196,7 +180,7 @@ P: Add + Sub + Copy
         let c0: F = t * 2.0.into() - 2.0.into();
         let c1: F =  2.0.into() - 4.0.into() * t;
         let c2: F = 2.0.into() * t;
-        return self.start.y().into() * c0 + self.ctrl.y().into() * c1 + self.end.y().into() * c2;
+        return self.start.axis(1).into() * c0 + self.ctrl.axis(1).into() * c1 + self.end.axis(1).into() * c2;
     }
 
     /// Calculates the curvature of the curve at point t
@@ -372,65 +356,13 @@ P: Add + Sub + Copy
             && self.start.distance(self.ctrl).powi(2).into() <= tolerance_squared
     }
 
-    /// Return the parameter values corresponding to a given x coordinate.
-    /// See also solve_t_for_x for monotonic curves.
-    pub fn solve_t_for_x<F>(&self, x: F) -> ArrayVec<[F; 3]> 
-    where
-    F:  Float
-        + Default,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Add<F, Output = F>
-        + Mul<F, Output = F>
-        + Float
-        + Into<F>
-    {
-        if self.is_a_point(0.0.into())
-            || (self.are_points_colinear(0.0.into()) && self.start.x() == self.end.x())
-        {
-            return ArrayVec::new();
-        }
 
-        self.solve_t_for_xy(x, self.start.x().into(), self.ctrl.x().into(), self.end.x().into())
-    }
-
-    /// Return the parameter values corresponding to a given y coordinate.
-    /// See also solve_t_for_y for monotonic curves.
-    pub fn solve_t_for_y<F>(&self, y: F) -> ArrayVec<[F; 3]> 
-    where
-    F:  Float
-        + Default,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Add<F, Output = F>
-        + Mul<F, Output = F>
-        + Float
-        + Into<F> 
-    {
-        if self.is_a_point(0.0.into())
-            || (self.are_points_colinear(0.0.into()) && self.start.y() == self.end.y())
-        {
-            return ArrayVec::new();
-        }
-
-        self.solve_t_for_xy(y, self.start.y().into(),  self.ctrl.y().into(), self.end.y().into())
-    }
 
     /// Solves the cubic bezier function given the control points' x OR y values
-    /// by solving the roots for x or y axis functions
+    /// by solving the roots for the function over any of the axis
     /// Returns those roots of the function that are in the interval [0.0, 1.0].
     /// This function is not exposed, it has wrappers solve_t_for_x() and solve_t_for_y()
-    fn solve_t_for_xy<F>(
-        &self,
-        value: F,
-        from: F,
-        ctrl: F,
-        to: F,
-    ) -> ArrayVec<[F; 3]> 
+    fn solve_t_for_xy<F>(&self, value: F, axis: usize) -> ArrayVec<[F; 3]> 
     where
     F:  Float
         + Default,
@@ -444,10 +376,18 @@ P: Add + Sub + Copy
         + Into<F>
     {
         let mut result = ArrayVec::new();
+        if self.is_a_point(0.0.into())
+            || (self.are_points_colinear(0.0.into()))// && self.start.y() == self.end.y())
+        {
+            return result
+        }
         // these are just the x or y components of the points
-        let a = from + ctrl * -2.0.into() + to;
-        let b = from * -2.0.into() + ctrl * 2.0.into();
-        let c = from - value;
+        let a = self.start.axis(axis) 
+                    + self.ctrl.axis(axis) * -2.0.into() 
+                    + self.end.axis(axis).into();
+        let b = self.start.axis(axis) * -2.0.into() 
+                    + self.ctrl.axis(axis) * 2.0.into();
+        let c = self.start.axis(axis) - value;
 
         let roots = self.real_roots(a, b, c);
         for root in roots {
