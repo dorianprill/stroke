@@ -7,7 +7,7 @@ use core::ops::{Add, Sub};
 pub trait Point: Add + Sub + Copy + PartialEq + Default + IntoIterator      
 {
     type Scalar;
-
+    const DIM: usize;
     // Returns the component of the Point on its axis corresponding to index e.g. [0, 1, 2] -> [x, y, z]
     // TODO naming: component/axis/at/dim ?
     fn axis(&self, index: usize) -> Self::Scalar;

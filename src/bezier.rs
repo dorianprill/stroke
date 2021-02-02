@@ -90,7 +90,7 @@ P: Add + Sub + Copy
         return ( Bezier{ control_points: left }, Bezier{ control_points: right })
     }
 
-    // TODO expressions in const generics are not yet supported
+    // //TODO we can do expressions in const generics now, so we need an iterator over all control points!
     // pub fn derivative<F>(&self) -> Bezier<P, {N-1}>
     // where
     // F: Float,
@@ -102,7 +102,7 @@ P: Add + Sub + Copy
     //     + Mul<F, Output = F>
     //     + Into<F>
     // {
-    //     let new_points: [P; {N-1}]; 
+    //     let new_points: [P; N-1]; 
     //     return Bezier::new(new_points)
     // }
 
