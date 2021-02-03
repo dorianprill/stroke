@@ -18,7 +18,7 @@ pub struct CubicBezier<P>
     pub (crate) end:    P,
 }
 
-#[allow(dead_code)]
+//#[allow(dead_code)]
 impl<P> CubicBezier<P> 
 where 
 P: Point<Scalar = NativeFloat>
@@ -268,7 +268,9 @@ P: Point<Scalar = NativeFloat>
 
     pub fn is_linear<F>(&self, tolerance: F) -> bool 
     where
-    F: Float,
+    F: Float 
+        + Default
+        + Into<NativeFloat>,
     P: Mul<F, Output = P>,
     NativeFloat: Sub<F, Output = F> 
         + Add<F, Output = F>
@@ -276,9 +278,8 @@ P: Point<Scalar = NativeFloat>
         + Float
         + Into<F> 
     {
-        let epsilon = 1e-5;
         // if start and end are (nearly) the same
-        if self.start.distance(self.end) < epsilon {
+        if self.start.distance(self.end) < EPSILON {
             return false;
         } 
         // else check if ctrl points lie on baseline
@@ -288,7 +289,9 @@ P: Point<Scalar = NativeFloat>
 
     fn are_points_colinear<F>(&self, tolerance: F) -> bool
     where
-    F: Float,
+    F: Float
+        + Default
+        + Into<NativeFloat>,
     P: Mul<F, Output = P>,
     NativeFloat: Sub<F, Output = F> 
         + Add<F, Output = F>
@@ -296,7 +299,7 @@ P: Point<Scalar = NativeFloat>
         + Float
         + Into<F>
     {
-        let lineeq = self.baseline().to_line().equation();
+        let lineeq = self.baseline();//.to_line().equation();
         lineeq.distance_to_point(self.ctrl1) <= tolerance
             && lineeq.distance_to_point(self.ctrl2) <= tolerance
     }
@@ -339,13 +342,12 @@ P: Point<Scalar = NativeFloat>
     {
         let mut result = ArrayVec::new();
 
-        let epsilon = 1e-5.into();
         let pi = 3.141592.into();
 
         // check if can be handled below cubic order
-        if a.abs() < epsilon {
-            if b.abs() < epsilon {
-                if c.abs() < epsilon {
+        if a.abs() < EPSILON.into() {
+            if b.abs() < EPSILON.into() {
+                if c.abs() < EPSILON.into() {
                     // no solutions
                     return result;
                 }
@@ -359,7 +361,7 @@ P: Point<Scalar = NativeFloat>
                 let sqrt_delta = delta.sqrt();
                 result.push((-c - sqrt_delta) / (2.0.into() * b));
                 result.push((-c + sqrt_delta) / (2.0.into() * b));
-            } else if delta.abs() < epsilon {
+            } else if delta.abs() < EPSILON.into() {
                 result.push(-c / (2.0.into() * b));
             }
             return result;
@@ -386,7 +388,7 @@ P: Point<Scalar = NativeFloat>
             result.push(-bn * frac_1_3 + (s + t));
     
             // Don't add the repeated root when s + t == 0.
-            if (s - t).abs() < epsilon && (s + t).abs() >= epsilon {
+            if (s - t).abs() < EPSILON.into() && (s + t).abs() >= EPSILON.into() {
                 result.push(-bn * frac_1_3 - (s + t) / 2.0.into());
             }
         } else {
@@ -407,12 +409,11 @@ P: Point<Scalar = NativeFloat>
     /// Solves the cubic bezier function given the control points' x OR y values
     /// by solving the roots for x or y axis functions
     /// Returns those roots of the function that are in the interval [0.0, 1.0].
-    /// This function is not exposed, it has wrappers solve_t_for_x() and solve_t_for_y()
-    /// TODO to be replaced by some form of solve_t_for_axis(index) to work with generic points
     fn solve_t_for_axis<F>(&self, value: F, axis: usize) -> ArrayVec<[F; 3]> 
     where
     F:  Float
-        + Default,
+        + Default
+        + Into<NativeFloat>,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<F, Output = P>,
@@ -451,7 +452,7 @@ P: Point<Scalar = NativeFloat>
         result
     }
 
-    /// Return the bounding box of the curve as two tuples ( (xmin, ymin), (xmax, ymax) )
+    /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension (its index)
     pub fn bounding_box<F>(&self) -> [(F, F); P::DIM] 
     where
     F: Float

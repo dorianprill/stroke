@@ -19,4 +19,6 @@ pub trait Point: Add + Sub + Copy + PartialEq + Default + IntoIterator
     // Returns the L2 Norm of the Point interpreted as a Vector
     // TODO naming abs/len/l2
     fn abs(&self) -> Self::Scalar;
+
+    fn squared_length(&self) -> Self::Scalar;
 }

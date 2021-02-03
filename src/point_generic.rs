@@ -2,6 +2,7 @@ use super::*;
 use num_traits::Float;
 use super::point::Point;
 
+
 /// Point with dimensions of constant generic size N and of generic type T
 /// (Implemented as Newtype Pattern on an array 
 /// see book or https://www.worthe-it.co.za/blog/2020-10-31-newtype-pattern-in-rust.html)
@@ -105,6 +106,18 @@ impl<T, const N: usize> IntoIterator for PointN<T, N> {
     }
 }
 
+// impl<'a, T, const N: usize> IntoIterator for &'a mut PointN<T, N> {
+//     type Item = &'a mut T;
+//     type IntoIter = slice::IterMut<'a, T>;
+
+//     fn into_iter(self) -> slice::IterMut<'a, T> { 
+//         core::array::IntoIter::new(self.0).next().map(|node| {
+//             self.next = node.next.as_deref_mut();
+//             &mut node.elem
+//         }) 
+//     }
+// }
+
 
 impl<T, const N: usize> Point for PointN<T, N>
 where 
@@ -134,6 +147,14 @@ NativeFloat: Add + Into<T>,
             abs = abs + (self.0[i] * self.0[i]).into(); 
         }
         abs.sqrt()
+    }
+
+    fn squared_length(&self) -> Self::Scalar {
+        let mut sqr_dist: Self::Scalar = 0.0;
+        for i in 0..self.dim() {
+            sqr_dist = sqr_dist + (self.0[i]  * self.0[i]).into(); 
+        }
+        sqr_dist.sqrt()
     }
 
 }

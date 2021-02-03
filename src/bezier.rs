@@ -116,9 +116,12 @@ P: Add + Sub + Copy
         + Mul<F, Output = F>
         + Into<F>
     {
-        let mut new_points: [P; N-1]; 
-        for (i, control) in new_points.into_iter().enumerate() {
+        let mut new_points: [P; N-1] = [P::default(); N-1]; 
+        for (i, _) in self.control_points.iter().enumerate() {
             new_points[i] = (self.control_points[i+1] - self.control_points[i]) * (N as NativeFloat);
+            if i == self.control_points.len()-2 {
+                break;
+            }
         }
         return Bezier::new(new_points)
     }
@@ -151,10 +154,10 @@ mod tests
         let max_err = 1e-14;
         
         let start = curve.eval(0.0);
-        let mut err_start = start - points[0]; 
+        let err_start = start - points[0]; 
 
         let end = curve.eval(1.0);
-        let mut err_end = end - points[points.len() - 1 ];
+        let err_end = end - points[points.len() - 1 ];
 
         for axis in err_start {
                 assert!(axis.abs() < max_err);

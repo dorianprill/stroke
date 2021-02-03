@@ -270,11 +270,10 @@ P: Add + Sub + Copy
     {
 
         let mut result = ArrayVec::new();
-        let epsilon = 1e-5.into();
 
         // check if can be handled below quadratic order
-        if a.abs() < epsilon {
-            if b.abs() < epsilon {
+        if a.abs() < EPSILON.into() {
+            if b.abs() < EPSILON.into() {
                 // no solutions
                 return result;
             }
@@ -288,7 +287,7 @@ P: Add + Sub + Copy
             let sqrt_delta = delta.sqrt();
             result.push((-b - sqrt_delta) / (2.0.into() * a));
             result.push((-b + sqrt_delta) / (2.0.into() * a));
-        } else if delta.abs() < epsilon {
+        } else if delta.abs() < EPSILON.into() {
             result.push(-b / (2.0.into() * a));
         }
         return result;
@@ -305,7 +304,9 @@ P: Add + Sub + Copy
 
     pub fn is_linear<F>(&self, tolerance: F) -> bool 
     where
-    F: Float,
+    F: Float
+        + Default
+        + Into<NativeFloat>,
     P: Mul<F, Output = P>,
     NativeFloat: Sub<F, Output = F> 
         + Add<F, Output = F>
@@ -313,9 +314,8 @@ P: Add + Sub + Copy
         + Float
         + Into<F> 
     {
-        let epsilon = 1e-5;
         // if start and end are (nearly) the same
-        if self.start.distance(self.end) < epsilon {
+        if self.start.distance(self.end) < EPSILON {
             return false;
         } 
         // else check if ctrl points lie on baseline i.e. all points are colinear
@@ -326,7 +326,9 @@ P: Add + Sub + Copy
 
     fn are_points_colinear<F>(&self, tolerance: F) -> bool 
     where
-    F: Float,
+    F: Float
+        + Default
+        + Into<NativeFloat>,
     P: Mul<F, Output = P>,
     NativeFloat: Sub<F, Output = F> 
         + Add<F, Output = F>
@@ -334,7 +336,7 @@ P: Add + Sub + Copy
         + Float
         + Into<F>
     {
-        let lineeq = self.baseline().to_line().equation();
+        let lineeq = self.baseline();//.to_line().equation();
         lineeq.distance_to_point(self.ctrl) <= tolerance
     }
 
@@ -361,11 +363,11 @@ P: Add + Sub + Copy
     /// Solves the cubic bezier function given the control points' x OR y values
     /// by solving the roots for the function over any of the axis
     /// Returns those roots of the function that are in the interval [0.0, 1.0].
-    /// This function is not exposed, it has wrappers solve_t_for_x() and solve_t_for_y()
-    fn solve_t_for_xy<F>(&self, value: F, axis: usize) -> ArrayVec<[F; 3]> 
+    fn solve_t_for_axis<F>(&self, value: F, axis: usize) -> ArrayVec<[F; 3]> 
     where
     F:  Float
-        + Default,
+        + Default
+        + Into<NativeFloat>,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<F, Output = P>,
@@ -376,7 +378,7 @@ P: Add + Sub + Copy
         + Into<F>
     {
         let mut result = ArrayVec::new();
-        if self.is_a_point(0.0.into())
+        if self.is_a_point(EPSILON.into())
             || (self.are_points_colinear(0.0.into()))// && self.start.y() == self.end.y())
         {
             return result
@@ -399,7 +401,7 @@ P: Add + Sub + Copy
         result
     }
 
-    /// Return the bounding box of the curve as two tuples ( (xmin, ymin), (xmax, ymax) )
+    /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension (its index)
     pub fn bounding_box<F>(&self) -> [(F,F); P::DIM]
     where
     F:  Float
@@ -413,7 +415,7 @@ P: Add + Sub + Copy
         + Float
         + Into<F>
     {
-        let bounds = [(0.0.into(), 0.0.into()); P::DIM];
+        let mut bounds = [(0.0.into(), 0.0.into()); P::DIM];
         let derivative = self.derivative();
         // calculate coefficients for the derivative as a function of t: at + b
         // po: [1, -1]

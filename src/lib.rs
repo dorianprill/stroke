@@ -24,7 +24,7 @@ pub mod bezier;
 pub mod quadratic_bezier;
 pub mod cubic_bezier;
 pub mod bezier_segment;
-mod rational_bezier;
+//pub mod rational_bezier;
 pub mod bspline;
 
 
@@ -33,6 +33,10 @@ pub mod bspline;
 // TODO there has to be a better architectural solution to this... if not, generate impls with macro
 #[cfg(target_pointer_width = "64")]
 type NativeFloat = f64;
+#[cfg(target_pointer_width = "64")]
+const EPSILON: f64 = f64::EPSILON;
 // same thing for 32 bit
 #[cfg(target_pointer_width = "32")]
 type NativeFloat = f32;
+#[cfg(target_pointer_width = "32")]
+const EPSILON: f32 = f32::EPSILON;
