@@ -17,6 +17,15 @@ P: Point + Copy,
     control_points: [P; N],
 }
 
+impl<P: Point, const N: usize> IntoIterator for Bezier<P, N> {
+    type Item = P;
+    type IntoIter = core::array::IntoIter<Self::Item, N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        core::array::IntoIter::new(self.control_points)
+    }
+}
+
 impl<P, const N: usize> Bezier<P, {N}> 
 where
 P: Add + Sub + Copy
@@ -90,22 +99,29 @@ P: Add + Sub + Copy
         return ( Bezier{ control_points: left }, Bezier{ control_points: right })
     }
 
-    // //TODO we can do expressions in const generics now, so we need an iterator over all control points!
-    // pub fn derivative<F>(&self) -> Bezier<P, {N-1}>
-    // where
-    // F: Float,
-    // P:  Sub<P, Output = P>
-    //     + Add<P, Output = P>
-    //     + Mul<F, Output = P>,
-    // NativeFloat: Sub<F, Output = F> 
-    //     + Add<F, Output = F>
-    //     + Mul<F, Output = F>
-    //     + Into<F>
-    // {
-    //     let new_points: [P; N-1]; 
-    //     return Bezier::new(new_points)
-    // }
-
+    /// Returns the derivative curve of self which has N-1 control points.
+    /// The derivative of an nth degree Bézier curve is an (n-1)th degree Bézier curve, 
+    /// with one fewer term, and new weights w0...wn-1 derived from the 
+    /// original weights as n(wi+1 - wi). So for a 3rd degree curve, with four weights, 
+    /// the derivative has three new weights: 
+    ///     w0 = 3(w1-w0), w'1 = 3(w2-w1) and w'2 = 3(w3-w2). 
+    pub fn derivative<F>(&self) -> Bezier<P, {N-1}>
+    where
+    F: Float,
+    P:  Sub<P, Output = P>
+        + Add<P, Output = P>
+        + Mul<F, Output = P>,
+    NativeFloat: Sub<F, Output = F> 
+        + Add<F, Output = F>
+        + Mul<F, Output = F>
+        + Into<F>
+    {
+        let mut new_points: [P; N-1]; 
+        for (i, control) in new_points.into_iter().enumerate() {
+            new_points[i] = (self.control_points[i+1] - self.control_points[i]) * (N as NativeFloat);
+        }
+        return Bezier::new(new_points)
+    }
 }
 
 #[cfg(test)]
