@@ -245,7 +245,7 @@ P: Add + Sub + Copy
             let p1 = self.eval_casteljau(t);
             let p2 = self.eval_casteljau(t+stepsize.into());
 
-            arclen = arclen + p1.distance(p2);
+            arclen = arclen + (p1-p2).squared_length().sqrt();
         
         }
         return arclen.into()
@@ -315,7 +315,8 @@ P: Add + Sub + Copy
         + Into<F> 
     {
         // if start and end are (nearly) the same
-        if self.start.distance(self.end) < EPSILON {
+        // TODO using squred length vs machine epsilon OK?
+        if (self.start-self.end).squared_length() < EPSILON {
             return false;
         } 
         // else check if ctrl points lie on baseline i.e. all points are colinear
@@ -354,8 +355,8 @@ P: Add + Sub + Copy
     {
         let tolerance_squared = tolerance * tolerance;
         // Use <= so that tolerance can be zero.
-        self.start.distance(self.end).powi(2).into() <= tolerance_squared
-            && self.start.distance(self.ctrl).powi(2).into() <= tolerance_squared
+        (self.start-self.end).squared_length().into() <= tolerance_squared
+            && (self.start-self.ctrl).squared_length().into() <= tolerance_squared
     }
 
 

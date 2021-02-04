@@ -122,7 +122,7 @@ P: Point<Scalar = NativeFloat>
             let p1 = self.eval_casteljau(t);
             let p2 = self.eval_casteljau(t.into()+stepsize.into());
 
-            arclen = arclen + p1.distance(p2);
+            arclen = arclen + (p1-p2).squared_length().sqrt();
         
         }
         return arclen.into()
@@ -279,7 +279,7 @@ P: Point<Scalar = NativeFloat>
         + Into<F> 
     {
         // if start and end are (nearly) the same
-        if self.start.distance(self.end) < EPSILON {
+        if (self.start-self.end).squared_length() < EPSILON {
             return false;
         } 
         // else check if ctrl points lie on baseline
@@ -304,6 +304,9 @@ P: Point<Scalar = NativeFloat>
             && lineeq.distance_to_point(self.ctrl2) <= tolerance
     }
 
+    // Returs if the whole set of control points can be considered one singular point 
+    // given some tolerance. 
+    // TODO use machine epsilon vs squared_length OK?
     pub(crate) fn is_a_point<F>(&self, tolerance: F) -> bool 
     where
     F: Float,
@@ -318,9 +321,9 @@ P: Point<Scalar = NativeFloat>
     {
         let tolerance_squared = tolerance * tolerance;
         // Use <= so that tolerance can be zero.
-        self.start.distance(self.end).powi(2).into() <= tolerance_squared
-            && self.start.distance(self.ctrl1).powi(2).into() <= tolerance_squared
-            && self.end.distance(self.ctrl2).powi(2).into() <= tolerance_squared
+        (self.start-self.end).squared_length().into() <= tolerance_squared
+            && (self.start-self.ctrl1).squared_length().into() <= tolerance_squared
+            && (self.end-self.ctrl2).squared_length().into() <= tolerance_squared
     }
 
     /// Compute the real roots of the cubic bezier function with

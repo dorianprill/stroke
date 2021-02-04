@@ -132,22 +132,14 @@ NativeFloat: Add + Into<T>,
     }
 
     /// Returns the distance between self and other
-    fn distance(&self, other: Self) -> Self::Scalar {
-        let mut sqr_dist: Self::Scalar = 0.0;
-        for i in 0..self.dim() {
-            sqr_dist = sqr_dist + ((self.0[i] - other.0[i]) * (self.0[i] - other.0[i])).into(); 
-        }
-        sqr_dist.sqrt()
-    }
+    // fn distance(&self, other: Self) -> Self::Scalar {
+    //     let mut sqr_dist: Self::Scalar = 0.0;
+    //     for i in 0..self.dim() {
+    //         sqr_dist = sqr_dist + ((self.0[i] - other.0[i]) * (self.0[i] - other.0[i])).into(); 
+    //     }
+    //     sqr_dist.sqrt()
+    // }
 
-    /// Interprets the Point2 as a vector and returns its norm (distance from origin)
-    fn abs(&self) -> Self::Scalar {
-        let mut abs: Self::Scalar = 0.0;
-        for i in 0..self.dim() {
-            abs = abs + (self.0[i] * self.0[i]).into(); 
-        }
-        abs.sqrt()
-    }
 
     fn squared_length(&self) -> Self::Scalar {
         let mut sqr_dist: Self::Scalar = 0.0;

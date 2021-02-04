@@ -171,7 +171,7 @@ F: Float + Into<NativeFloat>
             //dbg!(kmin, kmax, t);
             let p1 = self.eval(t);
             let p2 = self.eval(t+stepsize);
-            arclen = p1.distance(p2).into();
+            arclen = (p1-p2).squared_length().sqrt().into();
         }
         return arclen
     }

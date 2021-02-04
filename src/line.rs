@@ -173,8 +173,9 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
     NativeFloat: Add + Into<F>,
     {
         let l2 = (self.end - self.start).squared_length();
+        // if start and endpoint are approx the same, return the distance to either
         if l2 < EPSILON {
-            return self.start.distance(p).into();
+            return (self.start-p).squared_length().sqrt().into();
         } else {
             let v1 = p - self.start;
             let v2 = self.end - self.start;
@@ -190,7 +191,7 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
                 t = 0.0;
             }
             let projection = self.start + (self.end - self.start) * t;  // Projection falls on the segment
-            return p.distance(projection).into();
+            return (p-projection).squared_length().sqrt().into();
         }
     }
 
