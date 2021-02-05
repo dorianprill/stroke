@@ -1,4 +1,6 @@
 #![no_std]
+// TODO only one unsafe left in BSpline.de_boor_iterative()
+//#![forbid(unsafe_code)]
 #![allow(incomplete_features)]
 // let's get daring...
 #![feature(const_generics)]

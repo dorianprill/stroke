@@ -143,10 +143,10 @@ NativeFloat: Add + Into<T>,
 
     fn squared_length(&self) -> Self::Scalar {
         let mut sqr_dist: Self::Scalar = 0.0;
-        for i in 0..self.dim() {
+        for i in 0..N {
             sqr_dist = sqr_dist + (self.0[i]  * self.0[i]).into(); 
         }
-        sqr_dist.sqrt()
+        return sqr_dist
     }
 
 }

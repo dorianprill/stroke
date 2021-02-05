@@ -19,8 +19,8 @@ Right now, the generic versions don't implement all methods that the specialized
 - [x] Provide lines
 - [x] Provide quadratic Béziers
 - [x] Provide cubic Béziers
-- [x] Methods: evaluate, split, arc length, curvature/radius, bounding box, derivatives
-- [ ] Where applicable: tight box, the curve's normal
+- [x] Methods: evaluate, split, arc length, bounding box, derivatives
+- [ ] Where applicable: tight box, the curve's normal, curvature/radius
 - [x] Provide general Bézier curves (eval(), split(), derivative())
 - [x] Provide general B-Splines (eval(), arclen())
 - [x] Good test coverage for unit tests (still needs some more)

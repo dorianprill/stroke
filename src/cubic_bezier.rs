@@ -119,7 +119,7 @@ P: Point<Scalar = NativeFloat>
         let mut arclen: NativeFloat = 0.0;
         for t in 1..nsteps {
             let t = t as NativeFloat * 1.0/(nsteps as NativeFloat);
-            let p1 = self.eval_casteljau(t);
+            let p1 = self.eval_casteljau(t.into());
             let p2 = self.eval_casteljau(t.into()+stepsize.into());
 
             arclen = arclen + (p1-p2).squared_length().sqrt();
