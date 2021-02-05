@@ -104,9 +104,7 @@ F: Float + Into<NativeFloat>
     /// used computing node j).
     fn de_boor_iterative(&self, t: F, start_knot: usize) -> P {
         // Safety: every item in this array will get writtenbefore it is being used
-        unsafe {
-            let mut tmp: [P; O] = core::mem::MaybeUninit::uninit().assume_init();
-        
+        let mut tmp: [P; O] = [P::default(); O];
         for j in 0..=self.degree {
             let p = j + start_knot - self.degree - 1;
             tmp[p] = self.control_points[p];
@@ -121,7 +119,6 @@ F: Float + Into<NativeFloat>
             }
         }
         tmp[0]
-        } // unsafe
     }
 
 
