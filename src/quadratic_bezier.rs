@@ -103,7 +103,7 @@ P: Add + Sub + Copy
     }
 
     /// Sample the x coordinate of the curve at t (expecting t between 0 and 1).
-    pub fn x<F>(&self, t: F) -> F 
+    pub fn axis<F>(&self, t: F, axis: usize) -> F 
     where
     F : Float,
     P:  Sub<P, Output = P>
@@ -118,27 +118,11 @@ P: Add + Sub + Copy
         let one_t = 1 as NativeFloat - t;
         let one_t2 = one_t * one_t;
 
-        self.start.x() * one_t2 + self.ctrl.x() * 2.0.into() * one_t * t + self.end.x() * t2
+        return self.start.axis(axis) * one_t2 
+            + self.ctrl.axis(axis) * 2.0.into() * one_t * t 
+            + self.end.axis(axis) * t2
     }
 
-    /// Sample the y coordinate of the curve at t (expecting t between 0 and 1).
-    pub fn y<F>(&self, t: F) -> F 
-    where
-    F : Float,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Add<F, Output = F>
-        + Mul<F, Output = F> 
-        + Into<F>
-    {
-        let t2 = t * t;
-        let one_t = 1 as NativeFloat - t;
-        let one_t2 = one_t * one_t;
-
-        self.start.y() * one_t2 + self.ctrl.y() * 2.0.into() * one_t * t + self.end.y() * t2
-    }
 
     /// Return the derivative function.
     /// The derivative is also a bezier curve but of degree n-1 - In the case of quadratic it is just a line.
@@ -163,7 +147,7 @@ P: Add + Sub + Copy
 
 
     /// Sample the x coordinate of the curve's derivative at t (expecting t between 0 and 1).
-    /// Convenience function for .derivative().eval(t).x()
+    /// Convenience function for .derivative().eval(t).axis(dim)
     pub fn dx<F>(&self, t: F) -> F
     where
     F: Float,
@@ -178,7 +162,7 @@ P: Add + Sub + Copy
         let c0: F = t * 2.0.into() - 2.0.into();
         let c1: F =  2.0.into() - 4.0.into() * t;
         let c2: F = 2.0.into() * t;
-        return self.start.x().into() * c0 + self.ctrl.x().into() * c1 + self.end.x().into() * c2;
+        return self.start.axis(0).into() * c0 + self.ctrl.axis(0).into() * c1 + self.end.axis(0).into() * c2;
     }
 
 
@@ -196,47 +180,47 @@ P: Add + Sub + Copy
         let c0: F = t * 2.0.into() - 2.0.into();
         let c1: F =  2.0.into() - 4.0.into() * t;
         let c2: F = 2.0.into() * t;
-        return self.start.y().into() * c0 + self.ctrl.y().into() * c1 + self.end.y().into() * c2;
+        return self.start.axis(1).into() * c0 + self.ctrl.axis(1).into() * c1 + self.end.axis(1).into() * c2;
     }
 
-    /// Calculates the curvature of the curve at point t
-    /// The curvature is the inverse of the radius of the tangential circle at t: k=1/r
-    pub fn curvature<F>(&self, t: F) -> F
-    where
-    F: Float,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Add<F, Output = F>
-        + Mul<F, Output = F>
-        + Into<F>
-    {
-        let d = self.derivative();
-        let dd = d.derivative();
-        let dx = d.x(t);
-        let dy = d.y(t);
-        let (ddx, ddy) = dd;
-        let numerator = dx * ddy.into() - ddx * dy;
-        let denominator = (dx*dx + dy*dy).powf(1.5.into());
-        return numerator / denominator
-    }
+    // /// Calculates the curvature of the curve at point t
+    // /// The curvature is the inverse of the radius of the tangential circle at t: k=1/r
+    // pub fn curvature<F>(&self, t: F) -> F
+    // where
+    // F: Float,
+    // P:  Sub<P, Output = P>
+    //     + Add<P, Output = P>
+    //     + Mul<F, Output = P>,
+    // NativeFloat: Sub<F, Output = F> 
+    //     + Add<F, Output = F>
+    //     + Mul<F, Output = F>
+    //     + Into<F>
+    // {
+    //     let d = self.derivative();
+    //     let dd = d.derivative();
+    //     let dx = d.x(t);
+    //     let dy = d.y(t);
+    //     let (ddx, ddy) = dd;
+    //     let numerator = dx * ddy.into() - ddx * dy;
+    //     let denominator = (dx*dx + dy*dy).powf(1.5.into());
+    //     return numerator / denominator
+    // }
 
-    /// Calculates the radius of the tangential circle at t
-    /// It is the inverse of the curvature at t: r=1/k
-    pub fn radius<F>(&self, t: F) -> F
-    where
-    F: Float,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Add<F, Output = F>
-        + Mul<F, Output = F>
-        + Into<F>
-    {
-        return 1.0.into() / self.curvature(t)
-    }
+    // /// Calculates the radius of the tangential circle at t
+    // /// It is the inverse of the curvature at t: r=1/k
+    // pub fn radius<F>(&self, t: F) -> F
+    // where
+    // F: Float,
+    // P:  Sub<P, Output = P>
+    //     + Add<P, Output = P>
+    //     + Mul<F, Output = P>,
+    // NativeFloat: Sub<F, Output = F> 
+    //     + Add<F, Output = F>
+    //     + Mul<F, Output = F>
+    //     + Into<F>
+    // {
+    //     return 1.0.into() / self.curvature(t)
+    // }
 
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.
@@ -257,11 +241,11 @@ P: Add + Sub + Copy
         let stepsize: NativeFloat = 1.0/(nsteps as NativeFloat);
         let mut arclen: NativeFloat = 0.0;
         for t in 1..nsteps {
-            let t = t as NativeFloat * 1.0/(nsteps as NativeFloat);
+            let t = t as NativeFloat * 1.0.into()/(nsteps as NativeFloat).into();
             let p1 = self.eval_casteljau(t);
-            let p2 = self.eval_casteljau(t+stepsize);
+            let p2 = self.eval_casteljau(t+stepsize.into());
 
-            arclen = arclen + p1.distance(p2);
+            arclen = arclen + (p1-p2).squared_length().sqrt();
         
         }
         return arclen.into()
@@ -286,11 +270,10 @@ P: Add + Sub + Copy
     {
 
         let mut result = ArrayVec::new();
-        let epsilon = 1e-5.into();
 
         // check if can be handled below quadratic order
-        if a.abs() < epsilon {
-            if b.abs() < epsilon {
+        if a.abs() < EPSILON.into() {
+            if b.abs() < EPSILON.into() {
                 // no solutions
                 return result;
             }
@@ -304,7 +287,7 @@ P: Add + Sub + Copy
             let sqrt_delta = delta.sqrt();
             result.push((-b - sqrt_delta) / (2.0.into() * a));
             result.push((-b + sqrt_delta) / (2.0.into() * a));
-        } else if delta.abs() < epsilon {
+        } else if delta.abs() < EPSILON.into() {
             result.push(-b / (2.0.into() * a));
         }
         return result;
@@ -321,7 +304,9 @@ P: Add + Sub + Copy
 
     pub fn is_linear<F>(&self, tolerance: F) -> bool 
     where
-    F: Float,
+    F: Float
+        + Default
+        + Into<NativeFloat>,
     P: Mul<F, Output = P>,
     NativeFloat: Sub<F, Output = F> 
         + Add<F, Output = F>
@@ -329,9 +314,9 @@ P: Add + Sub + Copy
         + Float
         + Into<F> 
     {
-        let epsilon = 1e-5;
         // if start and end are (nearly) the same
-        if self.start.distance(self.end) < epsilon {
+        // TODO using squred length vs machine epsilon OK?
+        if (self.start-self.end).squared_length() < EPSILON {
             return false;
         } 
         // else check if ctrl points lie on baseline i.e. all points are colinear
@@ -342,7 +327,9 @@ P: Add + Sub + Copy
 
     fn are_points_colinear<F>(&self, tolerance: F) -> bool 
     where
-    F: Float,
+    F: Float
+        + Default
+        + Into<NativeFloat>,
     P: Mul<F, Output = P>,
     NativeFloat: Sub<F, Output = F> 
         + Add<F, Output = F>
@@ -350,7 +337,7 @@ P: Add + Sub + Copy
         + Float
         + Into<F>
     {
-        let lineeq = self.baseline().to_line().equation();
+        let lineeq = self.baseline();//.to_line().equation();
         lineeq.distance_to_point(self.ctrl) <= tolerance
     }
 
@@ -368,72 +355,20 @@ P: Add + Sub + Copy
     {
         let tolerance_squared = tolerance * tolerance;
         // Use <= so that tolerance can be zero.
-        self.start.distance(self.end).powi(2).into() <= tolerance_squared
-            && self.start.distance(self.ctrl).powi(2).into() <= tolerance_squared
+        (self.start-self.end).squared_length().into() <= tolerance_squared
+            && (self.start-self.ctrl).squared_length().into() <= tolerance_squared
     }
 
-    /// Return the parameter values corresponding to a given x coordinate.
-    /// See also solve_t_for_x for monotonic curves.
-    pub fn solve_t_for_x<F>(&self, x: F) -> ArrayVec<[F; 3]> 
-    where
-    F:  Float
-        + Default,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Add<F, Output = F>
-        + Mul<F, Output = F>
-        + Float
-        + Into<F>
-    {
-        if self.is_a_point(0.0.into())
-            || (self.are_points_colinear(0.0.into()) && self.start.x() == self.end.x())
-        {
-            return ArrayVec::new();
-        }
 
-        self.solve_t_for_xy(x, self.start.x().into(), self.ctrl.x().into(), self.end.x().into())
-    }
-
-    /// Return the parameter values corresponding to a given y coordinate.
-    /// See also solve_t_for_y for monotonic curves.
-    pub fn solve_t_for_y<F>(&self, y: F) -> ArrayVec<[F; 3]> 
-    where
-    F:  Float
-        + Default,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Add<F, Output = F>
-        + Mul<F, Output = F>
-        + Float
-        + Into<F> 
-    {
-        if self.is_a_point(0.0.into())
-            || (self.are_points_colinear(0.0.into()) && self.start.y() == self.end.y())
-        {
-            return ArrayVec::new();
-        }
-
-        self.solve_t_for_xy(y, self.start.y().into(),  self.ctrl.y().into(), self.end.y().into())
-    }
 
     /// Solves the cubic bezier function given the control points' x OR y values
-    /// by solving the roots for x or y axis functions
+    /// by solving the roots for the function over any of the axis
     /// Returns those roots of the function that are in the interval [0.0, 1.0].
-    /// This function is not exposed, it has wrappers solve_t_for_x() and solve_t_for_y()
-    fn solve_t_for_xy<F>(
-        &self,
-        value: F,
-        from: F,
-        ctrl: F,
-        to: F,
-    ) -> ArrayVec<[F; 3]> 
+    fn solve_t_for_axis<F>(&self, value: F, axis: usize) -> ArrayVec<[F; 3]> 
     where
     F:  Float
-        + Default,
+        + Default
+        + Into<NativeFloat>,
     P:  Sub<P, Output = P>
         + Add<P, Output = P>
         + Mul<F, Output = P>,
@@ -444,10 +379,18 @@ P: Add + Sub + Copy
         + Into<F>
     {
         let mut result = ArrayVec::new();
+        if self.is_a_point(EPSILON.into())
+            || (self.are_points_colinear(0.0.into()))// && self.start.y() == self.end.y())
+        {
+            return result
+        }
         // these are just the x or y components of the points
-        let a = from + ctrl * -2.0.into() + to;
-        let b = from * -2.0.into() + ctrl * 2.0.into();
-        let c = from - value;
+        let a = self.start.axis(axis) 
+                    + self.ctrl.axis(axis) * -2.0.into() 
+                    + self.end.axis(axis).into();
+        let b = self.start.axis(axis) * -2.0.into() 
+                    + self.ctrl.axis(axis) * 2.0.into();
+        let c = self.start.axis(axis) - value;
 
         let roots = self.real_roots(a, b, c);
         for root in roots {
@@ -459,8 +402,8 @@ P: Add + Sub + Copy
         result
     }
 
-    /// Return the bounding box of the curve as two tuples ( (xmin, ymin), (xmax, ymax) )
-    pub fn bounding_box<F>(&self) -> ((F,F), (F,F)) 
+    /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension (its index)
+    pub fn bounding_box<F>(&self) -> [(F,F); P::DIM]
     where
     F:  Float
         + Default,
@@ -473,6 +416,7 @@ P: Add + Sub + Copy
         + Float
         + Into<F>
     {
+        let mut bounds = [(0.0.into(), 0.0.into()); P::DIM];
         let derivative = self.derivative();
         // calculate coefficients for the derivative as a function of t: at + b
         // po: [1, -1]
@@ -481,46 +425,31 @@ P: Add + Sub + Copy
         let a = derivative.start * -1.0.into() + derivative.end;
         let b = derivative.start;
 
-        // calculate roots for t over x axis and plug them into the bezier function
-        //  to get x,y values (make vec 2 bigger for t=0,t=1 values)
-        let mut xtremities: ArrayVec<[F; 3]> = ArrayVec::new();
-        xtremities.extend(derivative.root(a.x().into(),
-                                                b.x().into())
-                                                    .into_iter());
-        // only retain roots for which t is in [0..1] 
-        xtremities.retain(|root| -> bool {root > &mut 0.0.into() && root < &mut 1.0.into()});
-        // evaluates roots in original function
-        for t in xtremities.iter_mut() {
-            *t = self.eval_casteljau(*t).x().into();
-        }
-        // add y-values for start and end point as candidates
-        xtremities.push(self.start.x().into()); 
-        xtremities.push(self.end.x().into());
-        // sort to get min and max values for bounding box
-        xtremities.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+        for (dim, _) in a.into_iter().enumerate() {
+            // calculate roots for t over x axis and plug them into the bezier function
+            //  to get x,y values (make vec 2 bigger for t=0,t=1 values)
+            let mut extrema: ArrayVec<[F; 3]> = ArrayVec::new();
+            extrema.extend(derivative.root(a.axis(dim).into(),
+                                                    b.axis(dim).into())
+                                                        .into_iter());
+            // only retain roots for which t is in [0..1] 
+            extrema.retain(|root| -> bool {root > &mut 0.0.into() && root < &mut 1.0.into()});
+            // evaluates roots in original function
+            for t in extrema.iter_mut() {
+                *t = self.eval_casteljau(*t).axis(dim).into();
+            }
+            // add y-values for start and end point as candidates
+            extrema.push(self.start.axis(dim).into()); 
+            extrema.push(self.end.axis(dim).into());
+            // sort to get min and max values for bounding box
+            extrema.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
 
-        // same for y...
-        let mut ytremities: ArrayVec<[F; 3]> = ArrayVec::new();
-        ytremities.extend(derivative.root(a.y().into(), 
-                                                b.y().into())
-                                                    .into_iter());
-        // only retain roots for which t is in [0..1] 
-        ytremities.retain(|root| -> bool {root > &mut 0.0.into() && root < &mut 1.0.into()});
-        // evaluates roots in original function
-        for t in ytremities.iter_mut() {
-            *t = self.eval_casteljau(*t).y().into();
+            // determine xmin, xmax, ymin, ymax, from the set {B(xroots), B(yroots), B(0), B(1)} 
+            // (Intermediate control points can't form a boundary)
+            // unwrap() is ok as it always at least contains the endpoints
+            bounds[dim] = (extrema[0], *extrema.last().unwrap()); 
         }
-        // add y-values for start and end point as candidates
-        ytremities.push(self.start.y().into()); 
-        ytremities.push(self.end.y().into());
-        // sort to get min and max values for bounding box
-        ytremities.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-
-        // determine xmin, xmax, ymin, ymax, from the set {B(xroots), B(yroots), B(0), B(1)} 
-        // (Intermediate control points can't form a boundary)
-        let min = (xtremities[0], ytremities[0]);
-        let max = (*xtremities.last().unwrap(), *ytremities.last().unwrap()); // can never be empty as we at least have the endpoints
-        return (min, max)
+        return bounds
     }
 
 }
@@ -530,7 +459,7 @@ mod tests
 {
     use super::*;
     //use crate::num_traits::{Pow};
-    use super::point2::Point2;
+    use super::point_generic::PointN;
     //TODO test needs to be adapted for 8 segments of quadratic order
     // #[test]
     // fn circle_approximation_error() 
@@ -626,9 +555,9 @@ mod tests
         // all eval methods should be approximately equivalent for well defined test cases
         // and not equivalent where numerical stability becomes an issue for normal eval
         let bezier = QuadraticBezier::new( 
-            Point2::new(0f64,  1.77f64),
-            Point2::new(4.3f64,3f64),
-            Point2::new(3.2f64, -4f64),
+            PointN::new([0f64,  1.77f64]),
+            PointN::new([4.3f64, 3f64]),
+            PointN::new([3.2f64, -4f64]),
         );
 
         let max_err = 1e-14;
@@ -640,7 +569,9 @@ mod tests
             let err = p2-p1;
             //dbg!(p1);
             //dbg!(p2);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+            for axis in err {
+                assert!(axis.abs() < max_err);
+            }
         }
     }
 
@@ -648,10 +579,10 @@ mod tests
     fn split_equivalence() {
         // chose some arbitrary control points and construct a cubic bezier
         let bezier = QuadraticBezier{ 
-                                start:  Point2{x:0f64,  y:1.77f64},
-                                ctrl: Point2{x:4.3f64, y:3f64},
-                                end:   Point2{x:3.2f64, y:-4f64}
-                            };
+                        start:  PointN::new([0f64, 1.77f64]),
+                        ctrl:   PointN::new([4.3f64, 3f64]),
+                        end:    PointN::new([3.2f64, -4f64])
+        };
         // split it at an arbitrary point
         let at = 0.5;
         let (left, right) = bezier.split(at);
@@ -668,12 +599,15 @@ mod tests
             //dbg!(left.eval(t));
             // left
             let mut err = bezier.eval(t/2.0) - left.eval(t);
-            //dbg!(err);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );
+            for axis in err {
+                assert!(axis.abs() < max_err);
+            }
             // right
             err = bezier.eval((t*0.5)+0.5) - right.eval(t);
             //dbg!(err);
-            assert!( (err.x.abs() < max_err) && (err.y.abs() < max_err) );  
+            for axis in err {
+                assert!(axis.abs() < max_err);
+            }
         }
     }
 
@@ -681,11 +615,13 @@ mod tests
     #[test]
     fn bounding_box_contains() {
         // check if bounding box for a curve contains all points (with some approximation error)
-        let bezier = QuadraticBezier{ start:  Point2{x:0f64,  y:1.77f64},
-                                  ctrl: Point2{x:4.3f64, y:-3f64},
-                                  end:   Point2{x:3.2f64,  y:4f64}};
+        let bezier = QuadraticBezier{ 
+                    start:  PointN::new([0f64, 1.77f64]),
+                    ctrl:   PointN::new([4.3f64, -3f64]),
+                    end:    PointN::new([3.2f64, 4f64])
+        };
 
-        let ((xmin, ymin), (xmax, ymax)) = bezier.bounding_box::<f64>();
+        let bounds = bezier.bounding_box::<f64>();
 
         let max_err = 1e-2;
 
@@ -697,8 +633,9 @@ mod tests
             //dbg!(p);
             //dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
 
-            assert!( (p.x() >= (xmin-max_err) ) && (p.y() >= (ymin-max_err)) );
-            assert!( (p.x() <= (xmax+max_err) ) && (p.y() <= (ymax+max_err)) );
+            for (idx, axis) in p.into_iter().enumerate() {
+                assert!( (axis >= (bounds[idx].0 - max_err)) && (axis <= (bounds[idx].1 + max_err)) )
+            }
 
         }
     }

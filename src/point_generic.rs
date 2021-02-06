@@ -2,6 +2,7 @@ use super::*;
 use num_traits::Float;
 use super::point::Point;
 
+
 /// Point with dimensions of constant generic size N and of generic type T
 /// (Implemented as Newtype Pattern on an array 
 /// see book or https://www.worthe-it.co.za/blog/2020-10-31-newtype-pattern-in-rust.html)
@@ -12,12 +13,8 @@ use super::point::Point;
 pub struct PointN<T, const N: usize>([T; N]);
 
 impl<T, const N: usize> PointN<T, N> {
-    fn new(array: [T;N]) -> Self {
+    pub fn new(array: [T;N]) -> Self {
         return PointN(array)
-    }
-
-    fn dim(&self) -> usize {
-        return self.0.len()
     }
 }
 
@@ -31,11 +28,7 @@ impl<T: Default + Copy, const N: usize> Default for PointN<T, N> {
 impl<T, const N: usize> PartialEq for PointN<T, N> 
 where T: PartialOrd {
     fn eq(&self, other: &Self) -> bool {
-        // other is of type &Self, does this imply the same N ?
-        if self.dim() != other.dim() {
-            return false
-        }
-        for i in 0..other.dim() {
+        for i in 0..N {
             if self.0[i] != other.0[i] {
                 return false
             }
@@ -52,7 +45,7 @@ where
 
     fn add(self, other: PointN<T, N>) -> PointN<T, N> {
         let mut res = self.clone();
-        for i in 0..self.dim() {
+        for i in 0..N {
             res.0[i] = self.0[i] + other.0[i];
         }
         res
@@ -67,12 +60,14 @@ where
 
     fn sub(self, other: PointN<T, N>) -> PointN<T, N> {
         let mut res = self.clone();
-        for i in 0..self.dim() {
+        for i in 0..N {
             res.0[i] = self.0[i] - other.0[i];
         }
         res
     }
 }
+
+
 
 impl<T, const N:usize, U> Mul<U> for PointN<T, N>
 where
@@ -94,38 +89,46 @@ where
 }
 
 
+impl<T, const N: usize> IntoIterator for PointN<T, N> {
+    type Item = T;
+    type IntoIter = core::array::IntoIter<Self::Item, N>;
 
-impl<F, const N: usize> Point for PointN<F, N>
+    fn into_iter(self) -> Self::IntoIter {
+        core::array::IntoIter::new(self.0)
+    }
+}
+
+// impl<'a, T, const N: usize> IntoIterator for &'a mut PointN<T, N> {
+//     type Item = &'a mut T;
+//     type IntoIter = slice::IterMut<'a, T>;
+
+//     fn into_iter(self) -> slice::IterMut<'a, T> { 
+//         core::array::IntoIter::new(self.0).next().map(|node| {
+//             self.next = node.next.as_deref_mut();
+//             &mut node.elem
+//         }) 
+//     }
+// }
+
+
+impl<T, const N: usize> Point for PointN<T, N>
 where 
-F: Float + Add + Copy + Default + Into<NativeFloat>,
-NativeFloat: Add + Into<F>,
+T: Float + Add + Copy + Default + Into<NativeFloat>,
+NativeFloat: Add + Into<T>,
 {
     type Scalar = NativeFloat;
+    const DIM: usize = {N};
 
-    fn x(&self) -> Self::Scalar {
-        0.0
+    fn axis(&self, index: usize) -> Self::Scalar {
+        return self.0[index].into()
     }
 
-    fn y(&self) -> Self::Scalar {
-        0.0
-    }
-
-    /// Returns the distance between self and other
-    fn distance(&self, other: Self) -> Self::Scalar {
+    fn squared_length(&self) -> Self::Scalar {
         let mut sqr_dist: Self::Scalar = 0.0;
-        for i in 0..self.dim() {
-            sqr_dist = sqr_dist + ((self.0[i] - other.0[i]) * (self.0[i] - other.0[i])).into(); 
+        for i in 0..N {
+            sqr_dist = sqr_dist + (self.0[i]  * self.0[i]).into(); 
         }
-        sqr_dist.sqrt()
-    }
-
-    /// Interprets the Point2 as a vector and returns its norm (distance from origin)
-    fn abs(&self) -> Self::Scalar {
-        let mut abs: Self::Scalar = 0.0;
-        for i in 0..self.dim() {
-            abs = abs + (self.0[i] * self.0[i]).into(); 
-        }
-        abs.sqrt()
+        return sqr_dist
     }
 
 }

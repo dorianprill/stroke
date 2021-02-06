@@ -1,11 +1,17 @@
 # stroke-rs  
 
 ![Rust](https://github.com/dorianprill/brezel/workflows/Rust/badge.svg)  
-General implementations of Bézier curves and B-Splines and specialized implementations of up to cubic Bézier curves (on generic point types [WIP] with a minimal exposed trait) for general use on all platforms including embedded and wasm through #![no_std]
+A zero-allocation library providing general implementations of Bézier curves, B-Splines and specialized implementations of up to cubic Bézier curves for general/embedded/wasm use supporting #![no_std] environments written in 100% safe Rust.  
+
+The library makes heavy use of const-generics and some related unstabilized features, so the nightly compiler is required.  
+It comes with a const-generic N-dimensional Point type so you can use the library without any other dependencies.  
+Should you want to integrate with types provided by another library, you are able to do so by implementing the small Point trait that the library relies upon (given it makes no distinction between a point and its position vector).  
 
 ![A Cubic Bézier Curve with Bounding Box and Convex Hull rendered by plotters.rs](https://raw.githubusercontent.com/dorianprill/stroke-rs/main/cubic_bezier_bounding_box.png)  
 
 made with [plotters.rs](https://github.com/38/plotters)  
+
+Right now, the generic versions don't implement all methods that the specialized versions do (as the algorithms get a bit more complicated) but should reach parity eventually.
 
 ## Goals
 
@@ -13,13 +19,12 @@ made with [plotters.rs](https://github.com/38/plotters)
 - [x] Provide lines
 - [x] Provide quadratic Béziers
 - [x] Provide cubic Béziers
-- [x] Where applicable: evaluate, split, arc length, curvature/radius, bounding box, derivative functions and shortcuts for evaluating them
-- [ ] Where applicable: tight box, the curve's normal
-- [x] Provide general Bézier curves (WIP using const generics)
-- [x] Provide general B-Splines (WIP using const generics)
-- [ ] Integrate well with other libraries like (possibly) micromath, nalgebra etc. since Point2/3 types are reproduced in many libraries. Achieve this by using generics as much as possible and expose only a minimal Point-trait to the outside. Only possible with libraries that also do not make a distinction between a point and its position vector
-- [ ] Good test coverage for both unit and integration test
-My personal goal is to truly learn rusts' advanced concepts as well as touch up on bernstein basis/Bézier curves, B-Splines, maybe even NURBS.
+- [x] Methods: evaluate, split, arc length, bounding box, derivatives
+- [ ] Where applicable: tight box, the curve's normal, curvature/radius
+- [x] Provide general Bézier curves (eval(), split(), derivative())
+- [x] Provide general B-Splines (eval(), arclen())
+- [x] Good test coverage for unit tests (still needs some more)
+- [ ] Integration tests for other generic math libraries (TBD - maybe optimath, aljabar, micromath, nalgebra) since Point types are replicated in many libraries
 
 ## Non-Goals
 

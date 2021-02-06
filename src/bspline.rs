@@ -104,9 +104,7 @@ F: Float + Into<NativeFloat>
     /// used computing node j).
     fn de_boor_iterative(&self, t: F, start_knot: usize) -> P {
         // Safety: every item in this array will get writtenbefore it is being used
-        unsafe {
-            let mut tmp: [P; O] = core::mem::MaybeUninit::uninit().assume_init();
-        
+        let mut tmp: [P; O] = [P::default(); O];
         for j in 0..=self.degree {
             let p = j + start_knot - self.degree - 1;
             tmp[p] = self.control_points[p];
@@ -121,7 +119,6 @@ F: Float + Into<NativeFloat>
             }
         }
         tmp[0]
-        } // unsafe
     }
 
 
@@ -171,7 +168,7 @@ F: Float + Into<NativeFloat>
             //dbg!(kmin, kmax, t);
             let p1 = self.eval(t);
             let p2 = self.eval(t+stepsize);
-            arclen = p1.distance(p2).into();
+            arclen = (p1-p2).squared_length().sqrt().into();
         }
         return arclen
     }
@@ -184,20 +181,20 @@ mod tests
 {
     //use std;
     use super::*;
-    use super::point2::Point2;
+    use super::point_generic::PointN;
     //use crate::num_traits::{Pow};
     #[test]
     fn construct_and_eval() {
         // degree 3, 4 control points => 4+3+1=8 knots
         let degree: usize = 3;
         let points = [
-                Point2::new(0f64,  1.77f64),
-                Point2::new(1.1f64, -1f64),
-                Point2::new(4.3f64,3f64),
-                Point2::new(3.2f64, -4f64)];
+                PointN::new([0f64,  1.77f64]),
+                PointN::new([1.1f64, -1f64]),
+                PointN::new([4.3f64,3f64]),
+                PointN::new([3.2f64, -4f64])];
         let knots: [f64; 8] = [0., 0., 0., 1., 2., 3., 3., 3.];
-        // try to initialize an object
-        let b: Option<BSpline<Point2<f64>, f64, 4, 8, 4 >> = BSpline::new(points, knots, degree);
+        // try to make a b-spline with the given parameters
+        let b: Option<BSpline<PointN<f64, 2>, f64, 4, 8, 4 >> = BSpline::new(points, knots, degree);
         let curve = match b {
             None => return,
             Some(b) => b
