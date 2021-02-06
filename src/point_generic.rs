@@ -16,10 +16,6 @@ impl<T, const N: usize> PointN<T, N> {
     pub fn new(array: [T;N]) -> Self {
         return PointN(array)
     }
-
-    fn dim(&self) -> usize {
-        return self.0.len()
-    }
 }
 
 /// Initialize with the Default value for the underlying type
@@ -32,11 +28,7 @@ impl<T: Default + Copy, const N: usize> Default for PointN<T, N> {
 impl<T, const N: usize> PartialEq for PointN<T, N> 
 where T: PartialOrd {
     fn eq(&self, other: &Self) -> bool {
-        // other is of type &Self, does this imply the same N ?
-        if self.dim() != other.dim() {
-            return false
-        }
-        for i in 0..other.dim() {
+        for i in 0..N {
             if self.0[i] != other.0[i] {
                 return false
             }
@@ -53,7 +45,7 @@ where
 
     fn add(self, other: PointN<T, N>) -> PointN<T, N> {
         let mut res = self.clone();
-        for i in 0..self.dim() {
+        for i in 0..N {
             res.0[i] = self.0[i] + other.0[i];
         }
         res
@@ -68,7 +60,7 @@ where
 
     fn sub(self, other: PointN<T, N>) -> PointN<T, N> {
         let mut res = self.clone();
-        for i in 0..self.dim() {
+        for i in 0..N {
             res.0[i] = self.0[i] - other.0[i];
         }
         res
@@ -130,16 +122,6 @@ NativeFloat: Add + Into<T>,
     fn axis(&self, index: usize) -> Self::Scalar {
         return self.0[index].into()
     }
-
-    /// Returns the distance between self and other
-    // fn distance(&self, other: Self) -> Self::Scalar {
-    //     let mut sqr_dist: Self::Scalar = 0.0;
-    //     for i in 0..self.dim() {
-    //         sqr_dist = sqr_dist + ((self.0[i] - other.0[i]) * (self.0[i] - other.0[i])).into(); 
-    //     }
-    //     sqr_dist.sqrt()
-    // }
-
 
     fn squared_length(&self) -> Self::Scalar {
         let mut sqr_dist: Self::Scalar = 0.0;
