@@ -41,13 +41,13 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
 
 /// A line defined by the equation
 /// `a * x + b * y + c = 0; a * a + b * b = 1`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
-pub struct LineEquation<F> {
-    a: F,
-    b: F,
-    c: F
-}
+// #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+// #[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
+// pub struct LineEquation<F> {
+//     a: F,
+//     b: F,
+//     c: F
+// }
 
 // impl<F> LineEquation<F> 
 // where
@@ -279,6 +279,39 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
 #[cfg(test)]
 mod tests 
 {
+    use super::*;
+    //use crate::num_traits::{Pow};
+    use super::point_generic::PointN;
+    /// Check whether a line segment interpolation p + t*(q-p) at t=0.5 
+    /// yields equal distance to the start (p)/end (q) points (up to machine accuracy).
+    #[test]
+    fn line_segment_interpolation() 
+    {
+        let line = LineSegment{
+            start: PointN::new([0f64,  1.77f64]),
+            end: PointN::new([4.3f64, 3f64]),
+        };
 
+        let mid = line.eval(0.5);
+        assert!((mid-line.start).squared_length() - (mid-line.end).squared_length() < EPSILON)
+    }
+
+    /// Check whether classic pythagorean equality holds for sides 3, 4 with hypothenuse 5
+    #[test]
+    fn line_segment_distance_to_point() 
+    {
+        // 3D cause why not
+        let line = LineSegment{
+            start: PointN::new([0f64,  1f64, 0f64]),
+            end: PointN::new([3f64, 1f64, 0f64]),
+        };
+        // dist to start should be 4; dist to end should be 5
+        let p1 = PointN::new([0f64, 5f64, 0f64]);
+        assert!( ((p1-line.start).squared_length().sqrt() - 4.0).abs() < EPSILON );
+        assert!( ((p1-line.end).squared_length().sqrt() - 5.0).abs() < EPSILON );
+        // dist to midpoint (t=0.5) should be 1
+        let p2 = PointN::new([1.5f64, 2f64, 0f64]);
+        assert!( ((p2-line.eval(0.5)).squared_length().sqrt() - 1.0).abs() < EPSILON );
+    }
    
 }
