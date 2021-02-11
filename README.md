@@ -1,7 +1,7 @@
 # stroke-rs  
 
 ![Rust](https://github.com/dorianprill/brezel/workflows/Rust/badge.svg)  
-A zero-allocation library providing general implementations of Bézier curves, B-Splines and specialized implementations of up to cubic Bézier curves for general/embedded/wasm use supporting #![no_std] environments written in 100% safe Rust.  
+A zero-allocation library providing const-generic implementations of Bézier curves, B-Spline curves and specialized implementations of up to cubic Bézier curves in N-dimensional euclidean space. It is intended for general/embedded/wasm use supporting #![no_std] environments written in 100% safe Rust.  
 
 The library makes heavy use of const-generics and some related unstabilized features, so the nightly compiler is required.  
 It comes with a const-generic N-dimensional Point type so you can use the library without any other dependencies.  
@@ -28,7 +28,7 @@ Right now, the generic versions don't implement all methods that the specialized
 
 ## Non-Goals
 
-- Focus on use for rendering or highest performance
+- Focus on use for rendering or highest performance (no GPU)
 
 ## Related  
 

@@ -29,9 +29,11 @@ pub mod bezier_segment;
 pub mod bspline;
 
 
-// conditionally compiled newtype pattern used to determine which size float to use and for tests
-// so that the library can abstract over both 32 and 64 bit architectures
-// TODO there has to be a better architectural solution to this... if not, generate impls with macro
+// Conditionally compiled newtype pattern used to determine which size float to use
+// so that the library can abstract over both 32 and 64 bit architectures (maybe even 16 bit)
+// TODO there has to be a better architectural solution to this...
+//   Option 1.: Is is possible to determine float size at build time?
+//   Option 2.: Is it possible to make this value a 'must-config' in cargo.toml?
 #[cfg(target_pointer_width = "64")]
 type NativeFloat = f64;
 #[cfg(target_pointer_width = "64")]
