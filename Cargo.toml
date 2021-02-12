@@ -18,6 +18,8 @@ license = "MIT"
 exclude = [
     "*.png",
     "examples/*",
+    ".github/*",
+    ".gitignore",
     ".vscode/*",
 ]
 
