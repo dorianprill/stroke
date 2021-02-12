@@ -459,7 +459,7 @@ mod tests
 {
     use super::*;
     //use crate::num_traits::{Pow};
-    use super::point_generic::PointN;
+    use super::PointN;
     //TODO test needs to be adapted for 8 segments of quadratic order
     // #[test]
     // fn circle_approximation_error() 

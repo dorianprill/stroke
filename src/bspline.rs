@@ -181,7 +181,7 @@ mod tests
 {
     //use std;
     use super::*;
-    use super::point_generic::PointN;
+    use super::PointN;
     //use crate::num_traits::{Pow};
     #[test]
     fn construct_and_eval() {

@@ -521,7 +521,7 @@ P: Point<Scalar = NativeFloat>
 mod tests 
 {
     use super::*;
-    use super::point_generic::PointN;
+    use super::PointN;
     #[test]
     fn circle_approximation_error() 
     {

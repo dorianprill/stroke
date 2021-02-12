@@ -3,8 +3,8 @@ use plotters::prelude::*;
 
 extern crate stroke;
 use stroke::cubic_bezier::CubicBezier;
-use stroke::point_generic::PointN;
-use stroke::point::Point;
+use stroke::PointN;
+use stroke::Point;
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

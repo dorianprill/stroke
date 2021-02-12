@@ -131,7 +131,7 @@ P: Add + Sub + Copy
 mod tests 
 {
     use super::*;
-    use super::point_generic::PointN;
+    use super::PointN;
     //use crate::num_traits::{Pow};
     #[test]
     fn eval_endpoints() {

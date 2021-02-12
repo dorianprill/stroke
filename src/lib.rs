@@ -28,6 +28,9 @@ pub mod bezier_segment;
 //pub mod rational_bezier;
 pub mod bspline;
 
+pub use point::Point;
+pub use point_generic::PointN;
+
 
 // Conditionally compiled newtype pattern used to determine which size float to use
 // so that the library can abstract over both 32 and 64 bit architectures (maybe even 16 bit)
