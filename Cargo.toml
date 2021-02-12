@@ -1,8 +1,18 @@
 [package]
 name = "stroke"
 version = "0.1.0"
+description = """A zero-allocation library providing const-generic 
+                implementations of Bézier curves, B-Spline curves 
+                and specialized implementations of up to cubic Bézier 
+                curves in N-dimensional euclidean space. It is intended 
+                for general/embedded/wasm use supporting #![no_std] 
+                environments written in 100% safe Rust."""
 authors = ["Dorian Prill"]
+repository = "https://github.com/dorianprill/stroke-rs"
+readme = "README.md"
+keywords = ["point", "bezier", "spline", "graphics", "path" ]
 edition = "2018"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
