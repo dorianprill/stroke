@@ -11,21 +11,21 @@ use super::point::Point;
 /// C: Number of control points
 /// K: Number of Knots
 /// O: Order of the piecewise function used for interpolation order = degree + 1
-/// While C, K, D relate to each other in the following manner
-///     K = C + D + 1
+/// While C, K, O relate to each other in the following manner
+///     K = C + O where O = D + 1 
 /// it does (currently?) not compile using summation of const generic arguments for the backing arrays
 #[derive(Clone)]
-pub struct BSpline<P, F, const C: usize, const K: usize, const O: usize> 
+pub struct BSpline<P, F, const K: usize, const C: usize, const O: usize> 
 {
     /// Degree of the polynomial pieces
     degree: usize,
-    /// Control points (reference to any slice of points)
+    /// Control points
     control_points: [P; C],
-    /// The knot vector (reference to any slice of floats)
+    /// Knot vector
     knots: [F; K],
 }
 
-impl<P, F, const C: usize, const K: usize, const O: usize> BSpline<P, F, {C}, {K}, {O}> 
+impl<P, F, const K: usize, const C: usize, const O: usize> BSpline<P, F, {K}, {C}, {O}> 
 where
 P: Add + Sub + Copy
     + Add<P, Output = P>
@@ -41,7 +41,7 @@ F: Float + Into<NativeFloat>
     /// Desired curve must have a valid number of control points and knots in relation to its degree or the constructor will return None. 
     /// A B-Spline curve requires at least one more control point than the degree (`control_points.len() >
     /// degree`) and the number of knots should be equal to `control_points.len() + degree + 1`.
-    pub fn new(control_points: [P; C], knots: [F; K], degree: usize) -> Option< BSpline<P, F, {C}, {K}, {O}> > {
+    pub fn new( knots: [F; K], control_points: [P; C], degree: usize) -> Option< BSpline<P, F, {K}, {C}, {O}> > {
         if control_points.len() <= degree {
             //panic!("Too few control points for curve");
             None
@@ -194,7 +194,7 @@ mod tests
                 PointN::new([3.2f64, -4f64])];
         let knots: [f64; 8] = [0., 0., 0., 1., 2., 3., 3., 3.];
         // try to make a b-spline with the given parameters
-        let b: Option<BSpline<PointN<f64, 2>, f64, 4, 8, 4 >> = BSpline::new(points, knots, degree);
+        let b: Option<BSpline<PointN<f64, 2>, f64, 8,4,4>> = BSpline::new(knots, points, degree);
         let curve = match b {
             None => return,
             Some(b) => b
