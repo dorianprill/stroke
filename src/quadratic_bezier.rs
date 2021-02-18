@@ -560,18 +560,13 @@ mod tests
             PointN::new([3.2f64, -4f64]),
         );
 
-        let max_err = 1e-14;
         let nsteps: usize =  1000;                                      
         for t in 0..=nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             let p1 = bezier.eval(t);
             let p2 = bezier.eval_casteljau(t);
             let err = p2-p1;
-            //dbg!(p1);
-            //dbg!(p2);
-            for axis in err {
-                assert!(axis.abs() < max_err);
-            }
+            assert!(err.squared_length() < EPSILON);
         }
     }
 
@@ -587,27 +582,16 @@ mod tests
         let at = 0.5;
         let (left, right) = bezier.split(at);
         // compare left and right subcurves with parent curve
-        // this is tricky as we have to map t->t/2 (for left) which will 
-        // inevitably contain rounding errors from floating point ops.
-        // instead, take the difference of the two points which must not exceed the absolute error
-        // TODO update test to use norm() instead, once implemented for Point (maybe as trait?)
-        let max_err = 1e-14;
+        // take the difference of the two points which must not exceed the absolute error
         let nsteps: usize = 1000;                                      
         for t in 0..=nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
-            //dbg!(bezier.eval(t/2.0));
-            //dbg!(left.eval(t));
             // left
             let mut err = bezier.eval(t/2.0) - left.eval(t);
-            for axis in err {
-                assert!(axis.abs() < max_err);
-            }
+            assert!(err.squared_length() < EPSILON);
             // right
             err = bezier.eval((t*0.5)+0.5) - right.eval(t);
-            //dbg!(err);
-            for axis in err {
-                assert!(axis.abs() < max_err);
-            }
+            assert!(err.squared_length() < EPSILON);
         }
     }
 
@@ -629,9 +613,6 @@ mod tests
         for t in 0..=nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             let p = bezier.eval_casteljau(t);
-            //dbg!(t);
-            //dbg!(p);
-            //dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
 
             for (idx, axis) in p.into_iter().enumerate() {
                 assert!( (axis >= (bounds[idx].0 - max_err)) && (axis <= (bounds[idx].1 + max_err)) )

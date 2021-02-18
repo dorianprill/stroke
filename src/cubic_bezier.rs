@@ -592,7 +592,7 @@ mod tests
         // control points are chosen for minimum radial distance error, see circle_approximation_error() in this file
         // given this, the circumference will also be close to 2*pi 
         // (remember arclen also works by linear approximation, not the true integral, so we have to accept error)!
-        // This approximation is unfeasable if desired accuracy is greater than 2 decimal places (at 1000 steps)
+        // This approximation is unfeasable if desired accuracy is greater than ~2 decimal places (at 1000 steps)
         // TODO don't hardcode values, solve for them
         let c         = 0.551915024494;
         let max_error = 1e-2;
@@ -634,7 +634,7 @@ mod tests
     }
 
     #[test]
-    fn eval_equivalence() {
+    fn eval_equivalence_casteljau() {
         // all eval methods should be approximately equivalent for well defined test cases
         // and not equivalent where numerical stability becomes an issue for normal eval
         let bezier = CubicBezier::new( 
@@ -644,19 +644,13 @@ mod tests
             PointN::new([3.2f64, -4f64]),
         );
 
-        let max_err = 1e-14;
         let nsteps: usize =  1000;                                      
         for t in 0..=nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
             let p1 = bezier.eval(t);
             let p2 = bezier.eval_casteljau(t);
             let err = p2-p1;
-            //dbg!(p1);
-            //dbg!(p2);
-            for axis in err {
-                assert!(axis.abs() < max_err);
-            }
-            
+            assert!(err.squared_length() < EPSILON);
         }
     }
 
@@ -673,28 +667,16 @@ mod tests
         let at = 0.5;
         let (left, right) = bezier.split(at);
         // compare left and right subcurves with parent curve
-        // this is tricky as we have to map t->t/2 (for left) which will 
-        // inevitably contain rounding errors from floating point ops.
-        // instead, take the difference of the two points which must not exceed the absolute error
-        // TODO update test to use Point::distance() instead for error
-        let max_err = 1e-14;
+        // take the difference of the two points which must not exceed the absolute error
         let nsteps: usize =  1000;                                      
         for t in 0..=nsteps {
             let t = t as f64 * 1f64/(nsteps as f64);
-            //dbg!(bezier.eval(t/2.0));
-            //dbg!(left.eval(t));
             // left
             let mut err = bezier.eval(t/2.0) - left.eval(t);
-            //dbg!(err);
-            for axis in err {
-                assert!(axis.abs() < max_err);
-            }
+            assert!(err.squared_length() < EPSILON);
             // right
             err = bezier.eval((t*0.5)+0.5) - right.eval(t);
-            //dbg!(err);
-            for axis in err {
-                assert!(axis.abs() < max_err);
-            }  
+            assert!(err.squared_length() < EPSILON);
         }
     }
 
