@@ -2,24 +2,26 @@ use super::*;
 use super::point::Point;
 
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Line<P>
-{
-    pub(crate) origin:    P,
-    pub(crate) vector:    P,
-}
+// #[derive(Copy, Clone, Debug, PartialEq)]
+// pub struct Line<P>
+// {
+//     pub(crate) origin:    P,
+//     pub(crate) vector:    P,
+// }
 
-
-impl<P> Line<P> 
-where
-P: Add + Sub + Copy
-    // + Add<P, Output = P>
-    // + Sub<P, Output = P>
-    + Mul<NativeFloat, Output = P>
-    + Point<Scalar = NativeFloat>,
-NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
-    + Mul<NativeFloat, Output = NativeFloat> 
-{
+// DEPRECATED in favor of single type LineSegment with a 
+// slightly slower distance_to_point calculation
+//
+// impl<P> Line<P> 
+// where
+// P: Add + Sub + Copy
+//     // + Add<P, Output = P>
+//     // + Sub<P, Output = P>
+//     + Mul<NativeFloat, Output = P>
+//     + Point<Scalar = NativeFloat>,
+// NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
+//     + Mul<NativeFloat, Output = NativeFloat> 
+// {
     // pub fn equation<F>(&self) -> LineEquation<F> 
     // where
     // F: Float,
@@ -35,7 +37,7 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
 
     //     LineEquation::new(a.into(), b.into(), c.into())
     // }
-}
+//}
 
 
 
@@ -101,7 +103,10 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
 //     }
 // }
 
-
+/// LineSegment defined by a start and an endpoint, evaluatable 
+/// anywhere inbetween using interpolation parameter t: [0,1] in eval()
+/// A LineSegment is equal to a linear Bezier curve, which is why there is no 
+/// specialized type for that case.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct LineSegment<P>
 {
@@ -159,12 +164,13 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
         );
     }
 
-    pub fn to_line(&self) -> Line<P> {
-        Line {
-            origin: self.start,
-            vector: self.end - self.end,
-        }
-    }
+    // DEPRECATED
+    // pub fn to_line(&self) -> Line<P> {
+    //     Line {
+    //         origin: self.start,
+    //         vector: self.end - self.start,
+    //     }
+    // }
 
     /// Return the distance from the LineSegment to Point p by calculating the projection
     pub fn distance_to_point<F>(&self, p: P) -> F 

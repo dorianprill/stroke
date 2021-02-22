@@ -5,10 +5,11 @@
 #![feature(const_generics)]
 // this is needed to use expressions in const generics such as N-1 (see curve derivatives)
 #![feature(const_evaluatable_checked)]
-// this feature is currently necessary to build an iterator over a const generic array (see PointN impl)
-#![feature(array_value_iter)]
-//use of unstable library feature 'array_value_iter'
-//see issue #65798 <https://github.com/rust-lang/rust/issues/65798> for more information
+// this feature is was necessary to build an iterator over a 
+// const generic array (see PointN impl) before 1.51
+//#![feature(array_value_iter)]
+//  use of unstable library feature 'array_value_iter'
+//  see issue #65798 <https://github.com/rust-lang/rust/issues/65798> for more information
 
 use core::ops::{Add, Sub, Mul};
 
@@ -28,8 +29,15 @@ pub mod bezier_segment;
 //pub mod rational_bezier;
 pub mod bspline;
 
+
+// export common types at crate root
 pub use point::Point;
 pub use point_generic::PointN;
+pub use bspline::BSpline;
+pub use bezier::Bezier;
+pub use quadratic_bezier::QuadraticBezier;
+pub use cubic_bezier::CubicBezier;
+pub use line::LineSegment;
 
 
 // Conditionally compiled newtype pattern used to determine which size float to use
