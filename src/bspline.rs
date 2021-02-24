@@ -27,11 +27,7 @@ pub struct BSpline<P, F, const K: usize, const C: usize, const O: usize>
 
 impl<P, F, const K: usize, const C: usize, const O: usize> BSpline<P, F, {K}, {C}, {O}> 
 where
-P: Add + Sub + Copy
-    + Add<P, Output = P>
-    + Sub<P, Output = P>
-    + Mul<NativeFloat, Output = P>
-    + Point<Scalar = NativeFloat>,
+P: Point<NativeFloat>,
 F: Float + Into<NativeFloat> 
 {
     /// Create a new B-spline curve that interpolates
@@ -149,7 +145,7 @@ F: Float + Into<NativeFloat>
 
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.
-    /// This approximation is unfeasable if desired accuracy is greater than 2 decimal places
+    /// This approximation is unfeasable if desired accuracy is greater than ~2 decimal places
     pub fn arclen(&self, nsteps: usize) -> F
     where
     NativeFloat: Sub<F, Output = F> 

@@ -13,7 +13,6 @@ readme = "README.md"
 keywords = ["point", "bezier", "spline", "graphics", "path" ]
 edition = "2018"
 license = "MIT"
-autoexamples = false
 
 
 exclude = [

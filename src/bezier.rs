@@ -11,13 +11,13 @@ use super::point::Point;
 #[derive(Clone, Copy)]
 pub struct Bezier<P, const N: usize> 
 where 
-P: Point + Copy,
+P: Point<NativeFloat> + Copy,
 {
     /// Control points which define the curve and hence its degree
     control_points: [P; N],
 }
 
-impl<P: Point, const N: usize> IntoIterator for Bezier<P, N> {
+impl<P: Point<NativeFloat>, const N: usize> IntoIterator for Bezier<P, N> {
     type Item = P;
     type IntoIter = core::array::IntoIter<Self::Item, N>;
 
@@ -28,11 +28,7 @@ impl<P: Point, const N: usize> IntoIterator for Bezier<P, N> {
 
 impl<P, const N: usize> Bezier<P, {N}> 
 where
-P: Add + Sub + Copy
-    + Add<P, Output = P>
-    + Sub<P, Output = P>
-    + Mul<NativeFloat, Output = P>
-    + Point<Scalar = NativeFloat>,
+P: Point<NativeFloat>
 {
     /// Create a new Bezier curve that interpolates the `control_points`. The degree is defined as degree = control_points.len() - 1.
     /// Desired curve must have a valid number of control points and knots in relation to its degree or the constructor will return None. 
@@ -49,20 +45,17 @@ P: Add + Sub + Copy
     /// This is implemented using De Casteljau's algorithm (over a temporary array with const generic sizing)
     pub fn eval<F>(&self, t: F) -> P 
     where
-    F: Float,
-    P: Add<P, Output = P>
-        + Sub<P, Output = P>
-        + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Mul<F, Output = F>
-        + Into<F>
+    F: Float + From<NativeFloat> + Into<NativeFloat>,
+    // NativeFloat: Sub<F, Output = F> 
+    //     + Mul<F, Output = F>
+    //     + Into<F>
     {
         // start with a copy of the original control points array and succesively use it for evaluation
         let mut p: [P; N] = self.control_points;
         // loop up to degree = control_points.len() -1
         for i in 1..=p.len() {
             for j in 0..p.len() - i {
-                p[j] = p[j] * (1.0 - t) + p[j+1] * t;
+                p[j] = p[j] * (-t.into() + 1.0) + p[j+1] * t.into();
             }
         }
         p[0]
@@ -71,12 +64,7 @@ P: Add + Sub + Copy
 
     pub fn split<F>(&self, t: F) -> (Self, Self)
     where
-    F: Float,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Mul<F, Output = F>,
+    F: Float + From<NativeFloat> + Into<NativeFloat>,
     {
         // start with a copy of the original control points for now
         // TODO how to initialize const generic array without using unsafe?
@@ -93,7 +81,7 @@ P: Add + Sub + Copy
             right[right.len()-i] = casteljau_points[right.len()-i];
             // calculate next level of points (one less point each level until we reach one point, the one at t)
             for j in 0..casteljau_points.len() - i {
-                casteljau_points[j] = casteljau_points[j] * (1.0-t) + casteljau_points[j+1] * t; 
+                casteljau_points[j] = casteljau_points[j] * (-t.into()+1.0) + casteljau_points[j+1] * t.into(); 
             }
         }
         return ( Bezier{ control_points: left }, Bezier{ control_points: right })
@@ -107,14 +95,7 @@ P: Add + Sub + Copy
     ///     w0 = 3(w1-w0), w'1 = 3(w2-w1) and w'2 = 3(w3-w2). 
     pub fn derivative<F>(&self) -> Bezier<P, {N-1}>
     where
-    F: Float,
-    P:  Sub<P, Output = P>
-        + Add<P, Output = P>
-        + Mul<F, Output = P>,
-    NativeFloat: Sub<F, Output = F> 
-        + Add<F, Output = F>
-        + Mul<F, Output = F>
-        + Into<F>
+    F: Float + From<NativeFloat> + Into<NativeFloat>,
     {
         let mut new_points: [P; N-1] = [P::default(); N-1]; 
         for (i, _) in self.control_points.iter().enumerate() {
@@ -132,8 +113,8 @@ mod tests
 {
     use super::*;
     use super::PointN;
-    use super::cubic_bezier::CubicBezier;
-    use super::quadratic_bezier::QuadraticBezier;
+    use super::CubicBezier;
+    use super::QuadraticBezier;
 
     //use crate::num_traits::{Pow};
     #[test]

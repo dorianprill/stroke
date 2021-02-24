@@ -5,7 +5,7 @@ use super::quadratic_bezier::QuadraticBezier;
 use super::cubic_bezier::CubicBezier;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum BezierSegment<P: Point>
+pub enum BezierSegment<P: Point<NativeFloat>>
 {
     Linear(     LineSegment<P>),
     Quadratic(  QuadraticBezier<P>),
@@ -15,26 +15,22 @@ pub enum BezierSegment<P: Point>
 
 impl<P> BezierSegment<P>
 where 
-P:  Sub<P, Output = P>
-    + Add<P, Output = P>
-    + Mul<NativeFloat, Output = P>
-    + Point<Scalar = NativeFloat>,
+P: Point<NativeFloat>,
+// Sub<P, Output = P>
+//     + Add<P, Output = P>
+//     + Mul<NativeFloat, Output = P>,
 NativeFloat: Sub<NativeFloat, Output = NativeFloat> 
     + Mul<NativeFloat, Output = NativeFloat> {
 
 
     pub fn eval<F>(&self, t: F) -> P
     where 
-    F: Float 
-        + Into<NativeFloat>,
-    NativeFloat: Sub<F, Output = F> 
-        + Add<F, Output = F>
-        + Mul<F, Output = F> 
-        + Into<F> {
+    F: Float + Copy + Default + Into<NativeFloat> + From<NativeFloat>
+    {
         match self {
-            BezierSegment::Linear(segment) => segment.eval(t.into()),
-            BezierSegment::Quadratic(segment) => segment.eval(t.into()),
-            BezierSegment::Cubic(segment) => segment.eval(t.into()),
+            BezierSegment::Linear(segment) => segment.eval(t),
+            BezierSegment::Quadratic(segment) => segment.eval(t),
+            BezierSegment::Cubic(segment) => segment.eval(t),
         }
     }
 
@@ -101,7 +97,8 @@ NativeFloat: Sub<NativeFloat, Output = NativeFloat>
 
 impl<P> From<LineSegment<P>> for BezierSegment<P>
 where
-P: Point<Scalar = NativeFloat> {
+P: Point<NativeFloat> 
+{
     fn from(s: LineSegment<P>) -> Self {
         BezierSegment::Linear(s)
     }
@@ -109,7 +106,7 @@ P: Point<Scalar = NativeFloat> {
 
 impl<P> From<QuadraticBezier<P>> for BezierSegment<P> 
 where
-P: Point<Scalar = NativeFloat> 
+P: Point<NativeFloat> 
 {
     fn from(s: QuadraticBezier<P>) -> Self {
         BezierSegment::Quadratic(s)
@@ -118,7 +115,7 @@ P: Point<Scalar = NativeFloat>
 
 impl<P> From<CubicBezier<P>> for BezierSegment<P> 
 where
-P: Point<Scalar = NativeFloat> 
+P: Point<NativeFloat> 
 {
     fn from(s: CubicBezier<P>) -> Self {
         BezierSegment::Cubic(s)
