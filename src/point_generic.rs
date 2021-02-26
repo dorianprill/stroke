@@ -1,6 +1,6 @@
 use super::*;
 //use num_traits::{Float, FromPrimitive};
-use super::point::{SizedFloat, Point};
+use super::Point;
 
 /// Point with dimensions of constant generic size N and of generic type T
 /// (Implemented as Newtype Pattern on an array 
@@ -9,23 +9,23 @@ use super::point::{SizedFloat, Point};
 /// the point trait, so you are free to use your own 
 /// Point/Coord/Vec structures instead by implementing the (small) trait
 #[derive(Debug, Copy, Clone)]
-pub struct PointN<T, const N: usize>([T; N]) where T: SizedFloat;
+pub struct PointN<T, const N: usize>([T; N]); //where T: SizedFloat;
 
-impl<T, const N: usize> PointN<T, N> where T:SizedFloat {
+impl<T, const N: usize> PointN<T, N> {
     pub fn new(array: [T;N]) -> Self {
         return PointN(array)
     }
 }
 
 /// Initialize with the Default value for the underlying type
-impl<T: Default + Copy, const N: usize> Default for PointN<T, N> where T: SizedFloat {
+impl<T: Default + Copy, const N: usize> Default for PointN<T, N> {
     fn default() -> Self {
         PointN([T::default(); N])
     }
 }
 
 impl<T, const N: usize> PartialEq for PointN<T, N> 
-where T: PartialOrd + SizedFloat {
+where T: PartialOrd {
     fn eq(&self, other: &Self) -> bool {
         for i in 0..N {
             if self.0[i] != other.0[i] {
@@ -38,7 +38,7 @@ where T: PartialOrd + SizedFloat {
 
 impl<T, const N: usize> Add for PointN<T, N>
 where
-    T: Add<Output=T> + Clone + Copy + SizedFloat
+    T: Add<Output=T> + Clone + Copy
 {
     type Output = Self;
 
@@ -55,7 +55,7 @@ where
 /// convenient if you want to use the type externally
 impl<T, const N: usize> Add<T> for PointN<T, N>
 where
-    T: Add<Output=T> + Clone + Copy + SizedFloat
+    T: Add<Output=T> + Clone + Copy
 {
     type Output = Self;
 
@@ -71,7 +71,7 @@ where
 
 impl<T, const N: usize> Sub for PointN<T, N>
 where
-    T: Sub<Output=T> + Clone + Copy + SizedFloat
+    T: Sub<Output=T> + Clone + Copy 
 {
     type Output = Self;
 
@@ -88,7 +88,7 @@ where
 /// convenient if you want to use the type externally
 impl<T, const N: usize> Sub<T> for PointN<T, N>
 where
-    T: Sub<Output=T> + Clone + Copy + SizedFloat
+    T: Sub<Output=T> + Clone + Copy 
 {
     type Output = Self;
 
@@ -106,7 +106,7 @@ where
     // The mulitplication is done by mulitpling T * U => T, this
     // trait bound for T will specify this requirement as the mul operator is
     // translated to using the first operand as self and the second as rhs. 
-    T: Mul<U,Output=T> + Clone + Copy + SizedFloat,
+    T: Mul<U,Output=T> + Clone + Copy, //+ SizedFloat,
     U: Clone + Copy,
 {
     type Output = PointN<T, N>;
@@ -121,7 +121,7 @@ where
 }
 
 
-impl<T, const N: usize> IntoIterator for PointN<T, N> where T: SizedFloat {
+impl<T, const N: usize> IntoIterator for PointN<T, N> {//where T: SizedFloat {
     type Item = T;
     type IntoIter = core::array::IntoIter<Self::Item, N>;
 
@@ -143,17 +143,28 @@ impl<T, const N: usize> IntoIterator for PointN<T, N> where T: SizedFloat {
 // }
 
 
-impl<T, const N: usize> Point<T> for PointN<T, N>
+impl<T, const N: usize> Point for PointN<T, N>
 where 
-T:  SizedFloat
+T:  Float 
+    + Copy 
+    + Default 
+    + Add<T, Output=T>
+    + Add<NativeFloat, Output=T>
+    + Sub<T, Output=T>
+    + Sub<NativeFloat, Output=T>
+    + Mul<T, Output=T>
+    + Mul<NativeFloat, Output=T>
+    + From<NativeFloat> 
+    + Into<NativeFloat>
 {
+    type Scalar = NativeFloat;
     const DIM: usize = {N};
 
-    fn axis(&self, index: usize) -> T {
-        return self.0[index]
+    fn axis(&self, index: usize) -> Self::Scalar {
+        return self.0[index].into()
     }
 
-    fn squared_length(&self) -> T {
+    fn squared_length(&self) -> Self::Scalar {
         let mut sqr_dist = 0.0;
         for i in 0..N {
             sqr_dist = sqr_dist + (self.0[i] * self.0[i]).into(); 

@@ -11,13 +11,13 @@ use super::point::Point;
 #[derive(Clone, Copy)]
 pub struct Bezier<P, const N: usize> 
 where 
-P: Point<NativeFloat> + Copy,
+P: Point,
 {
     /// Control points which define the curve and hence its degree
     control_points: [P; N],
 }
 
-impl<P: Point<NativeFloat>, const N: usize> IntoIterator for Bezier<P, N> {
+impl<P: Point, const N: usize> IntoIterator for Bezier<P, N> {
     type Item = P;
     type IntoIter = core::array::IntoIter<Self::Item, N>;
 
@@ -28,7 +28,7 @@ impl<P: Point<NativeFloat>, const N: usize> IntoIterator for Bezier<P, N> {
 
 impl<P, const N: usize> Bezier<P, {N}> 
 where
-P: Point<NativeFloat>
+P: Point
 {
     /// Create a new Bezier curve that interpolates the `control_points`. The degree is defined as degree = control_points.len() - 1.
     /// Desired curve must have a valid number of control points and knots in relation to its degree or the constructor will return None. 
@@ -43,28 +43,22 @@ P: Point<NativeFloat>
 
     /// Evaluate a point on the curve at point 't' which should be in the interval [0,1]
     /// This is implemented using De Casteljau's algorithm (over a temporary array with const generic sizing)
-    pub fn eval<F>(&self, t: F) -> P 
-    where
-    F: Float + From<NativeFloat> + Into<NativeFloat>,
-    // NativeFloat: Sub<F, Output = F> 
-    //     + Mul<F, Output = F>
-    //     + Into<F>
+    pub fn eval(&self, t: P::Scalar) -> P 
     {
+        //let t = t.into();
         // start with a copy of the original control points array and succesively use it for evaluation
         let mut p: [P; N] = self.control_points;
         // loop up to degree = control_points.len() -1
         for i in 1..=p.len() {
             for j in 0..p.len() - i {
-                p[j] = p[j] * (-t.into() + 1.0) + p[j+1] * t.into();
+                p[j] = p[j] * (-t + 1.0) + p[j+1] * t;
             }
         }
         p[0]
     }
 
 
-    pub fn split<F>(&self, t: F) -> (Self, Self)
-    where
-    F: Float + From<NativeFloat> + Into<NativeFloat>,
+    pub fn split(&self, t: P::Scalar) -> (Self, Self)
     {
         // start with a copy of the original control points for now
         // TODO how to initialize const generic array without using unsafe?
@@ -81,7 +75,7 @@ P: Point<NativeFloat>
             right[right.len()-i] = casteljau_points[right.len()-i];
             // calculate next level of points (one less point each level until we reach one point, the one at t)
             for j in 0..casteljau_points.len() - i {
-                casteljau_points[j] = casteljau_points[j] * (-t.into()+1.0) + casteljau_points[j+1] * t.into(); 
+                casteljau_points[j] = casteljau_points[j] * (-t + 1.0) + casteljau_points[j+1] * t; 
             }
         }
         return ( Bezier{ control_points: left }, Bezier{ control_points: right })
@@ -93,9 +87,7 @@ P: Point<NativeFloat>
     /// original weights as n(wi+1 - wi). So for a 3rd degree curve, with four weights, 
     /// the derivative has three new weights: 
     ///     w0 = 3(w1-w0), w'1 = 3(w2-w1) and w'2 = 3(w3-w2). 
-    pub fn derivative<F>(&self) -> Bezier<P, {N-1}>
-    where
-    F: Float + From<NativeFloat> + Into<NativeFloat>,
+    pub fn derivative(&self) -> Bezier<P, {N-1}>
     {
         let mut new_points: [P; N-1] = [P::default(); N-1]; 
         for (i, _) in self.control_points.iter().enumerate() {

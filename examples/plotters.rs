@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 PointN::new([3.2f64, -4f64]),
             );
 
-    let bounds = bezier.bounding_box::<f64>();
+    let bounds = bezier.bounding_box();
     let xmin = bounds[0].0;
     let xmax = bounds[0].1;
     let ymin = bounds[1].0;

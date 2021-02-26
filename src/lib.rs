@@ -11,6 +11,10 @@
 //  use of unstable library feature 'array_value_iter'
 //  see issue #65798 <https://github.com/rust-lang/rust/issues/65798> for more information
 
+// removes the need for generics with associated types to specify the 
+// associated type like P:Point instead of P: Point<Scalar=f64>
+#![feature(associated_type_bounds)]
+
 use core::ops::{Add, Sub, Mul};
 
 extern crate num_traits;

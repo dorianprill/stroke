@@ -1,5 +1,3 @@
-use core::default::Default;
-
 use super::*;
 use super::point::{Point};
 use super::LineSegment; 
@@ -21,7 +19,7 @@ pub struct CubicBezier<P>
 //#[allow(dead_code)]
 impl<P> CubicBezier<P> 
 where 
-P: Point<NativeFloat>
+P: Point
 {
 
     pub fn new(start: P, ctrl1: P, ctrl2: P,  end: P) -> Self 
@@ -35,22 +33,17 @@ P: Point<NativeFloat>
     }
 
     /// Evaluate a CubicBezier curve at t by direct evaluation of the polynomial (not numerically stable)
-    pub fn eval<F>(&self, t: F) -> P 
-    where 
-    F: Float + Copy + Default + Into<NativeFloat> + From<NativeFloat>
+    pub fn eval(&self, t: P::Scalar) -> P 
     {
-        return self.start * ((-t+1.0.into()) * (-t+1.0.into()) * (-t+1.0.into())).into()
-                + self.ctrl1 * (t * (-t+1.0.into()) * (-t+1.0.into()) * 3.0.into()).into()
-                + self.ctrl2 * (t * t * (-t+1.0.into()) * 3.0.into()).into()
-                + self.end * (t * t * t).into();
+        return self.start * ((-t+1.0) * (-t+1.0) * (-t+1.0))
+                + self.ctrl1 * (t * (-t+1.0) * (-t+1.0) * 3.0)
+                + self.ctrl2 * (t * t * (-t+1.0) * 3.0)
+                + self.end * (t * t * t);
     }
 
     /// Evaluate a CubicBezier curve at t using the numerically stable De Casteljau algorithm
-    pub fn eval_casteljau<F>(&self, t: F) -> P 
-    where 
-    F: Float + From<NativeFloat> + Into<NativeFloat>
+    pub fn eval_casteljau(&self, t: P::Scalar) -> P 
     {
-        let t = t.into();
         // unrolled de casteljau algorithm
         // _1ab is the first iteration from first (a) to second (b) control point and so on
         let ctrl_1ab = self.start + (self.ctrl1 - self.start) * t;
@@ -67,46 +60,40 @@ P: Point<NativeFloat>
 
     /// Returns the x coordinate of the curve evaluated at t
     /// Convenience shortcut for bezier.eval(t).x()
-    pub fn axis<F>(&self, t: F, axis: usize) -> F
-    where
-    F : Float + From<NativeFloat> + Into<NativeFloat>
+    pub fn axis(&self, t: P::Scalar, axis: usize) -> P::Scalar
     {
         let t2 = t * t;
         let t3  = t2 * t;
-        let one_t  = -t + 1.0.into();
+        let one_t  = -t + 1.0;
         let one_t2 = one_t * one_t;
         let one_t3 = one_t2 * one_t;
 
-        one_t3 * self.start.axis(axis).into()
-            + one_t2 * t * self.ctrl1.axis(axis).into() * 3.0.into()
-            + one_t * t2 * self.ctrl2.axis(axis).into() * 3.0.into() 
-            + t3 * self.end.axis(axis).into()
+        one_t3 * self.start.axis(axis)
+            + one_t2 * t * self.ctrl1.axis(axis) * 3.0
+            + one_t * t2 * self.ctrl2.axis(axis) * 3.0 
+            + t3 * self.end.axis(axis)
     }
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.
     /// Remember arclen also works by linear approximation, not the integral, so we have to accept error!
     /// This approximation is unfeasable if desired accuracy is greater than 2 decimal places
-    pub fn arclen<F>(&self, nsteps: usize) -> F
-    where
-    F: Float + From<NativeFloat> + Into<NativeFloat>,
+    pub fn arclen(&self, nsteps: usize) -> P::Scalar
     {
         let stepsize    = 1.0/(nsteps as NativeFloat);
-        let mut arclen  = 0.0;
+        let mut arclen  = P::Scalar::from(0.0);
         for t in 1..nsteps {
-            let t = t as NativeFloat * 1.0/(nsteps as NativeFloat);
+            let t = P::Scalar::from(t as NativeFloat) * 1.0/(nsteps as NativeFloat);
             let p1 = self.eval_casteljau(t);
             let p2 = self.eval_casteljau(t+stepsize);
 
             arclen = arclen + (p1-p2).squared_length().sqrt();
         
         }
-        return arclen.into()
+        return arclen
     }
 
 
-    pub fn split<F>(&self, t: F) -> (Self, Self)
-    where
-    F: Float + From<NativeFloat> + Into<NativeFloat>
+    pub fn split(&self, t: P::Scalar) -> (Self, Self)
     {
         let t = t.into();
         // unrolled de casteljau algorithm
@@ -139,9 +126,7 @@ P: Point<NativeFloat>
     /// Return the derivative function.
     /// The derivative is also a bezier curve but of degree n-1 (cubic->quadratic)
     /// Since it returns the derivative function, eval() needs to be called separately
-    pub fn derivative<F>(&self) -> QuadraticBezier<P>
-    where
-    F: Float + From<NativeFloat> + Into<NativeFloat>
+    pub fn derivative(&self) -> QuadraticBezier<P>
     {
         return QuadraticBezier{
             start: (self.ctrl1 - self.start) * 3.0,
@@ -159,35 +144,30 @@ P: Point<NativeFloat>
     /// Returns:
     /// Scalar value of the points own type type F
     /// This is a convenience function for .derivative().eval(t).axis(n)
-    pub fn dd<F>(&self, t: F, axis: usize) -> F 
-    where
-    F: Float + From<NativeFloat> + Into<NativeFloat>,
+    pub fn dd(&self, t: P::Scalar, axis: usize) -> P::Scalar
     {
         let t2 = t*t;
-        let c0 = t.into() * -3.0 + 6.0 * t.into() - 3.0;
-        let c1 = t2.into() * 9.0 - t.into() * 12.0 + 3.0;
-        let c2 = t2.into() * -9.0 + t.into() * 6.0;
-        let c3 = t2.into() * 3.0;
-        return (self.start.axis(axis) * c0
+        let c0 = t * -3.0 + t * 6.0 - 3.0;
+        let c1 = t2 * 9.0 - t * 12.0 + 3.0;
+        let c2 = t2 * -9.0 + t * 6.0;
+        let c3 = t2 * 3.0;
+        return    self.start.axis(axis) * c0
                 + self.ctrl1.axis(axis) * c1 
                 + self.ctrl2.axis(axis) * c2 
-                + self.end.axis(axis) * c3).into()
+                + self.end.axis(axis)   * c3
     }
 
-
-
-
-    // pub fn curvature<F>(&self, t: F) -> F
+    // pub fn curvature(&self, t: P::Scalar) -> F
     // where
-    // F: Float,
+    // F: P::Scalarloat,
     // P:  Sub<P, Output = P>
     //     + Add<P, Output = P>
     //     + Mul<F, Output = P>,
-    // NativeFloat: Sub<F, Output = F> 
+    // P::Scalar: Sub<F, Output = F> 
     //     + Add<F, Output = F>
     //     + Mul<F, Output = F>
     //     + Float
-    //     + Into<F>
+    //     + Into
     // {
     //     let d = self.derivative();
     //     let dd = d.derivative();
@@ -200,17 +180,17 @@ P: Point<NativeFloat>
     //     return numerator / denominator
     // }
 
-    // pub fn radius<F>(&self, t: F) -> F
+    // pub fn radius(&self, t: P::Scalar) -> F
     // where
-    // F: Float,
+    // F: P::Scalarloat,
     // P:  Sub<P, Output = P>
     //     + Add<P, Output = P>
     //     + Mul<F, Output = P>,
-    // NativeFloat: Sub<F, Output = F> 
+    // P::Scalar: Sub<F, Output = F> 
     //     + Add<F, Output = F>
     //     + Mul<F, Output = F>
     //     + Float
-    //     + Into<F>
+    //     + Into
     // {
     //     return 1.0.into() / self.curvature(t)
     // }
@@ -223,12 +203,10 @@ P: Point<NativeFloat>
         }
     }
 
-    pub fn is_linear<F>(&self, tolerance: F) -> bool 
-    where
-    F: Float + Default + From<NativeFloat> + Into<NativeFloat>,
+    pub fn is_linear(&self, tolerance: P::Scalar) -> bool 
     {
         // if start and end are (nearly) the same
-        if (self.start-self.end).squared_length() < EPSILON {
+        if (self.start-self.end).squared_length() < P::Scalar::from(EPSILON) {
             return false;
         } 
         // else check if ctrl points lie on baseline
@@ -236,23 +214,19 @@ P: Point<NativeFloat>
     }
 
 
-    fn are_points_colinear<F>(&self, tolerance: F) -> bool
-    where
-    F: Float + Default + From<NativeFloat> + Into<NativeFloat>,
+    fn are_points_colinear(&self, tolerance: P::Scalar) -> bool
     {
         let line = self.baseline();
-        line.distance_to_point::<F>(self.ctrl1) <= tolerance
-            && line.distance_to_point::<F>(self.ctrl2) <= tolerance
+        line.distance_to_point(self.ctrl1) <= tolerance
+            && line.distance_to_point(self.ctrl2) <= tolerance
     }
 
     // Returs if the whole set of control points can be considered one singular point 
     // given some tolerance. 
     // TODO use machine epsilon vs squared_length OK?
-    pub(crate) fn is_a_point<F>(&self, tolerance: F) -> bool 
-    where
-    F: Float + Default + From<NativeFloat> + Into<NativeFloat>,
+    pub fn is_a_point(&self, tolerance: P::Scalar) -> bool
     {
-        let tolerance_squared = (tolerance* tolerance).into();
+        let tolerance_squared = tolerance* tolerance;
         // Use <= so that tolerance can be zero.
         (self.start-self.end).squared_length() <= tolerance_squared
             && (self.start-self.ctrl1).squared_length() <= tolerance_squared
@@ -263,12 +237,10 @@ P: Point<NativeFloat>
     /// parameters of the form a*t^3 + b*t^2 + c*t + d for each dimension
     /// using cardano's algorithm (code adapted from github.com/nical/lyon)
     /// returns an ArrayVec of the present roots (max 3)
-    fn real_roots<F>(&self, a: F, b: F, c: F, d: F) -> ArrayVec<[F; 3]>
-    where
-    F:  Float + Default + From<NativeFloat> + Into<NativeFloat>,
+    #[allow(dead_code)]
+    pub(crate) fn real_roots(&self, a: P::Scalar, b: P::Scalar, c: P::Scalar, d: P::Scalar) -> ArrayVec<[P::Scalar; 3]>
     {
         let mut result = ArrayVec::new();
-
         let pi = 3.141592;
 
         // check if can be handled below cubic order
@@ -283,51 +255,47 @@ P: Point<NativeFloat>
                 return result;
             }
             // is quadratic equation
-            let delta = c * c - b * d * 4.0.into();
+            let delta = c * c - b * d * 4.0;
             if delta > 0.0.into() {
                 let sqrt_delta = delta.sqrt();
-                result.push((-c - sqrt_delta) / (b * 2.0.into()));
-                result.push((-c + sqrt_delta) / (b * 2.0.into()));
+                result.push((-c - sqrt_delta) / (b * 2.0));
+                result.push((-c + sqrt_delta) / (b * 2.0));
             } else if delta.abs() < EPSILON.into() {
-                result.push(-c / (b * 2.0.into()));
+                result.push(-c / (b * 2.0));
             }
             return result;
         }
 
         // is cubic equation -> use cardano's algorithm
-        let frac_1_3 = 1.0 / 3.0;
+        let frac_1_3= P::Scalar::from(1.0 / 3.0);
 
-        let bn = b.into() / a.into();
-        let cn = c.into() / a.into();
-        let dn = d.into() / a.into();
+        let bn = b / a;
+        let cn = c / a;
+        let dn = d / a;
     
-        let delta0: NativeFloat = (3.0 * cn - bn * bn) / 9.0;
-        let delta1: NativeFloat = (9.0 * bn * cn - 27.0 * dn - 2.0 * bn * bn * bn) / 54.0;
-        let delta_01: NativeFloat = delta0 * delta0 * delta0 + delta1 * delta1;
+        let delta0: P::Scalar = (cn * 3.0 - bn * bn) / 9.0;
+        let delta1: P::Scalar = (bn * cn * 9.0 - dn * 27.0 - bn * bn * bn * 2.0) / 54.0;
+        let delta_01: P::Scalar = delta0 * delta0 * delta0 + delta1 * delta1;
     
-        if delta_01 >= 0.0.into() {
-            let delta_p_sqrt: NativeFloat = delta1 + delta_01.sqrt();
-            let delta_m_sqrt: NativeFloat = delta1 - delta_01.sqrt();
+        if delta_01 >= P::Scalar::from(0.0) {
+            let delta_p_sqrt: P::Scalar = delta1 + delta_01.sqrt();
+            let delta_m_sqrt: P::Scalar = delta1 - delta_01.sqrt();
     
             let s = delta_p_sqrt.signum() * delta_p_sqrt.abs().powf(frac_1_3);
             let t = delta_m_sqrt.signum() * delta_m_sqrt.abs().powf(frac_1_3);
     
-            result.push((-bn * frac_1_3 + (s + t)).into());
+            result.push(-bn * frac_1_3 + (s + t));
     
             // Don't add the repeated root when s + t == 0.
             if (s - t).abs() < EPSILON.into() && (s + t).abs() >= EPSILON.into() {
-                result.push((-bn * frac_1_3 - (s + t) / 2.0).into());
+                result.push(-bn * frac_1_3 - (s + t) / 2.0);
             }
         } else {
             let theta = (delta1 / (-delta0 * delta0 * delta0).sqrt()).acos();
-            let two_sqrt_delta0 = 2.0 * (-delta0).sqrt();
-            result.push((two_sqrt_delta0 * Float::cos(theta * frac_1_3) - bn * frac_1_3).into());
-            result.push(
-                (two_sqrt_delta0 * Float::cos((theta + 2.0 * pi) * frac_1_3) - bn * frac_1_3).into(),
-            );
-            result.push(
-                (two_sqrt_delta0 * Float::cos((theta + 4.0 * pi) * frac_1_3) - bn * frac_1_3).into(),
-            );
+            let two_sqrt_delta0 = (-delta0).sqrt() * 2.0;
+            result.push(two_sqrt_delta0 * Float::cos(theta * frac_1_3) - bn * frac_1_3);
+            result.push(two_sqrt_delta0 * Float::cos((theta + 2.0 * pi) * frac_1_3) - bn * frac_1_3);
+            result.push(two_sqrt_delta0 * Float::cos((theta + 4.0 * pi) * frac_1_3) - bn * frac_1_3);
         }
     
         result
@@ -339,32 +307,31 @@ P: Point<NativeFloat>
     /// value: the coordinate value on the particular axis
     /// axis: the index of the axis
     /// Returns those roots of the function that are in the interval [0.0, 1.0].
-    fn solve_t_for_axis<F>(&self, value: F, axis: usize) -> ArrayVec<[F; 3]> 
-    where
-    F:  Float + Default + From<NativeFloat> + Into<NativeFloat>,
+    #[allow(dead_code)]
+    fn solve_t_for_axis(&self, value: P::Scalar, axis: usize) -> ArrayVec<[P::Scalar; 3]>
     {
         let mut result = ArrayVec::new();
         // check if all points are the same or if the curve is really just a line
-        if self.is_a_point(EPSILON)
-            || (self.are_points_colinear(EPSILON) && (self.start - self.end).squared_length() < EPSILON)
+        if self.is_a_point(EPSILON.into())
+            || (self.are_points_colinear(EPSILON.into()) && (self.start - self.end).squared_length() < EPSILON.into())
         {
             return result
         }
         let a = - self.start.axis(axis)
-                    + 3.0 * self.ctrl1.axis(axis)
-                    - 3.0 * self.ctrl2.axis(axis)
+                    + self.ctrl1.axis(axis) * 3.0
+                    - self.ctrl2.axis(axis) * 3.0
                     + self.end.axis(axis);
-        let b =   3.0 * self.start.axis(axis)
-                    - 6.0 * self.ctrl1.axis(axis)
-                    + 3.0 * self.ctrl2.axis(axis);
-        let c = - 3.0 * self.start.axis(axis)
-                    + 3.0 * self.ctrl1.axis(axis);
-        let d   = self.start.axis(axis) - value.into();
+        let b =   self.start.axis(axis) * 3.0
+                    - self.ctrl1.axis(axis) * 6.0
+                    + self.ctrl2.axis(axis) * 3.0;
+        let c = - self.start.axis(axis) * 3.0
+                    + self.ctrl1.axis(axis) * 3.0;
+        let d   = self.start.axis(axis) - value;
 
         let roots = self.real_roots(a, b, c, d);
         for root in roots {
-            if root > 0.0 && root < 1.0 {
-                result.push(root.into());
+            if root > 0.0.into() && root < 1.0.into() {
+                result.push(root);
             }
         }
 
@@ -372,11 +339,7 @@ P: Point<NativeFloat>
     }
 
     /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension (its index)
-    pub fn bounding_box<F>(&self) -> [(F, F); P::DIM] 
-    where
-    F: Float
-        + Default
-        + From<NativeFloat> + Into<NativeFloat>,
+    pub fn bounding_box(&self) -> [(P::Scalar, P::Scalar); P::DIM]
     {
         // calculate coefficients for the derivative: at^2 + bt + c
         // from the expansion of the cubic bezier curve: sum_i=0_to_3( binomial(3, i) * t^i * (1-t)^(n-i) )
@@ -386,7 +349,7 @@ P: Point<NativeFloat>
         // p2: [0,  0,  1]
         //      c   b   a
         let mut bounds = [(0.0.into(), 0.0.into()); P::DIM];
-        let derivative = self.derivative::<F>();
+        let derivative = self.derivative();
         // calculate coefficients for derivative
         let a: P = derivative.start + derivative.ctrl * -2.0 + derivative.end;
         let b: P = derivative.start * -2.0 + derivative.ctrl * 2.0;
@@ -396,21 +359,21 @@ P: Point<NativeFloat>
         //  to get x,y values (make vec 2 bigger for t=0,t=1 values)
         // loop over any of the points dimensions (they're all the same)
         for (dim, _) in a.into_iter().enumerate() {
-            let mut extrema: ArrayVec<[F; 4]> = ArrayVec::new();
+            let mut extrema: ArrayVec<[P::Scalar; 4]> = ArrayVec::new();
             extrema.extend(derivative.real_roots(
-                                                a.axis(dim).into(), 
-                                                b.axis(dim).into(), 
-                                                c.axis(dim).into(), 
+                                                a.axis(dim), 
+                                                b.axis(dim), 
+                                                c.axis(dim), 
                                                 ).into_iter());
             // only retain roots for which t is in [0..1] 
             extrema.retain(|root| -> bool {root > &mut 0.0.into() && root < &mut 1.0.into()});
             // evaluates roots in original function
             for t in extrema.iter_mut() {
-                *t = self.eval_casteljau(*t).axis(dim).into();
+                *t = self.eval_casteljau(*t).axis(dim);
             }
             // add y-values for start and end point as candidates
-            extrema.push(self.start.axis(dim).into()); 
-            extrema.push(self.end.axis(dim).into());
+            extrema.push(self.start.axis(dim)); 
+            extrema.push(self.end.axis(dim));
             // sort to get min and max values for bounding box
             extrema.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
 
@@ -533,10 +496,10 @@ mod tests
                                 ctrl2:  PointN::new([-c, 1f64]),
                                 end:    PointN::new([0f64, 1f64])
         };
-        let circumference = bezier_quadrant_1.arclen::<NativeFloat>(nsteps) +
-                                bezier_quadrant_2.arclen::<NativeFloat>(nsteps) +
-                                bezier_quadrant_3.arclen::<NativeFloat>(nsteps) +
-                                bezier_quadrant_4.arclen::<NativeFloat>(nsteps);
+        let circumference = bezier_quadrant_1.arclen(nsteps) +
+                                bezier_quadrant_2.arclen(nsteps) +
+                                bezier_quadrant_3.arclen(nsteps) +
+                                bezier_quadrant_4.arclen(nsteps);
         //dbg!(circumference);
         //dbg!(tau);
         assert!( ((tau + max_error) > circumference) && ((tau - max_error) < circumference) );
@@ -600,7 +563,7 @@ mod tests
                         end:   PointN::new([3.2f64, 4f64])
         };
 
-        let bounds = bezier.bounding_box::<f64>();
+        let bounds = bezier.bounding_box();
 
         let max_err = 1e-2;
 

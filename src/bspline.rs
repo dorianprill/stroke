@@ -15,20 +15,20 @@ use super::point::Point;
 ///     K = C + O where O = D + 1 
 /// it does (currently?) not compile using summation of const generic arguments for the backing arrays
 #[derive(Clone)]
-pub struct BSpline<P, F, const K: usize, const C: usize, const O: usize> 
+pub struct BSpline<P, const K: usize, const C: usize, const O: usize> 
+where P: Point
 {
     /// Degree of the polynomial pieces
     degree: usize,
     /// Control points
     control_points: [P; C],
     /// Knot vector
-    knots: [F; K],
+    knots: [P::Scalar; K],
 }
 
-impl<P, F, const K: usize, const C: usize, const O: usize> BSpline<P, F, {K}, {C}, {O}> 
+impl<P, const K: usize, const C: usize, const O: usize> BSpline<P, {K}, {C}, {O}> 
 where
-P: Point<NativeFloat>,
-F: Float + Into<NativeFloat> 
+P: Point
 {
     /// Create a new B-spline curve that interpolates
     /// the `control_points` using a piecewise polynomial of `degree` within intervals specified by the `knots`. 
@@ -37,7 +37,7 @@ F: Float + Into<NativeFloat>
     /// Desired curve must have a valid number of control points and knots in relation to its degree or the constructor will return None. 
     /// A B-Spline curve requires at least one more control point than the degree (`control_points.len() >
     /// degree`) and the number of knots should be equal to `control_points.len() + degree + 1`.
-    pub fn new( knots: [F; K], control_points: [P; C], degree: usize) -> Option< BSpline<P, F, {K}, {C}, {O}> > {
+    pub fn new( knots: [P::Scalar; K], control_points: [P; C], degree: usize) -> Option< BSpline<P, {K}, {C}, {O}> > {
         if control_points.len() <= degree {
             //panic!("Too few control points for curve");
             None
@@ -58,7 +58,7 @@ F: Float + Into<NativeFloat>
     /// Compute a point on the curve at `t`, the parameter **must** be in the inclusive range
     /// of values returned by `knot_domain`. If `t` is out of bounds this function will assert
     /// on debug builds and on release builds you'll likely get an out of bounds crash.
-    pub fn eval(&self, t: F) -> P {
+    pub fn eval(&self, t: P::Scalar) -> P {
         debug_assert!(t >= self.knot_domain().0 && t <= self.knot_domain().1);
         // Find the knot span that contains t i.e. the first index with a knot value greater than the t we're searching for. 
         // We need to find the start of the knot span t is in, such that: knots[span] <= t < knots[span + 1]
@@ -80,7 +80,7 @@ F: Float + Into<NativeFloat>
     }
 
     /// Returns an iterator over the knots.
-    pub fn knots(&self) -> Iter<'_, F> {
+    pub fn knots(&self) -> Iter<'_, P::Scalar> {
         self.knots.iter()
     }
 
@@ -88,7 +88,7 @@ F: Float + Into<NativeFloat>
     /// the curve over. The curve is only defined over the inclusive range `[min, max]`,
     /// passing a `t` value outside of this range will result in an assert on debug builds
     /// and likely a crash on release builds.
-    pub fn knot_domain(&self) -> (F, F) {
+    pub fn knot_domain(&self) -> (P::Scalar, P::Scalar) {
         (self.knots[self.degree], self.knots[self.knots.len() - 1 - self.degree])
     }
 
@@ -98,7 +98,7 @@ F: Float + Into<NativeFloat>
     /// from the previous one to compute this level and store the results in the
     /// array indices we no longer need to compute the current level (the left one
     /// used computing node j).
-    fn de_boor_iterative(&self, t: F, start_knot: usize) -> P {
+    fn de_boor_iterative(&self, t: P::Scalar, start_knot: usize) -> P {
         // Safety: every item in this array will get writtenbefore it is being used
         let mut tmp: [P; O] = [P::default(); O];
         for j in 0..=self.degree {
@@ -111,7 +111,7 @@ F: Float + Into<NativeFloat>
                 let i = j + k + start_knot - self.degree;
                 let alpha = (t - self.knots[i - 1]) / (self.knots[i + self.degree - k] - self.knots[i - 1]);
                 debug_assert!(!alpha.is_nan());
-                tmp[j] = tmp[j] * (1.0 - alpha.into()) + tmp[j + 1] * alpha.into();
+                tmp[j] = tmp[j] * (-alpha + 1.0) + tmp[j + 1] * alpha;
             }
         }
         tmp[0]
@@ -121,7 +121,7 @@ F: Float + Into<NativeFloat>
     /// Return the index of the first element greater than the value passed.
     /// Becaus the knot vector is sorted, this function uses binary search. 
     /// If no element greater than the value passed is found, the function returns None.
-    fn upper_bounds(&self, data: &[F], value: F) -> Option<usize> {
+    fn upper_bounds(&self, data: &[P::Scalar], value: P::Scalar) -> Option<usize> {
         let mut first = 0usize;
         let mut step;
         let mut count = data.len() as isize;
@@ -146,25 +146,20 @@ F: Float + Into<NativeFloat>
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.
     /// This approximation is unfeasable if desired accuracy is greater than ~2 decimal places
-    pub fn arclen(&self, nsteps: usize) -> F
-    where
-    NativeFloat: Sub<F, Output = F> 
-        + Mul<F, Output = F>
-        + Float
-        + Into<F>
+    pub fn arclen(&self, nsteps: usize) -> P::Scalar
     {
-        let stepsize: F = 1.0.into()/(nsteps as NativeFloat).into();
-        let mut arclen: F = 0.0.into();
+        let stepsize  = P::Scalar::from(1.0/(nsteps as NativeFloat));
+        let mut arclen: P::Scalar = 0.0.into();
          // evaluate the curve, t needs to be inside the knot domain!
         // we need to map [0...1] to kmin..kmax
         let (kmin, kmax) = self.knot_domain();
         let nsteps: usize = 100;                                
         for t in 0 ..= nsteps {
-            let t = kmin + ( (t as NativeFloat).into() / kmax) * 1.0.into()/(nsteps as NativeFloat).into();
+            let t = kmin + ( P::Scalar::from(t as NativeFloat) / kmax) * 1.0/(nsteps as NativeFloat);
             //dbg!(kmin, kmax, t);
             let p1 = self.eval(t);
             let p2 = self.eval(t+stepsize);
-            arclen = (p1-p2).squared_length().sqrt().into();
+            arclen = (p1-p2).squared_length().sqrt();
         }
         return arclen
     }
@@ -190,7 +185,7 @@ mod tests
                 PointN::new([3.2f64, -4f64])];
         let knots: [f64; 8] = [0., 0., 0., 1., 2., 3., 3., 3.];
         // try to make a b-spline with the given parameters
-        let b: Option<BSpline<PointN<f64, 2>, f64, 8,4,4>> = BSpline::new(knots, points, degree);
+        let b: Option<BSpline<PointN<f64, 2>, 8, 4, 4>> = BSpline::new(knots, points, degree);
         let curve = match b {
             None => return,
             Some(b) => b
