@@ -1,3 +1,5 @@
+use core::slice;
+
 use super::point::Point;
 use super::*;
 
@@ -23,6 +25,15 @@ impl<P: Point, const N: usize> IntoIterator for Bezier<P, N> {
 
     fn into_iter(self) -> Self::IntoIter {
         core::array::IntoIter::new(self.control_points)
+    }
+}
+
+impl<'a, P: Point, const N: usize> IntoIterator for &'a mut Bezier<P, N> {
+    type Item = &'a mut P;
+    type IntoIter = slice::IterMut<'a, P>;
+
+    fn into_iter(self) -> slice::IterMut<'a, P> {
+        self.control_points.iter_mut()
     }
 }
 

@@ -5,7 +5,6 @@ use num_traits::Float;
 /// The Point trait is the only interface on which the library relies.
 /// The associated constant DIM is necessary so that the memory layout of
 /// its implementing type can be made known to the library, whenever new instances are returned.
-/// TODO (TBD) specify enclosed type T (any float) of the Point into the trait instead? if so how?
 pub trait Point:
     Add<Self, Output = Self>
     + Sub<Self, Output = Self>
@@ -14,7 +13,6 @@ pub trait Point:
     + Copy
     + PartialEq
     + Default
-    + Sized
     + IntoIterator
 {
     type Scalar: Float

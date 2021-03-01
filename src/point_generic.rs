@@ -1,3 +1,5 @@
+use core::slice;
+
 use super::*;
 //use num_traits::{Float, FromPrimitive};
 use super::Point;
@@ -9,7 +11,7 @@ use super::Point;
 /// the point trait, so you are free to use your own
 /// Point/Coord/Vec structures instead by implementing the (small) trait
 #[derive(Debug, Copy, Clone)]
-pub struct PointN<T, const N: usize>([T; N]); //where T: SizedFloat;
+pub struct PointN<T, const N: usize>([T; N]);
 
 impl<T, const N: usize> PointN<T, N> {
     pub fn new(array: [T; N]) -> Self {
@@ -122,7 +124,6 @@ where
 }
 
 impl<T, const N: usize> IntoIterator for PointN<T, N> {
-    //where T: SizedFloat {
     type Item = T;
     type IntoIter = core::array::IntoIter<Self::Item, N>;
 
@@ -131,17 +132,14 @@ impl<T, const N: usize> IntoIterator for PointN<T, N> {
     }
 }
 
-// impl<'a, T, const N: usize> IntoIterator for &'a mut PointN<T, N> {
-//     type Item = &'a mut T;
-//     type IntoIter = slice::IterMut<'a, T>;
+impl<'a, T, const N: usize> IntoIterator for &'a mut PointN<T, N> {
+    type Item = &'a mut T;
+    type IntoIter = slice::IterMut<'a, T>;
 
-//     fn into_iter(self) -> slice::IterMut<'a, T> {
-//         core::array::IntoIter::new(self.0).next().map(|node| {
-//             self.next = node.next.as_deref_mut();
-//             &mut node.elem
-//         })
-//     }
-// }
+    fn into_iter(self) -> slice::IterMut<'a, T> {
+        self.0.iter_mut()
+    }
+}
 
 impl<T, const N: usize> Point for PointN<T, N>
 where

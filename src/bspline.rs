@@ -27,6 +27,7 @@ where
     knots: [P::Scalar; K],
 }
 
+
 impl<P, const K: usize, const C: usize, const O: usize> BSpline<P, { K }, { C }, { O }>
 where
     P: Point,
@@ -52,7 +53,7 @@ where
             None
         } else {
             // TODO force sorting of the knots required for binary search (knot span) -> mutable reference required
-            // FIX maybe dont sort and just use linear search for knot span, as knot vectors wont be really large anyway
+            // FIX maybe dont sort and just use linear search for knot span, as knot vectors wont be large anyway
             //.sort_by(|a, b| a.partial_cmp(b).unwrap());
             Some(BSpline {
                 control_points,
