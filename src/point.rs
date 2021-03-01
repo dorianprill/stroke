@@ -1,32 +1,31 @@
-use core::ops::{Add, Sub, Mul, Div};
-use num_traits::Float;
 use super::NativeFloat;
-
+use core::ops::{Add, Div, Mul, Sub};
+use num_traits::Float;
 
 /// The Point trait is the only interface on which the library relies.
 /// The associated constant DIM is necessary so that the memory layout of
 /// its implementing type can be made known to the library, whenever new instances are returned.
 /// TODO (TBD) specify enclosed type T (any float) of the Point into the trait instead? if so how?
-pub trait Point: 
-            Add<Self, Output = Self>
-            + Sub<Self, Output = Self> 
-            + Mul<Self::Scalar, Output = Self>
-            + Mul<NativeFloat, Output = Self>
-            + Copy 
-            + PartialEq 
-            + Default 
-            + Sized
-            + IntoIterator  
+pub trait Point:
+    Add<Self, Output = Self>
+    + Sub<Self, Output = Self>
+    + Mul<Self::Scalar, Output = Self>
+    + Mul<NativeFloat, Output = Self>
+    + Copy
+    + PartialEq
+    + Default
+    + Sized
+    + IntoIterator
 {
-    type Scalar: Float 
-                + Default 
-                + PartialEq
-                + From<NativeFloat> 
-                + Into<NativeFloat> 
-                + Add<NativeFloat, Output=Self::Scalar>
-                + Sub<NativeFloat, Output=Self::Scalar>
-                + Mul<NativeFloat, Output=Self::Scalar>
-                + Div<NativeFloat, Output=Self::Scalar>;
+    type Scalar: Float
+        + Default
+        + PartialEq
+        + From<NativeFloat>
+        + Into<NativeFloat>
+        + Add<NativeFloat, Output = Self::Scalar>
+        + Sub<NativeFloat, Output = Self::Scalar>
+        + Mul<NativeFloat, Output = Self::Scalar>
+        + Div<NativeFloat, Output = Self::Scalar>;
     const DIM: usize;
     // Returns the component of the Point on its axis corresponding to index e.g. [0, 1, 2] -> [x, y, z]
     // TODO remove, use mutable iterator instead (?)
