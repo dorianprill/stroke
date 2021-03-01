@@ -71,7 +71,8 @@ P: Point
         );
     }
 
-    /// Sample the a particular coordinate of the curve at t (expecting t between 0 and 1).
+    /// Sample the a particular coordinate axis of the curve at t (expecting t between 0 and 1).
+    /// This function can panic!
     pub fn axis(&self, t: P::Scalar, axis: usize) -> P::Scalar 
     {
         let t2 = t * t;
@@ -84,9 +85,10 @@ P: Point
     }
 
 
-    /// Return the derivative function.
-    /// The derivative is also a bezier curve but of degree n-1 - In the case of quadratic it is just a line.
-    /// Since it returns the derivative function, eval() needs to be called separately
+    /// Return the derivative curve.
+    /// The derivative is also a bezier curve but of degree n-1.
+    /// In the case of a quadratic derivative it is just a line segment
+    /// which also implementes eval(), as it is just a linear bezier curve.
     pub fn derivative(&self) -> LineSegment<P>
     {
         return LineSegment{
@@ -96,29 +98,23 @@ P: Point
     }
 
 
-    /// Sample the x coordinate of the curve's derivative at t (expecting t between 0 and 1).
-    /// Convenience function for .derivative().eval(t).axis(dim)
-    /// Will be deprecated in the future
-    pub fn dx(&self, t: P::Scalar) -> P::Scalar
+
+    /// Direct Derivative - Sample the axis coordinate at 'axis' of the curve's derivative at t 
+    /// without creating a new curve. This is a convenience function for .derivative().eval(t).axis(n)  
+    /// Parameters: 
+    ///   t: the sampling parameter on the curve interval [0..1]
+    ///   axis: the index of the coordinate axis [0..N]
+    /// Returns:
+    ///   Scalar value of the points own type type F  
+    /// May be deprecated in the future.  
+    /// This function can cause out of bounds panic when axis is larger than dimension of P
+    pub fn dd(&self, t: P::Scalar, axis: usize) -> P::Scalar
     {
         let t = t.into();
         let c0 = t * 2.0 - 2.0;
         let c1 =  2.0 - 4.0 * t;
         let c2 = 2.0 * t;
-        return self.start.axis(0) * c0 + self.ctrl.axis(0) * c1 + self.end.axis(0) * c2
-    }
-
-
-    /// Sample the y coordinate of the curve's derivative at t (for t between 0 and 1).
-    /// Convenience function for .derivative().eval(t).axis(dim)
-    /// Will be deprecated in the future
-    pub fn dy(&self, t: P::Scalar) -> P::Scalar
-    {
-        let t = t.into();
-        let c0 = t * 2.0 - 2.0;
-        let c1 =  2.0 - 4.0 * t;
-        let c2 = 2.0 * t;
-        return self.start.axis(1) * c0 + self.ctrl.axis(1) * c1 + self.end.axis(1) * c2
+        return self.start.axis(axis) * c0 + self.ctrl.axis(axis) * c1 + self.end.axis(axis) * c2
     }
 
     // /// Calculates the curvature of the curve at point t
