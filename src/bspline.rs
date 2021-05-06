@@ -27,7 +27,6 @@ where
     knots: [P::Scalar; K],
 }
 
-
 impl<P, const K: usize, const C: usize, const O: usize> BSpline<P, { K }, { C }, { O }>
 where
     P: Point,
@@ -39,6 +38,7 @@ where
     /// Desired curve must have a valid number of control points and knots in relation to its degree or the constructor will return None.
     /// A B-Spline curve requires at least one more control point than the degree (`control_points.len() >
     /// degree`) and the number of knots should be equal to `control_points.len() + degree + 1`.
+    #[allow(clippy::if_same_then_else)] // allow until a proper Error type is defined for bsplines
     pub fn new(
         knots: [P::Scalar; K],
         control_points: [P; C],
@@ -56,9 +56,9 @@ where
             // FIX maybe dont sort and just use linear search for knot span, as knot vectors wont be large anyway
             //.sort_by(|a, b| a.partial_cmp(b).unwrap());
             Some(BSpline {
+                degree,
                 control_points,
                 knots,
-                degree,
             })
         }
     }
@@ -170,7 +170,7 @@ where
             let p2 = self.eval(t + stepsize);
             arclen = (p1 - p2).squared_length().sqrt();
         }
-        return arclen;
+        arclen
     }
 }
 

@@ -31,10 +31,10 @@ where
 
     /// Evaluate a CubicBezier curve at t by direct evaluation of the polynomial (not numerically stable)
     pub fn eval(&self, t: P::Scalar) -> P {
-        return self.start * ((-t + 1.0) * (-t + 1.0) * (-t + 1.0))
+        self.start * ((-t + 1.0) * (-t + 1.0) * (-t + 1.0))
             + self.ctrl1 * (t * (-t + 1.0) * (-t + 1.0) * 3.0)
             + self.ctrl2 * (t * t * (-t + 1.0) * 3.0)
-            + self.end * (t * t * t);
+            + self.end * (t * t * t)
     }
 
     /// Evaluate a CubicBezier curve at t using the numerically stable De Casteljau algorithm
@@ -47,10 +47,8 @@ where
         // second iteration
         let ctrl_2ab = ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t;
         let ctrl_2bc = ctrl_1bc + (ctrl_1cd - ctrl_1bc) * t;
-        // third iteration, final point on the curve
-        let ctrl_3ab = ctrl_2ab + (ctrl_2bc - ctrl_2ab) * t;
-
-        return ctrl_3ab;
+        // third iteration, return final point on the curve ctrl_3ab
+        ctrl_2ab + (ctrl_2bc - ctrl_2ab) * t
     }
 
     /// Returns the x coordinate of the curve evaluated at t
@@ -81,7 +79,7 @@ where
 
             arclen = arclen + (p1 - p2).squared_length().sqrt();
         }
-        return arclen;
+        arclen
     }
 
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
@@ -97,7 +95,7 @@ where
         // third iteration, final point on the curve
         let ctrl_3ab = ctrl_2ab + (ctrl_2bc - ctrl_2ab) * t;
 
-        return (
+        (
             CubicBezier {
                 start: self.start,
                 ctrl1: ctrl_1ab,
@@ -110,18 +108,18 @@ where
                 ctrl2: ctrl_1cd,
                 end: self.end,
             },
-        );
+        )
     }
 
     /// Return the derivative curve.
     /// The derivative is also a bezier curve but of degree n-1 (cubic->quadratic)
     /// Since it returns the derivative function, eval() needs to be called separately
     pub fn derivative(&self) -> QuadraticBezier<P> {
-        return QuadraticBezier {
+        QuadraticBezier {
             start: (self.ctrl1 - self.start) * 3.0,
             ctrl: (self.ctrl2 - self.ctrl1) * 3.0,
             end: (self.end - self.ctrl2) * 3.0,
-        };
+        }
     }
 
     /// Direct Derivative - Sample the axis coordinate at 'axis' of the curve's derivative at t
@@ -139,10 +137,11 @@ where
         let c1 = t2 * 9.0 - t * 12.0 + 3.0;
         let c2 = t2 * -9.0 + t * 6.0;
         let c3 = t2 * 3.0;
-        return self.start.axis(axis) * c0
+
+        self.start.axis(axis) * c0
             + self.ctrl1.axis(axis) * c1
             + self.ctrl2.axis(axis) * c2
-            + self.end.axis(axis) * c3;
+            + self.end.axis(axis) * c3
     }
 
     // pub fn curvature(&self, t: P::Scalar) -> F
@@ -220,7 +219,7 @@ where
     /// parameters of the form a*t^3 + b*t^2 + c*t + d for each dimension
     /// using cardano's algorithm (code adapted from github.com/nical/lyon)
     /// returns an ArrayVec of the present roots (max 3)
-    #[allow(dead_code)]
+    #[allow(clippy::many_single_char_names)] // this is math, get over it
     pub(crate) fn real_roots(
         &self,
         a: P::Scalar,
@@ -229,7 +228,7 @@ where
         d: P::Scalar,
     ) -> ArrayVec<[P::Scalar; 3]> {
         let mut result = ArrayVec::new();
-        let pi = 3.141592;
+        let pi = P::Scalar::from(core::f32::consts::PI.into()).into();
 
         // check if can be handled below cubic order
         if a.abs() < EPSILON.into() {
@@ -367,7 +366,7 @@ where
             // .unwrap() is ok as it can never be empty as it always at least contains the endpoints
             bounds[dim] = (extrema[0], *extrema.last().unwrap());
         }
-        return bounds;
+        bounds
     }
 }
 

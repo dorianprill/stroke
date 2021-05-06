@@ -33,10 +33,8 @@ where
         // _1ab is the first iteration from first (a) to second (b) control point and so on
         let ctrl_1ab = self.start + (self.ctrl - self.start) * t;
         let ctrl_1bc = self.ctrl + (self.end - self.ctrl) * t;
-        // second iteration, final point on the curve
-        let ctrl_2ab = ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t;
-
-        return ctrl_2ab;
+        // second iteration, return final point on the curve ctrl_2ab
+        ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t
     }
 
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
@@ -47,7 +45,7 @@ where
         // second iteration
         let ctrl_2ab = ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t;
 
-        return (
+        (
             QuadraticBezier {
                 start: self.start,
                 ctrl: ctrl_1ab,
@@ -58,7 +56,7 @@ where
                 ctrl: ctrl_1bc,
                 end: self.end,
             },
-        );
+        )
     }
 
     /// Sample the a particular coordinate axis of the curve at t (expecting t between 0 and 1).
@@ -68,9 +66,9 @@ where
         let one_t = -t + 1.0;
         let one_t2 = one_t * one_t;
 
-        return self.start.axis(axis) * one_t2
+        self.start.axis(axis) * one_t2
             + self.ctrl.axis(axis) * 2.0 * one_t * t
-            + self.end.axis(axis) * t2;
+            + self.end.axis(axis) * t2
     }
 
     /// Return the derivative curve.
@@ -78,10 +76,10 @@ where
     /// In the case of a quadratic derivative it is just a line segment
     /// which also implementes eval(), as it is just a linear bezier curve.
     pub fn derivative(&self) -> LineSegment<P> {
-        return LineSegment {
+        LineSegment {
             start: (self.ctrl - self.start) * 2.0,
             end: (self.end - self.ctrl) * 2.0,
-        };
+        }
     }
 
     /// Direct Derivative - Sample the axis coordinate at 'axis' of the curve's derivative at t
@@ -98,7 +96,8 @@ where
         let c0 = t * 2.0 - 2.0;
         let c1 = 2.0 - 4.0 * t;
         let c2 = 2.0 * t;
-        return self.start.axis(axis) * c0 + self.ctrl.axis(axis) * c1 + self.end.axis(axis) * c2;
+
+        self.start.axis(axis) * c0 + self.ctrl.axis(axis) * c1 + self.end.axis(axis) * c2
     }
 
     // /// Calculates the curvature of the curve at point t
@@ -150,7 +149,7 @@ where
 
             arclen = arclen + (p1 - p2).squared_length().sqrt();
         }
-        return arclen;
+        arclen
     }
 
     /// Solve for the roots of the polynomial at^2 + bt + c
@@ -183,7 +182,7 @@ where
         } else if delta.abs() < EPSILON.into() {
             result.push(-b / (a * 2.0));
         }
-        return result;
+        result
     }
 
     /// Returns the line segment formed by the curve's start and endpoint
@@ -284,7 +283,7 @@ where
             // unwrap() is ok as it always at least contains the endpoints
             bounds[dim] = (extrema[0], *extrema.last().unwrap());
         }
-        return bounds;
+        bounds
     }
 }
 
