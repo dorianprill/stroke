@@ -42,17 +42,24 @@ pub use point::Point;
 pub use point_generic::PointN;
 pub use quadratic_bezier::QuadraticBezier;
 
-// Conditionally compiled newtype pattern used to determine which size float to use
-// so that the library can abstract over both 32 and 64 bit architectures (maybe even 16 bit)
-// TODO there has to be a better architectural solution to this...
-//   Option 1.: Is is possible to determine float size at build time?
-//   Option 2.: Is it possible to make this value a 'must-config' in cargo.toml?
+// Conditionally compiled newtype pattern used to determine which size float to use for internal constants
+// so that the library can specialize internal types for the architecture for best performance
+// TODO An FPU size definition is not available to the compiler, so
+
+//   1. Either fix everything to 32-bit and accept performance loss (how it's done now)
+
+//   2. Make this value a 'must-config' in cargo.toml (requires either external libraries 
+//      or must wait for additional float types)
+
+// If it is a modern 64 bit architecture, it likely also has a 64 bit FPU
 #[cfg(target_pointer_width = "64")]
 type NativeFloat = f64;
 #[cfg(target_pointer_width = "64")]
 const EPSILON: f64 = f64::EPSILON;
-// same thing for 32 bit
-#[cfg(target_pointer_width = "32")]
+// For now, we fix all non-64 bit architectures to 32bit floats 
+// as smaller-width architectures are more likely to have different int/float sizes if they have a fpu
+#[cfg(not(target_pointer_width = "64"))]
 type NativeFloat = f32;
-#[cfg(target_pointer_width = "32")]
+#[cfg(not(target_pointer_width = "64"))]
 const EPSILON: f32 = f32::EPSILON;
+// This might change when/if Rust gets additional types like f16 or f24
