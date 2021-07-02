@@ -15,21 +15,52 @@ Right now, the generic versions don't implement all methods that the specialized
 
 ## Goals
 
-- [x] Support no-std for both 32 and 64 bit targets
-- [x] Provide lines
-- [x] Provide quadratic Béziers
-- [x] Provide cubic Béziers
-- [x] Methods: evaluate, split, arc length, bounding box, derivatives
-- [ ] Where applicable: tight box, the curve's normal, curvature/radius
-- [x] Provide general Bézier curves (eval(), split(), derivative())
-- [x] Provide general B-Splines (eval(), arclen())
-- [x] Good test coverage for unit tests (still needs some more)
-- [ ] Integration tests for other generic math libraries (TBD - maybe optimath, aljabar, micromath, nalgebra) since Point types are replicated in many libraries
+- Provide generic Bézier curves and B-Splines. Due to their frequent usage, further provide lines, quadratic and cubic Bézier curves
+- Support no-std for all targets
+- Extensive unit testing and code coverage
+- Integration tests for other generic math libraries (TBD - maybe optimath, aljabar, micromath, nalgebra) since Point types are replicated in many libraries
 
 ## Non-Goals
 
 - Focus on use for rendering or highest performance (no GPU)
 
+## Features
+
+These are the main supported features. Some further utility methods are exposed where useful.  
+
+### Quadratic and Cubic Bézier Curves
+
+- [x] evaluation (De Casteljau, direct)
+- [x] split
+- [x] derivative
+- [x] arc length (linear approx.)
+- [ ] arc length (Legendre-Gauss)
+- [ ] curvature/radius (Frenet-Serret Frame)
+- [x] bounding box
+- [ ] tight box
+
+### Generic Bézier Curves
+
+- [x] evaluation (De Casteljau)
+- [x] split
+- [x] derivative
+- [x] arc length (linear approx.)
+- [ ] arc length (Legendre-Gauss)
+- [ ] curvature/radius (Frenet-Serret Frame)
+- [ ] bounding box
+- [ ] tight box
+
+### Generic B-Splines
+
+- [x] evaluation (De Boor)
+- [x] split
+- [ ] derivative
+- [x] arc length (linear approx.)
+- [ ] arc length (Legendre-Gauss)
+- [ ] curvature/radius (Frenet-Serret Frame)
+- [ ] bounding box
+- [ ] tight box
+  
 ## Related  
 
 If you're looking for a published crate for rendering with gpu support you should check out [Lyon](https://github.com/nical/lyon) from which I draw some inspiration, it's really good. It features lines, quadratic and cubic Béziers, in addition to arcs, triangles, and other geometric objects but no general Bézier curves or B-Splines. It also does seem to support wasm.  

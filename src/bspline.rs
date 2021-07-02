@@ -27,7 +27,6 @@ where
     knots: [P::Scalar; K],
 }
 
-
 impl<P, const K: usize, const C: usize, const O: usize> BSpline<P, { K }, { C }, { O }>
 where
     P: Point,

@@ -110,6 +110,22 @@ where
         }
         return Bezier::new(new_points);
     }
+
+    /// Approximates the arc length of the curve by flattening it with straight line segments.
+    /// This works quite well, at ~32 segments it should already provide an error in the decimal places
+    /// The accuracy gain falls off with more steps so this approximation is unfeasable if desired accuracy is greater than 1-2 decimal places
+    pub fn arclen(&self, nsteps: usize) -> P::Scalar {
+        let stepsize = P::Scalar::from(1.0 / (nsteps as NativeFloat));
+        let mut arclen: P::Scalar = 0.0.into();
+        for t in 1..nsteps {
+            let t = P::Scalar::from(t as NativeFloat * 1.0 / (nsteps as NativeFloat));
+            let p1 = self.eval(t);
+            let p2 = self.eval(t + stepsize);
+
+            arclen = arclen + (p1 - p2).squared_length().sqrt();
+        }
+        return arclen;
+    }
 }
 
 #[cfg(test)]
