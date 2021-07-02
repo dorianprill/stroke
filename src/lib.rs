@@ -48,7 +48,7 @@ pub use quadratic_bezier::QuadraticBezier;
 
 //   1. Either fix everything to 32-bit and accept performance loss (how it's done now)
 
-//   2. Make this value a 'must-config' in cargo.toml (requires either external libraries 
+//   2. Make this value a 'must-config' in cargo.toml (requires either external libraries
 //      or must wait for additional float types)
 
 // If it is a modern 64 bit architecture, it likely also has a 64 bit FPU
@@ -56,7 +56,7 @@ pub use quadratic_bezier::QuadraticBezier;
 type NativeFloat = f64;
 #[cfg(target_pointer_width = "64")]
 const EPSILON: f64 = f64::EPSILON;
-// For now, we fix all non-64 bit architectures to 32bit floats 
+// For now, we fix all non-64 bit architectures to 32bit floats
 // as smaller-width architectures are more likely to have different int/float sizes if they have a fpu
 #[cfg(not(target_pointer_width = "64"))]
 type NativeFloat = f32;
