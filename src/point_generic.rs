@@ -15,7 +15,7 @@ pub struct PointN<T, const N: usize>([T; N]);
 
 impl<T, const N: usize> PointN<T, N> {
     pub fn new(array: [T; N]) -> Self {
-        return PointN(array);
+        PointN(array)
     }
 }
 
@@ -36,7 +36,7 @@ where
                 return false;
             }
         }
-        return true;
+        true
     }
 }
 
@@ -47,7 +47,7 @@ where
     type Output = Self;
 
     fn add(self, other: PointN<T, N>) -> PointN<T, N> {
-        let mut res = self.clone();
+        let mut res = self;
         for i in 0..N {
             res.0[i] = self.0[i] + other.0[i];
         }
@@ -64,7 +64,7 @@ where
     type Output = Self;
 
     fn add(self, _rhs: T) -> PointN<T, N> {
-        let mut res = self.clone();
+        let mut res = self;
         for i in 0..N {
             res.0[i] = self.0[i] + _rhs;
         }
@@ -79,7 +79,7 @@ where
     type Output = Self;
 
     fn sub(self, other: PointN<T, N>) -> PointN<T, N> {
-        let mut res = self.clone();
+        let mut res = self;
         for i in 0..N {
             res.0[i] = self.0[i] - other.0[i];
         }
@@ -96,7 +96,7 @@ where
     type Output = Self;
 
     fn sub(self, _rhs: T) -> PointN<T, N> {
-        let mut res = self.clone();
+        let mut res = self;
         for i in 0..N {
             res.0[i] = self.0[i] - _rhs;
         }
@@ -115,7 +115,7 @@ where
     type Output = PointN<T, N>;
 
     fn mul(self, _rhs: U) -> PointN<T, N> {
-        let mut res = self.clone();
+        let mut res = self;
         for i in 0..res.0.len() {
             res.0[i] = res.0[i] * _rhs;
         }
@@ -159,14 +159,14 @@ where
     const DIM: usize = { N };
 
     fn axis(&self, index: usize) -> Self::Scalar {
-        return self.0[index].into();
+        self.0[index].into()
     }
 
     fn squared_length(&self) -> Self::Scalar {
         let mut sqr_dist = 0.0;
         for i in 0..N {
-            sqr_dist = sqr_dist + (self.0[i] * self.0[i]).into();
+            sqr_dist += (self.0[i] * self.0[i]).into();
         }
-        return sqr_dist.into();
+        sqr_dist
     }
 }

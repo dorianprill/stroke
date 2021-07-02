@@ -67,10 +67,10 @@ where
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
         // start with a copy of the original control points for now
         // TODO how to initialize const generic array without using unsafe?
-        let mut left: [P; N] = self.control_points.clone();
-        let mut right: [P; N] = self.control_points.clone();
+        let mut left: [P; N] = self.control_points;
+        let mut right: [P; N] = self.control_points;
         // these points get overriden each iteration; we save the intermediate results to 'left' and 'right'
-        let mut casteljau_points: [P; N] = self.control_points.clone();
+        let mut casteljau_points: [P; N] = self.control_points;
 
         for i in 1..=casteljau_points.len() {
             // save start point of level
@@ -83,14 +83,15 @@ where
                     casteljau_points[j] * (-t + 1.0) + casteljau_points[j + 1] * t;
             }
         }
-        return (
+
+        (
             Bezier {
                 control_points: left,
             },
             Bezier {
                 control_points: right,
             },
-        );
+        )
     }
 
     /// Returns the derivative curve of self which has N-1 control points.
@@ -108,7 +109,7 @@ where
                 break;
             }
         }
-        return Bezier::new(new_points);
+        Bezier::new(new_points)
     }
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.

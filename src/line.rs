@@ -20,14 +20,14 @@ where
     }
 
     pub fn eval(&self, t: P::Scalar) -> P {
-        return self.start + (self.end - self.start) * t;
+        self.start + (self.end - self.start) * t
     }
 
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
         // compute the split point by interpolation
         let ctrl_ab = self.start + (self.start - self.end) * t;
 
-        return (
+        (
             LineSegment {
                 start: self.start,
                 end: ctrl_ab,
@@ -36,7 +36,7 @@ where
                 start: ctrl_ab,
                 end: self.end,
             },
-        );
+        )
     }
 
     // DEPRECATED
@@ -52,7 +52,7 @@ where
         let l2 = (self.end - self.start).squared_length();
         // if start and endpoint are approx the same, return the distance to either
         if l2 < P::Scalar::from(EPSILON) {
-            return (self.start - p).squared_length().sqrt();
+            (self.start - p).squared_length().sqrt()
         } else {
             let v1 = p - self.start;
             let v2 = self.end - self.start;
@@ -68,7 +68,8 @@ where
                 t = P::Scalar::from(0.0);
             }
             let projection = self.start + (self.end - self.start) * t; // Projection falls on the segment
-            return (p - projection).squared_length().sqrt();
+
+            (p - projection).squared_length().sqrt()
         }
     }
 
@@ -80,7 +81,7 @@ where
     /// Return the derivative function.
     /// The derivative is also a bezier curve but of degree n-1 - In the case of a line the derivative vector.
     pub fn derivative(&self) -> P {
-        return self.end - self.start;
+        self.end - self.start
     }
 
     pub(crate) fn root(&self, a: P::Scalar, b: P::Scalar) -> ArrayVec<[P::Scalar; 1]> {
@@ -89,7 +90,7 @@ where
             return r;
         }
         r.push(-b / a);
-        return r;
+        r
     }
 
     /// Return the bounding box of the line as an array of (min, max) tuples for each dimension (its index)
@@ -106,7 +107,7 @@ where
             }
         }
 
-        return bounds;
+        bounds
     }
 }
 
