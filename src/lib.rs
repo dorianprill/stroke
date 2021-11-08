@@ -1,16 +1,8 @@
 #![no_std]
 #![forbid(unsafe_code)]
 #![allow(incomplete_features)]
-// let's get daring...
-#![feature(const_generics)]
 // this is needed to use expressions in const generics such as N-1 (see curve derivatives)
-#![feature(const_evaluatable_checked)]
-// this feature is was necessary to build an iterator over a
-// const generic array (see PointN impl) before 1.51
-//#![feature(array_value_iter)]
-//  use of unstable library feature 'array_value_iter'
-//  see issue #65798 <https://github.com/rust-lang/rust/issues/65798> for more information
-
+#![feature(generic_const_exprs)]
 // removes the need for generics with associated types to specify the
 // associated type like P:Point instead of P: Point<Scalar=f64>
 #![feature(associated_type_bounds)]
@@ -25,13 +17,13 @@ use tinyvec::ArrayVec;
 
 pub mod bezier;
 pub mod bezier_segment;
+pub mod bspline;
 pub mod cubic_bezier;
 pub mod line;
 pub mod point;
 pub mod point_generic;
 pub mod quadratic_bezier;
-//pub mod rational_bezier;
-pub mod bspline;
+mod roots;
 
 // export common types at crate root
 pub use bezier::Bezier;
