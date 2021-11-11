@@ -41,7 +41,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // render the paths of the curve to desired accuracy
     let nsteps: usize = 1000;
     let mut bezier_graph: Vec<(f64, f64)> = Vec::with_capacity(nsteps);
-    let deriv = bezier.derivative();
     for t in 0..nsteps {
         let t = t as f64 * 1f64 / (nsteps as f64);
         let p = bezier.eval_casteljau(t);
