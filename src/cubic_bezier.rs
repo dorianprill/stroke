@@ -51,6 +51,10 @@ where
         ctrl_2ab + (ctrl_2bc - ctrl_2ab) * t
     }
 
+    pub fn control_points(&self) -> [P; 4] {
+        [self.start, self.ctrl1, self.ctrl2, self.end]
+    }
+
     /// Returns the x coordinate of the curve evaluated at t
     /// Convenience shortcut for bezier.eval(t).x()
     pub fn axis(&self, t: P::Scalar, axis: usize) -> P::Scalar {

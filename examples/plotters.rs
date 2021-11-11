@@ -2,19 +2,22 @@ extern crate plotters;
 use plotters::prelude::*;
 
 extern crate stroke;
-use stroke::cubic_bezier::CubicBezier;
+use stroke::CubicBezier;
 use stroke::Point;
 use stroke::PointN;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cp = vec![
+
+    // control points for the cubic bezier curve
+    let cpoints = vec![
         (0f64, 1.77f64),
         (1.1f64, -1f64),
         (4.3f64, 3f64),
         (3.2f64, -4f64),
     ];
 
-    let ch = vec![
+    // the path for drawing the convex hull needs to be closed
+    let chull = vec![
         (0f64, 1.77f64),
         (1.1f64, -1f64),
         (3.2f64, -4f64),
@@ -23,10 +26,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let bezier = CubicBezier::new(
-        PointN::new([0f64, 1.77f64]),
-        PointN::new([1.1f64, -1f64]),
-        PointN::new([4.3f64, 3f64]),
-        PointN::new([3.2f64, -4f64]),
+            PointN::new([0f64, 1.77f64]),
+            PointN::new([1.1f64, -1f64]),
+            PointN::new([4.3f64, 3f64]),
+            PointN::new([3.2f64, -4f64])
     );
 
     let bounds = bezier.bounding_box();
@@ -35,8 +38,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ymin = bounds[1].0;
     let ymax = bounds[1].1;
 
+    // render the paths of the curve to desired accuracy
     let nsteps: usize = 1000;
     let mut bezier_graph: Vec<(f64, f64)> = Vec::with_capacity(nsteps);
+    let deriv = bezier.derivative();
     for t in 0..nsteps {
         let t = t as f64 * 1f64 / (nsteps as f64);
         let p = bezier.eval_casteljau(t);
@@ -52,14 +57,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .margin(5)
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d((bounds[0].0 - 2.0)..xmin + 6.0, ymin - 1.0..ymax + 3.0)?; // make graph a bit bigger than bounding box
+        .build_cartesian_2d((bounds[0].0 - 2.0)..(xmin + 6.0) , (ymin - 1.0)..(ymax + 3.0) )?; // make graph a bit bigger than bounding box
 
     chart.configure_mesh().draw()?;
 
-    // draw the control points
+    // draw the control points of B(t)
     chart
         .draw_series(PointSeries::of_element(
-            cp.clone(),
+            cpoints.clone(),
             5,
             &BLUE,
             &|coord, size, style| {
@@ -72,7 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )
             },
         ))?
-        .label("Control Points")
+        .label("Control Points of B(t)")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
 
     // draw the actual bezier curve
@@ -80,6 +85,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .draw_series(LineSeries::new(bezier_graph, &RED))?
         .label("B(t)")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+
 
     // draw the bounding box
     chart
@@ -100,10 +106,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .label("Bounding Box")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &GREEN));
 
-    // draw the control polygon
+    // draw the convex hull of control points
     chart
-        .draw_series(AreaSeries::new(ch.clone(), 0.0, &BLUE.mix(0.0)).border_style(&BLUE))?
-        .label("Control Polygon")
+        .draw_series(AreaSeries::new(chull, 0.0, &BLUE.mix(0.0)).border_style(&BLUE))?
+        .label("CH(control_points)")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
 
     chart

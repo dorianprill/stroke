@@ -37,6 +37,10 @@ where
         ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t
     }
 
+    pub fn control_points(&self) -> [P; 3] {
+        [self.start, self.ctrl, self.end]
+    }
+
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
         // unrolled de casteljau algorithm
         // _1ab is the first iteration from first (a) to second (b) control point and so on

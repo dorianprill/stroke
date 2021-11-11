@@ -49,6 +49,10 @@ where
         Bezier { control_points }
     }
 
+    pub fn control_points(&self) -> [P; N] {
+        self.control_points.clone()
+    }
+
     /// Evaluate a point on the curve at point 't' which should be in the interval [0,1]
     /// This is implemented using De Casteljau's algorithm (over a temporary array with const generic sizing)
     pub fn eval(&self, t: P::Scalar) -> P {
@@ -104,7 +108,7 @@ where
         let mut new_points: [P; N - 1] = [P::default(); N - 1];
         for (i, _) in self.control_points.iter().enumerate() {
             new_points[i] =
-                (self.control_points[i + 1] - self.control_points[i]) * (N as NativeFloat);
+                (self.control_points[i + 1] - self.control_points[i]) * ((N-1) as NativeFloat);
             if i == self.control_points.len() - 2 {
                 break;
             }
