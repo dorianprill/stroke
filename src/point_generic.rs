@@ -1,4 +1,5 @@
 use core::slice;
+use core::iter::IntoIterator;
 
 use super::*;
 //use num_traits::{Float, FromPrimitive};
@@ -128,7 +129,7 @@ impl<T, const N: usize> IntoIterator for PointN<T, N> {
     type IntoIter = core::array::IntoIter<Self::Item, N>;
 
     fn into_iter(self) -> Self::IntoIter {
-        core::array::IntoIter::new(self.0)
+        IntoIterator::into_iter(self.0)
     }
 }
 

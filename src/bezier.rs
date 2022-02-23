@@ -1,9 +1,11 @@
 use core::slice;
+use core::iter::IntoIterator;
 
-use super::point::Point;
+use super::Point;
+use super::Spline;
 use super::*;
 
-/// General implementation of a Bezier curve of arbitrary degree.
+/// General implementation of a Bezier curve of arbitrary degree (= number of control points - 1).
 /// The curve is solely defined by an array of 'control_points'. The degree is defined as degree = control_points.len() - 1.
 /// Points on the curve can be evaluated with an interpolation parameter 't' in interval [0,1] using the eval() and eval_casteljau() methods.
 /// Generic parameters:
@@ -19,12 +21,18 @@ where
     control_points: [P; N],
 }
 
+impl<P, const N: usize> Spline<P> for Bezier<P, {N}> where P: Point {
+    fn eval(&self, t: P::Scalar) -> P {
+        self.eval(t)
+    }
+}
+
 impl<P: Point, const N: usize> IntoIterator for Bezier<P, N> {
     type Item = P;
     type IntoIter = core::array::IntoIter<Self::Item, N>;
 
     fn into_iter(self) -> Self::IntoIter {
-        core::array::IntoIter::new(self.control_points)
+        IntoIterator::into_iter(self.control_points)
     }
 }
 
@@ -115,6 +123,31 @@ where
         }
         Bezier::new(new_points)
     }
+
+
+    /// Returns the real roots of the Bezier curve along one of its coordinate axes (i.e. the control points' axes).
+    /// There are the same number of roots as the degree of the curve nroots = degree = N_points-1
+    /// TODO tunyvec doesnt yet work with aconst generic expressions
+    // fn real_roots(&self, axis: usize) -> ArrayVec<[P::Scalar; N-1]> {
+    //     // Compute the axis-wise polynomial coefficients e.g. quadratic has N coefs a,b,c in at^2 + bt + c
+    //     // to do this generically, we need to find the coefs of the bezier of degree n by binomial expansion
+    //     // B_n(t) = sum_1_to_n ( binom(n,i) * s^(n-i) * t^i * p[i])
+    //     let mut res: ArrayVec<[P::Scalar; N-1]> = ArrayVec::new();
+    //     let mut npascal:    [P::Scalar; N] = [ P::Scalar::from(0.0); N];
+    //     let poly_coefs:     [P::Scalar; N] = [ P::Scalar::from(0.0); N];
+
+    //     // 1. calculate the n-th row of pascals triangle on a zero-based index (all values for i in the binom(n,i) part)
+    //     //    1      N = 0 wouldn't compile due to index out of bounds
+    //     //  1  (1)   N = 1 (last 1 is always omitted)
+    //     // 1  2  (1) N = 2
+    //     npascal[0] = 1.0.into();
+    //     for i in 1usize..N {
+    //         npascal[i] = npascal[i-1] * (N - i + 1) as NativeFloat / i as NativeFloat;
+    //     }
+    //     // 2. calculate the coefficients to binom(n,i) and p[i] (the s^(n-i) part)
+
+    //     res
+    // }
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.
     /// This works quite well, at ~32 segments it should already provide an error in the decimal places

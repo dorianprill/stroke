@@ -12,7 +12,7 @@ repository = "https://github.com/dorianprill/stroke-rs"
 readme = "README.md"
 keywords = ["point", "bezier", "spline", "graphics", "path" ]
 categories = ["no-std", "science", "graphics", "mathematics", "data-structures" ]
-edition = "2018"
+edition = "2021"
 license = "MIT"
 
 
