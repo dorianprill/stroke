@@ -64,7 +64,9 @@ where
     }
 
     /// Sample the a particular coordinate axis of the curve at t (expecting t between 0 and 1).
-    /// This function can panic!
+    /// Shortcut for curve.eval(t).axis(k)
+    /// This function can panic! 
+    /// TODO may add something like const_assert for Point's const DIM
     pub fn axis(&self, t: P::Scalar, axis: usize) -> P::Scalar {
         let t2 = t * t;
         let one_t = -t + 1.0;
@@ -230,7 +232,6 @@ where
     /// value: the coordinate value on the particular axis
     /// axis: the index of the axis
     /// Returns those roots of the function that are in the interval [0.0, 1.0].
-    #[allow(dead_code)]
     fn solve_t_for_axis(&self, value: P::Scalar, axis: usize) -> ArrayVec<[P::Scalar; 3]> {
         let mut result = ArrayVec::new();
         if self.is_a_point(EPSILON.into())

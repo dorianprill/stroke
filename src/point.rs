@@ -26,7 +26,7 @@ pub trait Point:
         + Div<NativeFloat, Output = Self::Scalar>;
     const DIM: usize;
     // Returns the component of the Point on its axis corresponding to index e.g. [0, 1, 2] -> [x, y, z]
-    // TODO remove, use mutable iterator instead (?)
+    // TODO maybe remove in favour of mutable iterator (?)
     fn axis(&self, index: usize) -> Self::Scalar;
 
     // Returns the squared L2-Norm of the Point interpreted as a Vector

@@ -134,7 +134,7 @@ where
     Func: Fn(NativeFloat) -> NativeFloat,
     Deriv: Fn(NativeFloat) -> NativeFloat,
 {
-    let eps = eps.unwrap_or(EPSILON);
+    let eps = eps.unwrap_or(1e-3);
     let max_iter = max_iter.unwrap_or(128);
 
     let mut x = start;
