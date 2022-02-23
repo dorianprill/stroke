@@ -8,7 +8,7 @@ description = """A zero-allocation library providing const-generic
                 for general/embedded/wasm use supporting #![no_std] 
                 environments written in 100% safe Rust."""
 authors = ["Dorian Prill"]
-repository = "https://github.com/dorianprill/stroke-rs"
+repository = "https://github.com/dorianprill/stroke"
 readme = "README.md"
 keywords = ["point", "bezier", "spline", "graphics", "path" ]
 categories = ["no-std", "science", "graphics", "mathematics", "data-structures" ]
