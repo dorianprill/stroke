@@ -17,7 +17,7 @@ pub enum RootFindingError {
 /// Solve for the roots of the polynomial at^2 + bt + c
 /// Returns an ArrayVec of roots in the order
 /// needs to be called for x and y components separately
-fn roots_square(a: NativeFloat, b: NativeFloat, c: NativeFloat) -> ArrayVec<[NativeFloat; 2]> {
+pub(crate) fn roots_square(a: NativeFloat, b: NativeFloat, c: NativeFloat) -> ArrayVec<[NativeFloat; 2]> {
     let mut result = ArrayVec::new();
 
     // check if can be handled below quadratic order
@@ -47,7 +47,7 @@ fn roots_square(a: NativeFloat, b: NativeFloat, c: NativeFloat) -> ArrayVec<[Nat
 /// using cardano's algorithm (code adapted from github.com/nical/lyon)
 /// returns an ArrayVec of the present roots (max 3)
 #[allow(clippy::many_single_char_names)] // this is math, get over it
-fn roots_cubic(
+pub(crate) fn roots_cubic(
     a: NativeFloat,
     b: NativeFloat,
     c: NativeFloat,
@@ -123,7 +123,7 @@ fn roots_cubic(
 ///   d:        d=f', the derivative of f
 ///   eps:      Desired accuracy of solution
 ///   max_iter: Number of iterations until a solution shall be found
-fn root_newton_raphson<Func, Deriv>(
+pub(crate) fn root_newton_raphson<Func, Deriv>(
     start: NativeFloat,
     f: Func,
     d: Deriv,

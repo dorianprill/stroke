@@ -1,6 +1,8 @@
 use core::slice;
 use core::iter::IntoIterator;
 
+use crate::roots::root_newton_raphson;
+
 use super::Point;
 use super::Spline;
 use super::*;
@@ -21,13 +23,14 @@ where
     control_points: [P; N],
 }
 
+
 impl<P, const N: usize> Spline<P> for Bezier<P, {N}> where P: Point {
     fn eval(&self, t: P::Scalar) -> P {
         self.eval(t)
     }
 }
 
-impl<P: Point, const N: usize> IntoIterator for Bezier<P, N> {
+impl<P: Point, const N: usize> IntoIterator for Bezier<P, {N}> {
     type Item = P;
     type IntoIter = core::array::IntoIter<Self::Item, N>;
 
@@ -36,7 +39,7 @@ impl<P: Point, const N: usize> IntoIterator for Bezier<P, N> {
     }
 }
 
-impl<'a, P: Point, const N: usize> IntoIterator for &'a mut Bezier<P, N> {
+impl<'a, P: Point, const N: usize> IntoIterator for &'a mut Bezier<P, {N}> {
     type Item = &'a mut P;
     type IntoIter = slice::IterMut<'a, P>;
 
@@ -147,6 +150,12 @@ where
         }
         // 2. calculate the coefficients to binom(n,i) and p[i] (the s^(n-i) part)
 
+        // 3. find candidate points for roots of that curve
+
+
+        // 4. search for roots using newton-raphson algo
+        //root_newton_raphson(0.0, self, self.derivative(), Some(0.01), Some(128));
+        // TODO impl Fn for Bezier to call Bezier.eval()
         res
     }
 

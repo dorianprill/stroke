@@ -8,6 +8,8 @@
 // removes the need for generics with associated types to specify the
 // associated type like P:Point instead of P: Point<Scalar=f64>
 #![feature(associated_type_bounds)]
+// make splines usable as Fn in trait bounds
+#![feature(fn_traits)]
 
 use core::ops::{Add, Mul, Sub};
 
