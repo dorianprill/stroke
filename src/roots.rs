@@ -114,61 +114,61 @@ pub(crate) fn roots_cubic(
     result
 }
 
-/// Find a single (any) root of the function f(x) = 0 close to a given a start value, f and its derivative f'.
-/// This function cannot predict which root is going to be found.
-/// Uses the Newton-Raphson method because it is suited for splines as they are cont. differentiable.
-/// Parameters:
-///   start:    Starting point for the search
-///   f:        The function for which to find the root
-///   d:        d=f', the derivative of f
-///   eps:      Desired accuracy of solution
-///   max_iter: Number of iterations until a solution shall be found
-pub(crate) fn root_newton_raphson<Func, Deriv>(
-    start: NativeFloat,
-    f: Func,
-    d: Deriv,
-    eps: Option<NativeFloat>,
-    max_iter: Option<usize>,
-) -> Result<NativeFloat, RootFindingError>
-where
-    Func: Fn(NativeFloat) -> NativeFloat,
-    Deriv: Fn(NativeFloat) -> NativeFloat,
-{
-    let eps = eps.unwrap_or(1e-3);
-    let max_iter = max_iter.unwrap_or(128);
+// /// Find a single (any) root of the function f(x) = 0 close to a given a start value, f and its derivative f'.
+// /// This function cannot predict which root is going to be found.
+// /// Uses the Newton-Raphson method because it is suited for splines as they are cont. differentiable.
+// Parameters:
+//   start:    Starting point for the search
+//   f:        The function for which to find the root
+//   d:        d=f', the derivative of f
+//   eps:      Desired accuracy of solution
+//   max_iter: Number of iterations until a solution shall be found
+// pub(crate) fn root_newton_raphson<Func, Deriv>(
+//     start: NativeFloat,
+//     f: Func,
+//     d: Deriv,
+//     eps: Option<NativeFloat>,
+//     max_iter: Option<usize>,
+// ) -> Result<NativeFloat, RootFindingError>
+// where
+//     Func: Fn(NativeFloat) -> NativeFloat,
+//     Deriv: Fn(NativeFloat) -> NativeFloat,
+// {
+//     let eps = eps.unwrap_or(1e-3);
+//     let max_iter = max_iter.unwrap_or(128);
 
-    let mut x = start;
+//     let mut x = start;
 
-    let mut iter = 0;
-    loop {
-        let f = f(x);
-        let d = d(x);
-        if f < eps {
-            return Ok(x);
-        }
-        // if derivative is 0
-        if d < EPSILON {
-            // either try to choose a better starting point
-            if iter == 0 {
-                x = x + 1.0;
-                iter = iter + 1;
-                continue;
-            // or fail
-            } else {
-                return Err(RootFindingError::ZeroDerivative);
-            }
-        }
+//     let mut iter = 0;
+//     loop {
+//         let f = f(x);
+//         let d = d(x);
+//         if f < eps {
+//             return Ok(x);
+//         }
+//         // if derivative is 0
+//         if d < EPSILON {
+//             // either try to choose a better starting point
+//             if iter == 0 {
+//                 x = x + 1.0;
+//                 iter = iter + 1;
+//                 continue;
+//             // or fail
+//             } else {
+//                 return Err(RootFindingError::ZeroDerivative);
+//             }
+//         }
 
-        let x1 = x - f / d;
-        if (x - x1).abs() < eps {
-            return Ok(x1);
-        }
+//         let x1 = x - f / d;
+//         if (x - x1).abs() < eps {
+//             return Ok(x1);
+//         }
 
-        x = x1;
-        iter = iter + 1;
+//         x = x1;
+//         iter = iter + 1;
 
-        if iter == max_iter {
-            return Err(RootFindingError::FailedToConverge);
-        }
-    }
-}
+//         if iter == max_iter {
+//             return Err(RootFindingError::FailedToConverge);
+//         }
+//     }
+// }

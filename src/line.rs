@@ -60,6 +60,11 @@ where
             for (i, _) in v1.into_iter().enumerate() {
                 dot = dot + v1.axis(i) * v2.axis(i);
             }
+            // v1 and v2 will by definition always have the same number of axes and produce a value for each Item
+            // dot = v1.into_iter()
+            //         .zip(v2.into_iter())
+            //         .map(|(x1, x2)| x1 * x2)
+            //         .sum::<P::Scalar>();
             let mut t = P::Scalar::from(0.0);
             if dot / l2 < P::Scalar::from(1.0) {
                 t = dot / l2;

@@ -1,5 +1,5 @@
 use core::slice;
-use core::iter::IntoIterator;
+use core::iter::{IntoIterator, Sum};
 
 use super::*;
 //use num_traits::{Float, FromPrimitive};
@@ -153,6 +153,7 @@ where
         + Sub<NativeFloat, Output = T>
         + Mul<T, Output = T>
         + Mul<NativeFloat, Output = T>
+        + Sum<NativeFloat>
         + From<NativeFloat>
         + Into<NativeFloat>,
 {
@@ -160,6 +161,7 @@ where
     const DIM: usize = { N };
 
     fn axis(&self, index: usize) -> Self::Scalar {
+        assert!(index <= N);
         self.0[index].into()
     }
 

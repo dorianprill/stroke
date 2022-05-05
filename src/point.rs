@@ -1,5 +1,5 @@
 use super::NativeFloat;
-use core::ops::{Add, Div, Mul, Sub};
+use core::{ops::{Add, Div, Mul, Sub}, iter::Sum};
 use num_traits::Float;
 
 /// The Point trait is the only interface on which the library relies.
@@ -12,6 +12,7 @@ pub trait Point:
     + Mul<NativeFloat, Output = Self>
     + Copy
     + PartialEq
+    //+ PartialOrd
     + Default
     + IntoIterator
 {
@@ -23,10 +24,12 @@ pub trait Point:
         + Add<NativeFloat, Output = Self::Scalar>
         + Sub<NativeFloat, Output = Self::Scalar>
         + Mul<NativeFloat, Output = Self::Scalar>
-        + Div<NativeFloat, Output = Self::Scalar>;
+        + Div<NativeFloat, Output = Self::Scalar>
+        + Sum<NativeFloat>;
     const DIM: usize;
     // Returns the component of the Point on its axis corresponding to index e.g. [0, 1, 2] -> [x, y, z]
-    // TODO maybe remove in favour of mutable iterator (?)
+    /// Panics if index is greater than implementors dimension
+    // TODO maybe remove in favour of iterator (?)
     fn axis(&self, index: usize) -> Self::Scalar;
 
     // Returns the squared L2-Norm of the Point interpreted as a Vector
