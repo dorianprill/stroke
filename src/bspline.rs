@@ -5,7 +5,7 @@ use super::*;
 
 /// General Implementation of a BSpline with choosable degree, control points and knots.
 /// Generic parameters:
-/// P: Generic points 'P' as defined by the Point trait
+/// P: const generic points array 'P' as defined by the Point trait
 /// F: Any float value used for the knots and interpolation (usually the same as the internal generic parameter within P<F>).
 /// const generic parameters:
 /// C: Number of control points
@@ -13,7 +13,6 @@ use super::*;
 /// O: Order of the piecewise function used for interpolation order = degree + 1
 /// While C, K, O relate to each other in the following manner
 ///     K = C + O where O = D + 1
-/// it does (currently?) not compile using summation of const generic arguments for the backing arrays
 #[derive(Clone)]
 pub struct BSpline<P, const K: usize, const C: usize, const O: usize>
 where
@@ -109,7 +108,6 @@ where
     /// array indices we no longer need to compute the current level (the left one
     /// used computing node j).
     fn de_boor_iterative(&self, t: P::Scalar, start_knot: usize) -> P {
-        // Safety: every item in this array will get writtenbefore it is being used
         let mut tmp: [P; O] = [P::default(); O];
         for j in 0..=self.degree {
             let p = j + start_knot - self.degree - 1;
@@ -172,6 +170,29 @@ where
         }
         arclen
     }
+
+
+    /// Returns the derivative curve of self which has N-1 control points.
+    /// The derivative of an nth degree B-Spline curve is an (n-1)th degree (d) B-Spline curve,
+    /// with the same knot vector, and new control points Q0...Qn-1 derived from the
+    /// original control points Pi as: 
+    ///                 d 
+    /// Qi =    ----------------- (P(i+1)-P(i))
+    ///         k[i+d+1] - k[i+1].
+    /// with degree = curve_order - 1
+    /// TODO test & verify function!
+    pub fn derivative(&self) -> BSpline<P, K, {C-1}, { O - 1 }> {
+        let mut new_points: [P; C-1] = [P::default(); {C-1}];
+        for (i, _) in self.control_points.iter().enumerate() {
+            new_points[i] =
+                (self.control_points[i + 1] - self.control_points[i]) * ((O-1) as NativeFloat / (self.knots[i+{O-1}+1] - self.knots[i+1]).into());
+            if i == self.control_points.len() - 2 {
+                break;
+            }
+        }
+        BSpline{degree: {O}-1, control_points: new_points, knots: self.knots }
+    }
+
 }
 
 #[cfg(test)]
