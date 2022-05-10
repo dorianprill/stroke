@@ -1,10 +1,10 @@
 use core::slice;
 use core::iter::IntoIterator;
 
-use crate::roots::RootFindingError;
+//use crate::roots::RootFindingError;
 
-use super::Point;
-use super::Spline;
+use crate::point::Point;
+use crate::spline::Spline;
 use super::*;
 
 /// General implementation of a Bezier curve of arbitrary degree (= number of control points - 1).
