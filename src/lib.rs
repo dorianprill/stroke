@@ -19,6 +19,9 @@ use num_traits::float::Float;
 extern crate tinyvec;
 use tinyvec::ArrayVec;
 
+
+extern crate nalgebra;
+
 // abstraction types
 pub mod bezier_segment;
 // specialized types
@@ -33,6 +36,7 @@ pub mod bspline;
 // Traits
 pub mod point;
 pub mod spline;
+mod point_nalgebra;
 
 
 mod roots;
