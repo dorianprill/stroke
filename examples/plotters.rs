@@ -3,11 +3,8 @@ use plotters::prelude::*;
 
 extern crate stroke;
 use stroke::CubicBezier;
-use stroke::Point;
-use stroke::PointN;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     // control points for the cubic bezier curve
     let cpoints = vec![
         (0f64, 1.77f64),
@@ -25,26 +22,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (0f64, 1.77f64),
     ];
 
-    let bezier = CubicBezier::new(
-            PointN::new([0f64, 1.77f64]),
-            PointN::new([1.1f64, -1f64]),
-            PointN::new([4.3f64, 3f64]),
-            PointN::new([3.2f64, -4f64])
-    );
+    let bezier = CubicBezier::new([
+        [0f64, 1.77f64].into(),
+        [1.1f64, -1f64].into(),
+        [4.3f64, 3f64].into(),
+        [3.2f64, -4f64].into(),
+    ]);
 
     let bounds = bezier.bounding_box();
-    let xmin = bounds[0].0;
-    let xmax = bounds[0].1;
-    let ymin = bounds[1].0;
-    let ymax = bounds[1].1;
+    let xmin = bounds.0.x;
+    let xmax = bounds.1.x;
+    let ymin = bounds.0.y;
+    let ymax = bounds.1.y;
 
     // render the paths of the curve to desired accuracy
     let nsteps: usize = 1000;
     let mut bezier_graph: Vec<(f64, f64)> = Vec::with_capacity(nsteps);
     for t in 0..nsteps {
         let t = t as f64 * 1f64 / (nsteps as f64);
-        let p = bezier.eval_casteljau(t);
-        bezier_graph.push((p.axis(0), p.axis(1)));
+        let p = bezier.eval(t);
+        bezier_graph.push((p[0], p[1]));
     }
 
     let root = BitMapBackend::new("cubic_bezier_bounding_box.png", (640, 480)).into_drawing_area();
@@ -56,7 +53,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .margin(5)
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d((bounds[0].0 - 2.0)..(xmin + 6.0) , (ymin - 1.0)..(ymax + 3.0) )?; // make graph a bit bigger than bounding box
+        .build_cartesian_2d(
+            (bounds.0.x - 2.0)..(xmin + 6.0),
+            (ymin - 1.0)..(ymax + 3.0),
+        )?; // make graph a bit bigger than bounding box
 
     chart.configure_mesh().draw()?;
 
@@ -84,7 +84,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .draw_series(LineSeries::new(bezier_graph, &RED))?
         .label("B(t)")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
-
 
     // draw the bounding box
     chart

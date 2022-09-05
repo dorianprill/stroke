@@ -1,7 +1,7 @@
+use nalgebra::{Dim, SVector};
 /// spline.rs
 /// Trait for common abstractions over all spline types (Bezier, B-Spline)
-use super::Point;
 
-pub trait Spline<P: Point> {
-    fn eval(&self, t: P::Scalar) -> P;
+pub trait Spline<T, const DIM: usize> {
+    fn eval(&self, t: T) -> SVector<T, DIM>;
 }

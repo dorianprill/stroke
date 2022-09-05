@@ -121,23 +121,23 @@ mod tests
     fn from_constructors() {
 
         let line = LineSegment::new(
-            PointN::new([0f64,  1.77f64]),
-            PointN::new([3.2f64, -4f64]),
+            [0f64,  1.77f64].into(),
+            [3.2f64, -4f64].into(),
         );
         let rational_lin = RationalBezier::from_linear(line, &[1.1, 2.2]);
 
         let quad = QuadraticBezier::new( 
-            PointN::new([0f64,  1.77f64]),
-            PointN::new([4.3f64, 3f64]),
-            PointN::new([3.2f64, -4f64]),
+            [0f64,  1.77f64].into(),
+            [4.3f64, 3f64].into(),
+            [3.2f64, -4f64].into(),
         );
         let rational_quad = RationalBezier::from_quadratic(quad, &[1.1, 7.5, 2.2]);
 
         let cubic = CubicBezier::new( 
-            PointN::new([0f64,  1.77f64]),
-            PointN::new([1.1f64, -1f64]),
-            PointN::new([4.3f64, 3f64]),
-            PointN::new([3.2f64, -4f64]),
+            [0f64,  1.77f64].into(),
+            [1.1f64, -1f64].into(),
+            [4.3f64, 3f64].into(),
+            [3.2f64, -4f64].into(),
         );
         let rational_cubic = RationalBezier::from_cubic(cubic, &[1.1, 9.7, 7.5, 2.2]);
 

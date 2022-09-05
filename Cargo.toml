@@ -26,6 +26,7 @@ exclude = [
 
 [dependencies]
 tinyvec = { version = "^1.5", features = ["rustc_1_55"] }
+nalgebra = "0.31.1"
 
 
 [dependencies.num-traits]

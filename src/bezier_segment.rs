@@ -1,21 +1,19 @@
+use crate::bezier::Scalar;
+
 use super::cubic_bezier::CubicBezier;
 use super::line::LineSegment;
-use super::point::Point;
 use super::quadratic_bezier::QuadraticBezier;
 use super::*;
+use nalgebra::SVector;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum BezierSegment<P: Point> {
-    Linear(LineSegment<P>),
-    Quadratic(QuadraticBezier<P>),
-    Cubic(CubicBezier<P>),
+pub enum BezierSegment<T: Scalar, const DIM: usize> {
+    Linear(LineSegment<T, DIM>),
+    Quadratic(QuadraticBezier<T, DIM>),
+    Cubic(CubicBezier<T, DIM>),
 }
-
-impl<P> BezierSegment<P>
-where
-    P: Point,
-{
-    pub fn eval<F>(&self, t: P::Scalar) -> P {
+impl<T: Scalar, const DIM: usize> BezierSegment<T, DIM> {
+    pub fn eval<F>(&self, t: T) -> SVector<T, DIM> {
         match self {
             BezierSegment::Linear(segment) => segment.eval(t),
             BezierSegment::Quadratic(segment) => segment.eval(t),
@@ -23,27 +21,27 @@ where
         }
     }
 
-    pub fn start(&self) -> P {
+    pub fn start(&self) -> SVector<T, DIM> {
         match self {
-            BezierSegment::Linear(segment) => segment.start,
-            BezierSegment::Quadratic(segment) => segment.start,
-            BezierSegment::Cubic(segment) => segment.start,
+            BezierSegment::Linear(segment) => segment.start(),
+            BezierSegment::Quadratic(segment) => segment.start(),
+            BezierSegment::Cubic(segment) => segment.start(),
         }
     }
 
     #[inline]
-    pub fn end(&self) -> P {
+    pub fn end(&self) -> SVector<T, DIM> {
         match self {
-            BezierSegment::Linear(segment) => segment.end,
-            BezierSegment::Quadratic(segment) => segment.end,
-            BezierSegment::Cubic(segment) => segment.end,
+            BezierSegment::Linear(segment) => segment.end(),
+            BezierSegment::Quadratic(segment) => segment.end(),
+            BezierSegment::Cubic(segment) => segment.end(),
         }
     }
 
     #[inline]
     pub fn is_linear<F>(&self, tolerance: F) -> bool
     where
-        F: Float + Into<P::Scalar>,
+        F: Float + Into<T>,
     {
         match self {
             BezierSegment::Linear(..) => true,
@@ -53,7 +51,7 @@ where
     }
 
     #[inline]
-    pub fn baseline(&self) -> LineSegment<P> {
+    pub fn baseline(&self) -> LineSegment<T, DIM> {
         match self {
             BezierSegment::Linear(segment) => *segment,
             BezierSegment::Quadratic(segment) => segment.baseline(),
@@ -62,9 +60,9 @@ where
     }
 
     /// Split this segment into two sub-segments.
-    pub fn split<F>(&self, t: F) -> (BezierSegment<P>, BezierSegment<P>)
+    pub fn split<F>(&self, t: F) -> (BezierSegment<T, DIM>, BezierSegment<T, DIM>)
     where
-        F: Float + Into<P::Scalar>,
+        F: Float + Into<T>,
     {
         match self {
             BezierSegment::Linear(segment) => {
@@ -83,29 +81,20 @@ where
     }
 }
 
-impl<P> From<LineSegment<P>> for BezierSegment<P>
-where
-    P: Point,
-{
-    fn from(s: LineSegment<P>) -> Self {
+impl<T: Scalar, const DIM: usize> From<LineSegment<T, DIM>> for BezierSegment<T, DIM> {
+    fn from(s: LineSegment<T, DIM>) -> Self {
         BezierSegment::Linear(s)
     }
 }
 
-impl<P> From<QuadraticBezier<P>> for BezierSegment<P>
-where
-    P: Point,
-{
-    fn from(s: QuadraticBezier<P>) -> Self {
+impl<T: Scalar, const DIM: usize> From<QuadraticBezier<T, DIM>> for BezierSegment<T, DIM> {
+    fn from(s: QuadraticBezier<T, DIM>) -> Self {
         BezierSegment::Quadratic(s)
     }
 }
 
-impl<P> From<CubicBezier<P>> for BezierSegment<P>
-where
-    P: Point,
-{
-    fn from(s: CubicBezier<P>) -> Self {
+impl<T: Scalar, const DIM: usize> From<CubicBezier<T, DIM>> for BezierSegment<T, DIM> {
+    fn from(s: CubicBezier<T, DIM>) -> Self {
         BezierSegment::Cubic(s)
     }
 }
