@@ -1,6 +1,6 @@
-use super::LineSegment;
+
 use super::*;
-use nalgebra::{Dim, Vector};
+
 
 pub type QuadraticBezier<T, const DIM: usize> = Bezier<T, DIM, 3>;
 

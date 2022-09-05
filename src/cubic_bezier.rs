@@ -1,7 +1,7 @@
-use super::LineSegment;
-use super::QuadraticBezier;
+
+
 use super::*;
-use nalgebra::{Dim, Vector};
+
 
 pub type CubicBezier<T, const DIM: usize> = Bezier<T, DIM, 4>;
 

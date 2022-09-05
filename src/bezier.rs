@@ -2,8 +2,8 @@ use core::fmt::Debug;
 use core::iter::IntoIterator;
 use core::slice;
 use nalgebra::{
-    allocator::Allocator, ClosedAdd, ClosedDiv, ClosedMul, ClosedSub, ComplexField, Dim, Field,
-    RealField, SVector, SimdPartialOrd, SimdValue, Storage, Vector3, U1,
+    ClosedMul, ComplexField,
+    RealField, SVector,
 };
 use num_traits::{NumCast, Zero};
 
@@ -120,7 +120,7 @@ impl<T: Scalar, const DIM: usize, const N: usize> Bezier<T, DIM, N> {
     /// the derivative has three new weights:
     ///     w0 = 3(w1-w0), w'1 = 3(w2-w1) and w'2 = 3(w3-w2).
     pub fn derivative(&self) -> Bezier<T, DIM, { N - 1 }> {
-        let x = self.control_points[0];
+        let _x = self.control_points[0];
         let mut new_points = [[T::zero(); DIM].into(); N - 1];
         for (i, _) in self.control_points.iter().enumerate() {
             new_points[i] =
@@ -241,15 +241,14 @@ impl<T: Scalar, const DIM: usize, const N: usize> Bezier<T, DIM, N> {
         }
     }
 
-    
     /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension (its index)
-    pub fn bounding_box(&self) -> (SVector<T, DIM>, SVector<T, DIM>) { 
+    pub fn bounding_box(&self) -> (SVector<T, DIM>, SVector<T, DIM>) {
         ([T::zero(); DIM].into(), [T::zero(); DIM].into())
     }
 }
 
 impl<T: Scalar, const DIM: usize> Bezier<T, DIM, 2> {
-    pub fn distance_to_point(&self, point: &SVector<T, DIM>) -> T {
+    pub fn distance_to_point(&self, _point: &SVector<T, DIM>) -> T {
         T::zero()
     }
 }
@@ -258,8 +257,8 @@ impl<T: Scalar, const DIM: usize> Bezier<T, DIM, 2> {
 mod tests {
     use nalgebra::Vector2;
 
-    use super::CubicBezier;
-    use super::QuadraticBezier;
+    
+    
     use super::*;
 
     //use crate::num_traits::{Pow};
@@ -275,7 +274,7 @@ mod tests {
         ];
 
         let curve = Bezier::new(points);
-        let b = curve;
+        let _b = curve;
 
         // check if start/end points match
         let start = curve.eval(0.0);

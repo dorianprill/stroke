@@ -1,4 +1,4 @@
-use nalgebra::{Dim, SVector};
+use nalgebra::{SVector};
 /// spline.rs
 /// Trait for common abstractions over all spline types (Bezier, B-Spline)
 

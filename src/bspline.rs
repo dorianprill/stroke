@@ -3,11 +3,11 @@ use core::slice::*;
 use crate::bezier::Scalar;
 
 use super::*;
-use nalgebra::{ComplexField, Dim, SVector};
+use nalgebra::{ComplexField, SVector};
 
 pub struct If<const B: bool>;
 pub trait True {}
-impl True for If<{ true }> {}
+impl True for If<true> {}
 
 /// General Implementation of a BSpline with choosable degree, control points and knots.
 /// Generic parameters:
@@ -37,10 +37,10 @@ where
 impl<T: Scalar, const DIM: usize, const K: usize, const C: usize> BSpline<T, DIM, { K }, { C }>
 where
     [(); K - C]: Sized,
-// where
-//     If<{ K > D - 1 }>: True,
-//     [(); K - D - 1]: Sized,
-//     [(); D +1]: Sized,
+    // where
+    //     If<{ K > D - 1 }>: True,
+    //     [(); K - D - 1]: Sized,
+    //     [(); D +1]: Sized,
 {
     const fn D() -> usize {
         K - C - 1
@@ -110,7 +110,10 @@ where
     /// passing a `t` value outside of this range will result in an assert on debug builds
     /// and likely a crash on release builds.
     pub fn knot_domain(&self) -> (T, T) {
-        (self.knots[Self::D()], self.knots[self.knots.len() - 1 - Self::D()])
+        (
+            self.knots[Self::D()],
+            self.knots[self.knots.len() - 1 - Self::D()],
+        )
     }
 
     /// Iteratively compute de Boor's B-spline algorithm, this computes the recursive
@@ -128,7 +131,8 @@ where
             let k = lvl + 1;
             for j in 0..Self::D() - lvl {
                 let i = j + k + start_knot - Self::D();
-                let alpha = (t - self.knots[i - 1]) / (self.knots[i + Self::D() - k] - self.knots[i - 1]);
+                let alpha =
+                    (t - self.knots[i - 1]) / (self.knots[i + Self::D() - k] - self.knots[i - 1]);
                 debug_assert!(!alpha.is_nan());
                 tmp[j] = tmp[j] * (-alpha + T::from(1.0).unwrap()) + tmp[j + 1] * alpha;
             }
@@ -163,8 +167,7 @@ where
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.
     /// This approximation is unfeasable if desired accuracy is greater than ~2 decimal places
-    pub fn arclen(&self, nsteps: usize) -> T
-    {
+    pub fn arclen(&self, nsteps: usize) -> T {
         let stepsize = T::from(1.0).unwrap() / T::from(nsteps).unwrap();
         let mut arclen = T::zero();
         // evaluate the curve, t needs to be inside the knot domain!
@@ -194,11 +197,13 @@ where
     /// TODO test & verify function!
     pub fn derivative(&self) -> BSpline<T, DIM, K, { C - 1 }>
     where
-        [(); K - (C - 1)]: Sized, {
+        [(); K - (C - 1)]: Sized,
+    {
         let mut new_points: [SVector<T, DIM>; C - 1] = [[T::zero(); DIM].into(); C - 1];
         for (i, _) in self.control_points.iter().enumerate() {
             new_points[i] = (self.control_points[i + 1] - self.control_points[i])
-                * (T::from(Self::D()).unwrap() / (self.knots[i + Self::D() + 1] - self.knots[i + 1]).into());
+                * (T::from(Self::D()).unwrap()
+                    / (self.knots[i + Self::D() + 1] - self.knots[i + 1]).into());
             if i == self.control_points.len() - 2 {
                 break;
             }
@@ -209,7 +214,7 @@ where
         }
     }
 }
-/* 
+/*
 impl<T: Scalar, const DIM: usize, const K: usize, const D: usize> BSpline<T, DIM, { K }, { D }>
 where
     If<{ K > D - 1 }>: True,
@@ -217,14 +222,14 @@ where
     [(); { K - D - 2 }]: Sized,
     If<{ K > { D - 1 } - 1 }>: True,
 {
-    
+
 }
 */
 #[cfg(test)]
 mod tests {
     use std::dbg;
 
-    use nalgebra::Vector2;
+    
 
     //use std;
     use super::*;
@@ -237,7 +242,6 @@ mod tests {
             [0f64, 1.77f64].into(),
             [1.1f64, -1f64].into(),
             [4.3f64, 3f64].into(),
-
             [3.2f64, -4f64].into(),
         ];
         let knots: [f64; 8] = [0., 0., 0., 1., 2., 3., 3., 3.];
@@ -265,6 +269,5 @@ mod tests {
         }
         // for now only check if has positive arclen
         assert!(curve.arclen(100) > 0.);
-
     }
 }

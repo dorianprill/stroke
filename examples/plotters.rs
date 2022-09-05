@@ -53,10 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .margin(5)
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d(
-            (bounds.0.x - 2.0)..(xmin + 6.0),
-            (ymin - 1.0)..(ymax + 3.0),
-        )?; // make graph a bit bigger than bounding box
+        .build_cartesian_2d((bounds.0.x - 2.0)..(xmin + 6.0), (ymin - 1.0)..(ymax + 3.0))?; // make graph a bit bigger than bounding box
 
     chart.configure_mesh().draw()?;
 

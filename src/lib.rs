@@ -11,7 +11,7 @@
 // make splines usable as Fn in trait bounds
 //#![feature(fn_traits)]
 
-use core::ops::{Add, Mul, Sub};
+
 
 extern crate num_traits;
 use num_traits::float::Float;
@@ -39,7 +39,7 @@ pub use bezier::Bezier;
 pub use bspline::BSpline;
 pub use cubic_bezier::CubicBezier;
 pub use line::LineSegment;
-use nalgebra::{Dim, Vector};
+
 pub use quadratic_bezier::QuadraticBezier;
 pub use spline::Spline;
 

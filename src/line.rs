@@ -1,5 +1,5 @@
 use super::*;
-use nalgebra::{Dim, Vector, Vector2};
+
 
 pub type LineSegment<T, const DIM: usize> = Bezier<T, DIM, 2>;
 /*
