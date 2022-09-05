@@ -1,10 +1,7 @@
 use core::fmt::Debug;
 use core::iter::IntoIterator;
 use core::slice;
-use nalgebra::{
-    ClosedMul, ComplexField,
-    RealField, SVector,
-};
+use nalgebra::{ClosedMul, ComplexField, RealField, SVector};
 use num_traits::{NumCast, Zero};
 
 //use crate::roots::RootFindingError;
@@ -257,8 +254,6 @@ impl<T: Scalar, const DIM: usize> Bezier<T, DIM, 2> {
 mod tests {
     use nalgebra::Vector2;
 
-    
-    
     use super::*;
 
     //use crate::num_traits::{Pow};

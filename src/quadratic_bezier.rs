@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 pub type QuadraticBezier<T, const DIM: usize> = Bezier<T, DIM, 3>;
 

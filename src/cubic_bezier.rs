@@ -1,7 +1,4 @@
-
-
 use super::*;
-
 
 pub type CubicBezier<T, const DIM: usize> = Bezier<T, DIM, 4>;
 

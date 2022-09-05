@@ -83,15 +83,21 @@ where
     /// on debug builds and on release builds you'll likely get an out of bounds crash.
     pub fn eval(&self, t: T) -> SVector<T, DIM> {
         debug_assert!(t >= self.knot_domain().0 && t <= self.knot_domain().1);
+
+        let mut span = self.knots.partition_point(|&knot| knot <= t);
+        if span > 0 { 
+            span -= 1;
+        }
+
         // Find the knot span that contains t i.e. the first index with a knot value greater than the t we're searching for.
         // We need to find the start of the knot span t is in, such that: knots[span] <= t < knots[span + 1]
         // Note: A custom function is used to exploit binary search (knots are sorted)
-        let span = match self.upper_bounds(&self.knots[..], t) {
-            Some(x) if x == 0 => Self::D(), // degree
-            Some(x) if x >= self.knots.len() - Self::D() - 1 => self.knots.len() - Self::D() - 1,
-            Some(x) => x,
-            None => self.knots.len() - Self::D() - 1,
-        };
+        // let span = match self.upper_bounds(&self.knots[..], t) {
+        //     Some(x) if x == 0 => Self::D(), // degree
+        //     Some(x) if x >= self.knots.len() - Self::D() - 1 => self.knots.len() - Self::D() - 1,
+        //     Some(x) => x,
+        //     None => self.knots.len() - Self::D() - 1,
+        // };
         self.de_boor_iterative(t, span)
     }
 
@@ -123,21 +129,35 @@ where
     /// used computing node j).
     fn de_boor_iterative(&self, t: T, start_knot: usize) -> SVector<T, DIM> {
         let mut tmp = [[T::zero(); DIM].into(); K - C];
-        for j in 0..=Self::D() {
-            let p = j + start_knot - Self::D() - 1;
-            tmp[p] = self.control_points[p];
+        #[cfg(test)]
+        {
+            dbg!(t, start_knot, tmp.len(), Self::D(), K - C, self.control_points.len());
         }
-        for lvl in 0..Self::D() {
-            let k = lvl + 1;
-            for j in 0..Self::D() - lvl {
-                let i = j + k + start_knot - Self::D();
-                let alpha =
-                    (t - self.knots[i - 1]) / (self.knots[i + Self::D() - k] - self.knots[i - 1]);
+
+        for j in 0..Self::D() {
+            let i = j + start_knot - Self::D();
+            #[cfg(test)]
+            {
+                dbg!(i);
+            }
+            let cp = self.control_points[i];
+            tmp[j] = cp;
+        }
+
+        for r in 1..=Self::D() {
+            for j in (r..=Self::D()).rev() {
+                let alpha = (t - self.knots[j + start_knot - Self::D()])
+                    / (self.knots[j + 1 + start_knot - r] - self.knots[j + start_knot - Self::D()]);
+
                 debug_assert!(!alpha.is_nan());
-                tmp[j] = tmp[j] * (-alpha + T::from(1.0).unwrap()) + tmp[j + 1] * alpha;
+                tmp[j] = (tmp[j - 1].scale(T::from(1.0).unwrap() - alpha)) + (tmp[j].scale(alpha));
             }
         }
-        tmp[0]
+        #[cfg(test)]
+        {
+            dbg!(tmp);
+        }
+        tmp[Self::D()]
     }
 
     /// Return the index of the first element greater than the value passed.
@@ -229,7 +249,7 @@ where
 mod tests {
     use std::dbg;
 
-    
+    use nalgebra::Vector2;
 
     //use std;
     use super::*;
@@ -258,8 +278,10 @@ mod tests {
         dbg!((kmin, kmax));
         dbg!(curve.eval(kmin));
         dbg!(curve.eval(kmax));
-        assert!((curve.eval(kmin) - points[0]).magnitude() < EPSILON);
-        assert!((curve.eval(kmax) - points[3]).magnitude() < EPSILON);
+        dbg!(curve.eval(1.5));
+        assert!((curve.eval(kmin) - Vector2::new(1.358333, 0.35916666)).magnitude_squared() < EPSILON);
+        assert!((curve.eval(1.5) - Vector2::new(2.63125, 0.8678125)).magnitude_squared() < EPSILON);
+        assert!((curve.eval(kmax) - Vector2::new(3.49166666666, 0.583333333)).magnitude_squared() < EPSILON);
 
         let nsteps: usize = 100;
         for t in 0..=nsteps {

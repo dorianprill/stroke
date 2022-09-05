@@ -11,8 +11,6 @@
 // make splines usable as Fn in trait bounds
 //#![feature(fn_traits)]
 
-
-
 extern crate num_traits;
 use num_traits::float::Float;
 
@@ -56,7 +54,7 @@ pub use spline::Spline;
 #[cfg(target_pointer_width = "64")]
 type NativeFloat = f64;
 #[cfg(target_pointer_width = "64")]
-const EPSILON: f64 = f64::EPSILON;
+const EPSILON: f64 = 0.000001;
 // For now, we fix all non-64 bit architectures to 32bit floats
 // as smaller-width architectures are more likely to have different int/float sizes if they have a fpu
 #[cfg(not(target_pointer_width = "64"))]

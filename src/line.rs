@@ -1,6 +1,5 @@
 use super::*;
 
-
 pub type LineSegment<T, const DIM: usize> = Bezier<T, DIM, 2>;
 /*
 /// LineSegment defined by a start and an endpoint, evaluatable
