@@ -26,6 +26,7 @@ pub mod quadratic_bezier;
 // generic types
 pub mod bezier;
 pub mod bspline;
+pub use nalgebra;
 
 // Traits
 pub mod spline;

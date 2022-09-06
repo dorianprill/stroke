@@ -1,8 +1,9 @@
 use core::fmt::Debug;
-use core::iter::IntoIterator;
+use core::iter::{from_fn, IntoIterator};
 use core::slice;
 use nalgebra::{ClosedMul, ComplexField, RealField, SVector};
 use num_traits::{NumCast, Zero};
+use smallvec::SmallVec;
 
 //use crate::roots::RootFindingError;
 
@@ -70,7 +71,6 @@ impl<T: Scalar, const DIM: usize, const N: usize> Bezier<T, DIM, N> {
         //let t = t.into();
         // start with a copy of the original control points array and succesively use it for evaluation
         let mut p: [SVector<T, DIM>; N] = self.control_points;
-        p[0].add_scalar(t);
         // loop up to degree = control_points.len() -1
         for i in 1..=p.len() {
             for j in 0..p.len() - i {
@@ -109,6 +109,67 @@ impl<T: Scalar, const DIM: usize, const N: usize> Bezier<T, DIM, N> {
             },
         )
     }
+
+    pub fn line_segments(&self, tolerance: T) -> impl Iterator<Item = SVector<T, DIM>> {
+        let mut stack = SmallVec::<[Bezier<T, DIM, N>; 32]>::new();
+        stack.push(*self);
+
+        from_fn(move || {
+            let mut next = None;
+            while next == None {
+                if let Some(curve) = stack.pop() {
+                    if N == 2 || curve.is_linear(tolerance) {
+                        next = Some(curve.start());
+                    } else {
+                        let (left, right) = curve.split(T::from(0.5).unwrap());
+                        stack.push(right);
+                        stack.push(left);
+                    }
+                } else {
+                    break;
+                }
+            }
+            next
+        })
+        .chain(core::iter::once(self.end()))
+    }
+
+    /*
+    let mut self_iter = None;
+    let mut left_iter = None;
+    let mut right_iter = None;
+    let mut right_curve = None;
+    let mut left_curve = None;
+    let use_self = N == 2 || self.is_linear(tolerance);
+    if use_self {
+        self_iter = Some([self.start(), self.end()].into_iter());
+    } else {
+        let (l, r) = self.split(tolerance);
+        left_curve = Some(l);
+        right_curve = Some(r);
+        left_iter = Some(left_curve.unwrap().line_segments(tolerance));
+        right_iter = Some(right_curve.unwrap().line_segments(tolerance));
+    }
+    let mut left_ok = true;
+
+    &mut from_fn(move || {
+        if use_self {
+            self_iter.as_mut().unwrap().next()
+        } else {
+            if left_ok {
+                let next = left_iter.as_mut().unwrap().next();
+                if next.is_some() {
+                    return next;
+                }
+                left_ok = false;
+            }
+            if !left_ok {
+                return right_iter.as_mut().unwrap().next()
+            }
+            None
+        }
+    })
+    */
 
     /// Returns the derivative curve of self which has N-1 control points.
     /// The derivative of an nth degree Bézier curve is an (n-1)th degree Bézier curve,

@@ -85,7 +85,7 @@ where
         debug_assert!(t >= self.knot_domain().0 && t <= self.knot_domain().1);
 
         let mut span = self.knots.partition_point(|&knot| knot <= t);
-        if span > 0 { 
+        if span > 0 {
             span -= 1;
         }
 
@@ -131,7 +131,14 @@ where
         let mut tmp = [[T::zero(); DIM].into(); K - C];
         #[cfg(test)]
         {
-            dbg!(t, start_knot, tmp.len(), Self::D(), K - C, self.control_points.len());
+            dbg!(
+                t,
+                start_knot,
+                tmp.len(),
+                Self::D(),
+                K - C,
+                self.control_points.len()
+            );
         }
 
         for j in 0..Self::D() {
@@ -279,9 +286,14 @@ mod tests {
         dbg!(curve.eval(kmin));
         dbg!(curve.eval(kmax));
         dbg!(curve.eval(1.5));
-        assert!((curve.eval(kmin) - Vector2::new(1.358333, 0.35916666)).magnitude_squared() < EPSILON);
+        assert!(
+            (curve.eval(kmin) - Vector2::new(1.358333, 0.35916666)).magnitude_squared() < EPSILON
+        );
         assert!((curve.eval(1.5) - Vector2::new(2.63125, 0.8678125)).magnitude_squared() < EPSILON);
-        assert!((curve.eval(kmax) - Vector2::new(3.49166666666, 0.583333333)).magnitude_squared() < EPSILON);
+        assert!(
+            (curve.eval(kmax) - Vector2::new(3.49166666666, 0.583333333)).magnitude_squared()
+                < EPSILON
+        );
 
         let nsteps: usize = 100;
         for t in 0..=nsteps {
