@@ -289,14 +289,18 @@ impl<T: Scalar, const DIM: usize, const N: usize> Bezier<T, DIM, N> {
     }
 
     pub fn is_linear(&self, tolerance: T) -> bool {
-        if ({ DIM } == 2) {
+        if ({ N } == 2) {
             true
         } else {
             let line = self.baseline();
-            self.control_points[1..self.control_points.len() - 1]
-                .into_iter()
-                .any(|point| line.distance_to_point(point) > tolerance)
-        }
+            
+            self.control_points
+                .iter()
+                .all(|point| {
+                    let d = line.distance_to_point(point);
+                    d <= tolerance
+                })
+            }
     }
 
     /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension (its index)
@@ -306,8 +310,35 @@ impl<T: Scalar, const DIM: usize, const N: usize> Bezier<T, DIM, N> {
 }
 
 impl<T: Scalar, const DIM: usize> Bezier<T, DIM, 2> {
-    pub fn distance_to_point(&self, _point: &SVector<T, DIM>) -> T {
-        T::zero()
+    pub fn distance_to_point(&self, p: &SVector<T, DIM>) -> T {
+        let start = self.start();
+        let end = self.end();
+        let l2 = (end - start).magnitude_squared();
+        // #[cfg(test)]
+        // dbg!(start, l2);
+        // if start and endpoint are approx the same, return the distance to either
+        if l2 < T::from(EPSILON).unwrap() {
+            (start - p).magnitude()
+        } else {
+            let v1 = p - start;
+            let v2 = end - start;
+            let dot = v1.dot(&v2);
+            // v1 and v2 will by definition always have the same number of axes and produce a value for each Item
+            // dot = v1.into_iter()
+            //         .zip(v2.into_iter())
+            //         .map(|(x1, x2)| x1 * x2)
+            //         .sum::<P::Scalar>();
+            let mut t = T::from(0.0).unwrap();
+            if dot / l2 < T::from(1.0).unwrap() {
+                t = dot / l2;
+            }
+            if t < T::from(0.0).unwrap() {
+                t = T::from(0.0).unwrap();
+            }
+            let projection = start + (end - start) * t; // Projection falls on the segment
+
+            (p - projection).magnitude()
+        }
     }
 }
 
@@ -368,5 +399,24 @@ mod tests {
             err = bezier.eval((t * 0.5) + 0.5) - right.eval(t);
             assert!(err.magnitude_squared() < EPSILON);
         }
+    }
+
+    #[test]
+    fn test_line_segment() {
+        let curve = Bezier::new([Vector2::new(0.0, 0.0), Vector2::new(1.0, 1.0)]);
+        let points: Vec<_> = curve.line_segments(0.01).collect();
+        assert_eq!(vec![curve.start(), curve.end()], points);
+    }
+
+    #[test]
+    fn test_quadratic() {
+        let curve = Bezier::new([
+            Vector2::new(0.0, 0.0),
+            Vector2::new(0.5, 1.0),
+            Vector2::new(1.0, 0.0),
+        ]);
+        let points: Vec<_> = curve.line_segments(1.).collect();
+        dbg!(&points.len());
+        assert_eq!(vec![curve.start(), curve.end()], points);
     }
 }
