@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::iter::{from_fn, IntoIterator};
 use core::slice;
-use itertools::{Itertools, TupleWindows};
+use itertools::{Itertools};
 use nalgebra::{ClosedMul, ComplexField, RealField, SVector};
 use num_traits::{NumCast, Zero};
 use smallvec::SmallVec;
@@ -140,12 +140,12 @@ impl<T: Scalar, const DIM: usize, const N: usize> Bezier<T, DIM, N> {
     pub fn calculate_offset_segments_buffered<const C: usize>(
         &self,
         tolerance: T,
-        offsets: [T; C],
-        buffers: &mut [Vec<SVector<T, DIM>>; C],
+        _offsets: [T; C],
+        _buffers: &mut [Vec<SVector<T, DIM>>; C],
     ) {
         use itertools::*;
 
-        for (x, y) in self.line_segments(tolerance).tuple_windows() {}
+        for (_x, _y) in self.line_segments(tolerance).tuple_windows() {}
     }
 
     pub fn offset_quantized_points<const C: usize>(
