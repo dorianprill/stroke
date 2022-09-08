@@ -11,6 +11,9 @@
 // make splines usable as Fn in trait bounds
 //#![feature(fn_traits)]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 extern crate num_traits;
 use num_traits::float::Float;
 

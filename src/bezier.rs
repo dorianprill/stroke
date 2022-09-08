@@ -1,6 +1,8 @@
+use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::iter::{from_fn, IntoIterator};
 use core::slice;
+use itertools::{Itertools, TupleWindows};
 use nalgebra::{ClosedMul, ComplexField, RealField, SVector};
 use num_traits::{NumCast, Zero};
 use smallvec::SmallVec;
@@ -132,6 +134,88 @@ impl<T: Scalar, const DIM: usize, const N: usize> Bezier<T, DIM, N> {
             next
         })
         .chain(core::iter::once(self.end()))
+    }
+
+    #[cfg(feature = "alloc")]
+    pub fn calculate_offset_segments_buffered<const C: usize>(
+        &self,
+        tolerance: T,
+        offsets: [T; C],
+        buffers: &mut [Vec<SVector<T, DIM>>; C],
+    ) {
+        use itertools::*;
+
+        for (x, y) in self.line_segments(tolerance).tuple_windows() {}
+    }
+
+    pub fn offset_quantized_points<const C: usize>(
+        &self,
+        tolerance: T,
+        offsets: [T; C],
+        cross_vec: SVector<T, DIM>,
+    ) -> impl Iterator<Item = [SVector<T, DIM>; C]>
+    where
+        [(); N - 1]: Sized,
+    {
+        let mut initial = [[T::zero(); DIM].into(); C];
+        let mut last = [[T::zero(); DIM].into(); C];
+        let d_self = self.derivative();
+        let initial_offset_dir = d_self.eval(T::zero()).cross(&cross_vec).normalize();
+        let end_offset_dir = d_self.eval(T::one()).cross(&cross_vec).normalize();
+        for (pt, offset) in initial.iter_mut().zip(offsets.into_iter()) {
+            *pt = self.start() + (initial_offset_dir * offset);
+        }
+        for (pt, offset) in last.iter_mut().zip(offsets.into_iter()) {
+            *pt = self.end() + (end_offset_dir * offset);
+        }
+
+        core::iter::once(initial)
+            .chain(
+                self.line_segments(tolerance)
+                    .tuple_windows()
+                    .map(move |(start, end)| {
+                        let tangent = (end - start).normalize();
+                        (start, end, tangent, tangent.cross(&cross_vec).normalize())
+                    })
+                    .tuple_windows()
+                    .map(move |(line1, line2)| {
+                        let mut points = [[T::zero(); DIM].into(); C];
+                        let offset_dir = (line1.3 + line2.3).normalize();
+                        for (pt, offset) in points.iter_mut().zip(offsets.into_iter()) {
+                            // let start1 = line1.0 + (line1.3 * offset);
+                            // let end2 = line2.1 + (line2.3 * offset);
+                            // let intersect = line_intersection(
+                            //     start1,
+                            //     line1.2,
+                            //     T::infinity(),
+                            //     end2,
+                            //     -line2.2,
+
+                            //     T::infinity(),
+                            // );
+                            // *pt = if let Some(pt_2) = intersect {
+                            //     #[cfg(test)]
+                            //     dbg!(&pt_2);
+                            //     pt_2
+                            // } else {
+                            //     #[cfg(test)]
+                            //     dbg!(&line1.1);
+                            //     line1.1
+                            // };
+
+                            // let mid1 = line1.1 + (line1.3 * offset);
+                            // let mid2 = line2.0 + (line2.3 * offset);
+                            // *pt = (mid1 + mid2) / T::from(2.0).unwrap();
+
+                            *pt = line1.1 + (offset_dir * offset);
+
+                            // #[cfg(test)]
+                            // dbg!((*pt - line1.1).magnitude());
+                        }
+                        points
+                    }),
+            )
+            .chain(core::iter::once(last))
     }
 
     /*
@@ -293,14 +377,12 @@ impl<T: Scalar, const DIM: usize, const N: usize> Bezier<T, DIM, N> {
             true
         } else {
             let line = self.baseline();
-            
-            self.control_points
-                .iter()
-                .all(|point| {
-                    let d = line.distance_to_point(point);
-                    d <= tolerance
-                })
-            }
+
+            self.control_points.iter().all(|point| {
+                let d = line.distance_to_point(point);
+                d <= tolerance
+            })
+        }
     }
 
     /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension (its index)
@@ -310,41 +392,99 @@ impl<T: Scalar, const DIM: usize, const N: usize> Bezier<T, DIM, N> {
 }
 
 impl<T: Scalar, const DIM: usize> Bezier<T, DIM, 2> {
-    pub fn distance_to_point(&self, p: &SVector<T, DIM>) -> T {
+    pub fn distance_squared_to_point(&self, pt: &SVector<T, DIM>) -> T {
         let start = self.start();
         let end = self.end();
-        let l2 = (end - start).magnitude_squared();
+        let len_sq = (end - start).magnitude_squared();
         // #[cfg(test)]
         // dbg!(start, l2);
         // if start and endpoint are approx the same, return the distance to either
-        if l2 < T::from(EPSILON).unwrap() {
-            (start - p).magnitude()
-        } else {
-            let v1 = p - start;
-            let v2 = end - start;
-            let dot = v1.dot(&v2);
-            // v1 and v2 will by definition always have the same number of axes and produce a value for each Item
-            // dot = v1.into_iter()
-            //         .zip(v2.into_iter())
-            //         .map(|(x1, x2)| x1 * x2)
-            //         .sum::<P::Scalar>();
-            let mut t = T::from(0.0).unwrap();
-            if dot / l2 < T::from(1.0).unwrap() {
-                t = dot / l2;
-            }
-            if t < T::from(0.0).unwrap() {
-                t = T::from(0.0).unwrap();
-            }
-            let projection = start + (end - start) * t; // Projection falls on the segment
 
-            (p - projection).magnitude()
+        let v1 = pt - start;
+        let v2 = end - start;
+        let param = if len_sq > T::from(EPSILON).unwrap() {
+            v1.dot(&v2) / len_sq
+        } else {
+            T::from(-1.0).unwrap()
+        };
+
+        let test_pt = if param < T::zero() {
+            start
+        } else if param > T::one() {
+            end
+        } else {
+            start + (v2 * param)
+        };
+
+        (pt - test_pt).magnitude_squared()
+    }
+
+    pub fn distance_to_point(&self, pt: &SVector<T, DIM>) -> T {
+        Float::sqrt(self.distance_squared_to_point(pt))
+    }
+
+    pub fn intersection(&self, other: Bezier<T, DIM, 2>) -> Option<SVector<T, DIM>> {
+        let dx1: SVector<T, DIM> = self.end() - self.start();
+        let dx2: SVector<T, DIM> = other.end() - other.start();
+        let len1 = dx1.magnitude();
+        let len2 = dx2.magnitude();
+        let slope1: SVector<T, DIM> = dx1 / len1;
+        let slope2: SVector<T, DIM> = dx2 / len2;
+
+        line_intersection(self.start(), slope1, len1, other.start(), slope2, len2)
+    }
+
+    fn inside(&self, pt: &SVector<T, DIM>) -> bool {
+        pt.into_iter()
+            .zip(self.start().into_iter().zip(self.end().into_iter()))
+            .all(|(val, (start, end))| (val >= start && val <= end) || (val <= start && val >= end))
+    }
+}
+
+pub fn line_intersection<T: Scalar, const DIM: usize>(
+    start_a: SVector<T, DIM>,
+    slope_a: SVector<T, DIM>,
+    len_a: T,
+    start_b: SVector<T, DIM>,
+    slope_b: SVector<T, DIM>,
+    len_b: T,
+) -> Option<SVector<T, DIM>> {
+    let t_axis: SVector<T, DIM> = (start_b - start_a).component_div(&(slope_a - slope_b));
+    let mut bad = false;
+    let t = t_axis.into_iter().reduce(|acc, x| {
+        if x.is_nan() {
+            acc
+        } else {
+            if acc.is_nan() {
+                x
+            } else {
+                if Float::abs(*acc - *x) > T::from(0.05).unwrap() {
+                    #[cfg(test)]
+                    dbg!(acc, x, start_b, start_a, slope_a, slope_b, t_axis);
+                    bad = true
+                }
+                acc
+            }
+        }
+    });
+
+    if bad || t.is_none() {
+        None
+    } else {
+        let t = *t.unwrap();
+        if t > T::from(len_a).unwrap() || t > T::from(len_b).unwrap() || t < T::zero() {
+            #[cfg(test)]
+            dbg!(t);
+            None
+        } else {
+            Some(start_a + (slope_a * t))
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::Vector2;
+    use nalgebra::{Vector2, Vector3};
 
     use super::*;
 
@@ -409,14 +549,48 @@ mod tests {
     }
 
     #[test]
-    fn test_quadratic() {
+    fn test_quadratic_high_tolerance() {
         let curve = Bezier::new([
             Vector2::new(0.0, 0.0),
             Vector2::new(0.5, 1.0),
             Vector2::new(1.0, 0.0),
         ]);
         let points: Vec<_> = curve.line_segments(1.).collect();
-        dbg!(&points.len());
+        assert_eq!(vec![curve.start(), curve.end()], points);
+    }
+
+    #[test]
+    fn test_linear_quadratic() {
+        let curve = Bezier::new([
+            Vector2::new(0.0, 0.0),
+            Vector2::new(0.5, 0.0),
+            Vector2::new(1.0, 0.0),
+        ]);
+        let points: Vec<_> = curve.line_segments(0.01).collect();
+        assert_eq!(vec![curve.start(), curve.end()], points);
+    }
+
+    #[test]
+    fn test_intersection() {
+        let curve = Bezier::new([Vector2::new(0.0, 0.0), Vector2::new(1.0, 1.0)]);
+        let curve2 = Bezier::new([Vector2::new(0.0, 1.0), Vector2::new(1.0, 0.0)]);
+        let intersection = curve.intersection(curve2);
+        assert_eq!(intersection, Some(Vector2::new(0.5, 0.5)));
+    }
+
+    #[test]
+    fn test_3d_segments() {
+        let curve = Bezier::new([
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.5, 1.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+        ]);
+        let points: Vec<_> = curve.line_segments(0.01).collect();
+        let offsets = [-0.1, 0.0, 0.1];
+        let offset_pts: Vec<_> = curve
+            .offset_quantized_points(0.01, offsets, Vector3::new(0., 0., 1.))
+            .collect();
+        dbg!(offset_pts.len());
         assert_eq!(vec![curve.start(), curve.end()], points);
     }
 }
