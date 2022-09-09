@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::iter::{from_fn, IntoIterator};
 use core::slice;
-use itertools::{Itertools};
+use itertools::Itertools;
 use nalgebra::{ClosedMul, ComplexField, RealField, SVector};
 use num_traits::{NumCast, Zero};
 use smallvec::SmallVec;
