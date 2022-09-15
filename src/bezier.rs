@@ -148,6 +148,36 @@ impl<T: Scalar, const DIM: usize, const N: usize> Bezier<T, DIM, N> {
         for (_x, _y) in self.line_segments(tolerance).tuple_windows() {}
     }
 
+    pub fn initial_dir(&self) -> SVector<T, DIM>
+    where
+        [(); N - 1]: Sized,
+    {
+        self.derivative().eval(T::zero())
+    }
+
+    pub fn final_dir(&self) -> SVector<T, DIM>
+    where
+        [(); N - 1]: Sized,
+    {
+        self.derivative().eval(T::one())
+    }
+
+    pub fn get_initial_point_offset(&self, offset: T, cross_vec: SVector<T, DIM>) -> SVector<T, DIM>
+    where
+        [(); N - 1]: Sized,
+    {
+        let initial_offset_dir = self.initial_dir().cross(&cross_vec).normalize();
+        self.start() + (initial_offset_dir * offset)
+    }
+
+    pub fn get_final_point_offset(&self, offset: T, cross_vec: SVector<T, DIM>) -> SVector<T, DIM>
+    where
+        [(); N - 1]: Sized,
+    {
+        let initial_offset_dir = self.final_dir().cross(&cross_vec).normalize();
+        self.end() + (initial_offset_dir * offset)
+    }
+
     pub fn offset_quantized_points<const C: usize>(
         &self,
         tolerance: T,
