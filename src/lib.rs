@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 #![forbid(unsafe_code)]
 #![allow(incomplete_features)]
 // this is needed to use expressions in const generics such as N-1 (see curve derivatives)
@@ -11,7 +11,8 @@
 // make splines usable as Fn in trait bounds
 //#![feature(fn_traits)]
 
-use core::ops::{Add, Mul, Sub};
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
 extern crate num_traits;
 use num_traits::float::Float;
@@ -22,18 +23,16 @@ use tinyvec::ArrayVec;
 // abstraction types
 pub mod bezier_segment;
 // specialized types
+pub mod cubic_bezier;
 pub mod line;
 pub mod quadratic_bezier;
-pub mod cubic_bezier;
 // generic types
-pub mod point_generic;
 pub mod bezier;
 pub mod bspline;
+pub use nalgebra;
 
 // Traits
-pub mod point;
 pub mod spline;
-
 
 mod roots;
 
@@ -42,10 +41,9 @@ pub use bezier::Bezier;
 pub use bspline::BSpline;
 pub use cubic_bezier::CubicBezier;
 pub use line::LineSegment;
-pub use point::Point;
-pub use spline::Spline;
-pub use point_generic::PointN;
+
 pub use quadratic_bezier::QuadraticBezier;
+pub use spline::Spline;
 
 // Conditionally compiled newtype pattern used to determine which size float to use for internal constants
 // so that the library can specialize internal types for the architecture for best performance
@@ -60,7 +58,7 @@ pub use quadratic_bezier::QuadraticBezier;
 #[cfg(target_pointer_width = "64")]
 type NativeFloat = f64;
 #[cfg(target_pointer_width = "64")]
-const EPSILON: f64 = f64::EPSILON;
+const EPSILON: f64 = 0.000001;
 // For now, we fix all non-64 bit architectures to 32bit floats
 // as smaller-width architectures are more likely to have different int/float sizes if they have a fpu
 #[cfg(not(target_pointer_width = "64"))]

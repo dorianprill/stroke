@@ -24,8 +24,14 @@ exclude = [
     ".vscode/*",
 ]
 
+[features]
+default = ["alloc"]
+alloc = ["itertools/use_alloc"]
+
 [dependencies]
 tinyvec = { version = "^1.5", features = ["rustc_1_55"] }
+nalgebra = "0.31.1"
+itertools = { version = "0.10.3", default-features = false }
 
 
 [dependencies.num-traits]
