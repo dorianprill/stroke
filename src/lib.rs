@@ -19,7 +19,8 @@ use num_traits::float::Float;
 extern crate tinyvec;
 use tinyvec::ArrayVec;
 
-
+// run with cargo test --features nalgebra-compat
+#[cfg(feature = "nalgebra")]
 extern crate nalgebra;
 
 // abstraction types
