@@ -10,8 +10,8 @@ impl<T, const N: usize> Point for nalgebra::Point<T, {N}>
 where
     T: Float
         + Copy
-        + Default,
-        + Sized,
+        + Default
+        + Sized
         + Add<T, Output = T>
         + Add<NativeFloat, Output = T>
         + Sub<T, Output = T>
