@@ -1,4 +1,5 @@
-use core::slice;
+use core::slice::{IterMut};
+use core::array::{IntoIter};
 use core::iter::{IntoIterator, Sum};
 
 use super::*;
@@ -135,9 +136,9 @@ impl<T, const N: usize> IntoIterator for PointN<T, N> {
 
 impl<'a, T, const N: usize> IntoIterator for &'a mut PointN<T, N> {
     type Item = &'a mut T;
-    type IntoIter = slice::IterMut<'a, T>;
+    type IntoIter = IterMut<'a, T>;
 
-    fn into_iter(self) -> slice::IterMut<'a, T> {
+    fn into_iter(self) -> IterMut<'a, T> {
         self.0.iter_mut()
     }
 }
@@ -171,5 +172,14 @@ where
             sqr_dist += (self.0[i] * self.0[i]).into();
         }
         sqr_dist
+    }
+
+
+    fn iter(&self) -> IntoIter<T, {N}> {
+        &self.into_iter()
+    }
+
+    fn iter_mut(&self) -> IterMut<Self::Scalar> {
+        &mut self.into_iter()
     }
 }

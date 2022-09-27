@@ -1,5 +1,5 @@
 use super::NativeFloat;
-use core::{ops::{Add, Div, Mul, Sub}, iter::Sum};
+use core::{ops::{Add, Div, Mul, Sub}, iter::Sum, slice::IterMut, array::IntoIter};
 use num_traits::Float;
 
 /// The Point trait is the only interface on which the library relies.
@@ -14,7 +14,7 @@ pub trait Point:
     + PartialEq
     //+ PartialOrd
     + Default
-    + IntoIterator
+    //+ IntoIterator
 {
     type Scalar: Float
         + Default
@@ -35,4 +35,8 @@ pub trait Point:
     // Returns the squared L2-Norm of the Point interpreted as a Vector
     // TODO this could be moved into the library because computability is ensured by its existing trait bounds
     fn squared_length(&self) -> Self::Scalar;
+
+    fn iter(&self) -> IntoIter<Self::Scalar, {Self::DIM}>;
+    fn iter_mut(&self) -> IterMut<Self::Scalar>;
+
 }

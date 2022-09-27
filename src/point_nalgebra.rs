@@ -1,12 +1,19 @@
+// test/compile with:
+// cargo build --features nalgebra
 #[cfg(feature = "nalgebra")]
 use num_traits::Float;
 use crate::NativeFloat;
 use crate::Point;
 use super::*;
-use core::iter::Sum;
+use core::{slice::IterMut, array::IntoIter, iter::Sum};
 
+use nalgebra::Matrix;
+use nalgebra::Const;
+use nalgebra::ArrayStorage;
+use nalgebra::SVector;
 
-impl<T, const N: usize> Point for nalgebra::Point<T, {N}> 
+// impl<T, const N: usize> Point for nalgebra::Point<T, {N}>
+impl<T, const N: usize> Point for SVector<T, {N}> 
 where
     T: Float
         + Copy
@@ -16,11 +23,11 @@ where
         + Add<NativeFloat, Output = T>
         + Sub<T, Output = T>
         + Sub<NativeFloat, Output = T>
-        + Mul<T, Output = T>
+        //+ Mul<T, Output = T>
         + Mul<NativeFloat, Output = T>
         + Sum<NativeFloat>
         + From<NativeFloat>
-        + Into<NativeFloat>,
+        + Into<NativeFloat> + core::ops::AddAssign + core::ops::SubAssign + core::fmt::Debug, Matrix<T, Const<N>, Const<1>, ArrayStorage<T, N, 1>>: core::ops::Mul<f64>
 {
     type Scalar = NativeFloat;
     const DIM: usize = { N };
@@ -37,4 +44,13 @@ where
         }
         sqr_dist
     }
+
+    fn iter(&self) -> IntoIter<T, {N}> {
+        self.iter()
+    }
+    fn iter_mut(&self) -> IterMut<Self::Scalar> {
+        self.iter_mut()
+    }
 }
+
+
