@@ -48,7 +48,8 @@ where
     // }
 
     /// Return the distance from the LineSegment to Point p by calculating the projection
-    pub fn distance_to_point(&self, p: P) -> P::Scalar {
+    pub fn distance_to_point(&self, p: P) -> P::Scalar
+    where [(); P::DIM]: {
         let l2 = (self.end - self.start).squared_length();
         // if start and endpoint are approx the same, return the distance to either
         if l2 < P::Scalar::from(EPSILON) {
@@ -57,7 +58,7 @@ where
             let v1 = p - self.start;
             let v2 = self.end - self.start;
             let mut dot = P::Scalar::from(0.0);
-            for (i, _) in v1.into_iter().enumerate() {
+            for (i, _) in v1.iter().enumerate() {
                 dot = dot + v1.axis(i) * v2.axis(i);
             }
             // v1 and v2 will by definition always have the same number of axes and produce a value for each Item
@@ -104,7 +105,7 @@ where
 
         // find min/max for that particular axis
         // TODO shoul be rewritten once 'Iterator' is implemented on P to get rid of .axis() method
-        for (i, _) in self.start.into_iter().enumerate() {
+        for (i, _) in self.start.iter().enumerate() {
             if self.start.axis(i) < self.end.axis(i) {
                 bounds[i] = (self.start.axis(i), self.end.axis(i));
             } else {

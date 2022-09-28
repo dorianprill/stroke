@@ -44,6 +44,7 @@ where
     pub fn is_linear<F>(&self, tolerance: F) -> bool
     where
         F: Float + Into<P::Scalar>,
+        [(); P::DIM]:
     {
         match self {
             BezierSegment::Linear(..) => true,

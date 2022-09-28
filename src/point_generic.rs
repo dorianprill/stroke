@@ -1,6 +1,7 @@
 use core::slice::{IterMut};
 use core::array::{IntoIter};
 use core::iter::{IntoIterator, Sum};
+use core::{ops::{Add, Div, Mul, Sub}};
 
 use super::*;
 //use num_traits::{Float, FromPrimitive};
@@ -154,16 +155,17 @@ where
         + Sub<NativeFloat, Output = T>
         + Mul<T, Output = T>
         + Mul<NativeFloat, Output = T>
+        + Div<NativeFloat, Output = T>
         + Sum<NativeFloat>
         + From<NativeFloat>
         + Into<NativeFloat>,
 {
-    type Scalar = NativeFloat;
+    type Scalar = T;
     const DIM: usize = { N };
 
     fn axis(&self, index: usize) -> Self::Scalar {
         assert!(index <= N);
-        self.0[index].into()
+        self.0[index]
     }
 
     fn squared_length(&self) -> Self::Scalar {
@@ -171,15 +173,15 @@ where
         for i in 0..N {
             sqr_dist += (self.0[i] * self.0[i]).into();
         }
-        sqr_dist
+        sqr_dist.into()
     }
 
 
-    fn iter(&self) -> IntoIter<T, {N}> {
-        &self.into_iter()
+    fn iter(&self) -> IntoIter<Self::Scalar, {Self::DIM}> {
+        self.into_iter()
     }
 
     fn iter_mut(&self) -> IterMut<Self::Scalar> {
-        &mut self.into_iter()
+        self.iter_mut()
     }
 }

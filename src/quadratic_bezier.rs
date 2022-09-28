@@ -200,7 +200,8 @@ where
     }
 
     /// Checks if, given some tolerance, the curve can be considered equal to a line segment
-    pub fn is_linear(&self, tolerance: P::Scalar) -> bool {
+    pub fn is_linear(&self, tolerance: P::Scalar) -> bool
+    where [(); P::DIM]: {
         // if start and end are (nearly) the same
         // TODO using squared length vs machine epsilon OK?
         if (self.start - self.end).squared_length() < EPSILON.into() {
@@ -212,7 +213,8 @@ where
 
     /// Determines if, given some tolerance, all of the control points are colinear
     /// This private function is wrapped publically by is_linear()
-    fn are_points_colinear(&self, tolerance: P::Scalar) -> bool {
+    fn are_points_colinear(&self, tolerance: P::Scalar) -> bool
+    where [(); P::DIM]: {
         let line = self.baseline();
         line.distance_to_point(self.ctrl) <= tolerance
     }
@@ -232,7 +234,9 @@ where
     /// value: the coordinate value on the particular axis
     /// axis: the index of the axis
     /// Returns those roots of the function that are in the interval [0.0, 1.0].
-    fn solve_t_for_axis(&self, value: P::Scalar, axis: usize) -> ArrayVec<[P::Scalar; 3]> {
+    fn solve_t_for_axis(&self, value: P::Scalar, axis: usize) -> ArrayVec<[P::Scalar; 3]> 
+    where [(); P::DIM]:
+    {
         let mut result = ArrayVec::new();
         if self.is_a_point(EPSILON.into())
             || (self.are_points_colinear(0.0.into())
@@ -266,7 +270,7 @@ where
         let a = derivative.start * -1.0 + derivative.end;
         let b = derivative.start;
 
-        for (dim, _) in a.into_iter().enumerate() {
+        for (dim, _) in a.iter().enumerate() {
             // calculate roots for t over x axis and plug them into the bezier function
             //  to get x,y values (make vec 2 bigger for t=0,t=1 values)
             let mut extrema: ArrayVec<[P::Scalar; 3]> = ArrayVec::new();

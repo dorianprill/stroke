@@ -1,10 +1,7 @@
 // build this example with cargo test --features nalgebra
-use plotters::prelude::*;
 
 extern crate stroke;
 use stroke::Bezier;
-use stroke::PointN;
-
 
 extern crate nalgebra;
 use nalgebra::Point;

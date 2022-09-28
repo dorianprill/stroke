@@ -193,7 +193,9 @@ where
         }
     }
 
-    pub fn is_linear(&self, tolerance: P::Scalar) -> bool {
+    pub fn is_linear(&self, tolerance: P::Scalar) -> bool 
+    where [(); P::DIM]:
+    {
         // if start and end are (nearly) the same
         if (self.start - self.end).squared_length() < P::Scalar::from(EPSILON) {
             return false;
@@ -202,7 +204,9 @@ where
         self.are_points_colinear(tolerance)
     }
 
-    fn are_points_colinear(&self, tolerance: P::Scalar) -> bool {
+    fn are_points_colinear(&self, tolerance: P::Scalar) -> bool 
+    where [(); P::DIM]:
+    {
         let line = self.baseline();
         line.distance_to_point(self.ctrl1) <= tolerance
             && line.distance_to_point(self.ctrl2) <= tolerance
@@ -301,7 +305,9 @@ where
     /// axis: the index of the axis
     /// Returns those roots of the function that are in the interval [0.0, 1.0].
     #[allow(dead_code)]
-    fn solve_t_for_axis(&self, value: P::Scalar, axis: usize) -> ArrayVec<[P::Scalar; 3]> {
+    fn solve_t_for_axis(&self, value: P::Scalar, axis: usize) -> ArrayVec<[P::Scalar; 3]> 
+    where [(); P::DIM]:
+    {
         let mut result = ArrayVec::new();
         // check if all points are the same or if the curve is really just a line
         if self.is_a_point(EPSILON.into())
@@ -346,7 +352,7 @@ where
         // calculate roots for t over x axis and plug them into the bezier function
         //  to get x,y values (make vec 2 bigger for t=0,t=1 values)
         // loop over any of the points dimensions (they're all the same)
-        for (dim, _) in a.into_iter().enumerate() {
+        for (dim, _) in a.iter().enumerate() {
             let mut extrema: ArrayVec<[P::Scalar; 4]> = ArrayVec::new();
             extrema.extend(
                 derivative
