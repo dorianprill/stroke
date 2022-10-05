@@ -269,18 +269,24 @@ mod tests {
         assert!(curve.arclen(100) > 0.);
     }
 
-
+    #[test]
     fn distance_to_point() {
-        // chose some arbitrary control points and construct a cubic bezier
-        let bezier = Bezier {
-            control_points: [
-                PointN::new([0f64, 1.77f64]),
-                PointN::new([2.9f64, 0f64]),
-                PointN::new([4.3f64, 3f64]),
-                PointN::new([3.2f64, -4f64]),
-            ],
+        // degree 3, 4 control points => 4+3+1=8 knots
+        let points = [
+            PointN::new([0f64, 1.77f64]),
+            PointN::new([1.1f64, -1f64]),
+            PointN::new([4.3f64, 3f64]),
+            PointN::new([3.2f64, -4f64]),
+        ];
+        let knots: [f64; 8] = [0., 0., 0., 1., 2., 3., 3., 3.];
+        // try to make a b-spline with the given parameters
+        let b: Option<BSpline<PointN<f64, 2>, 8, 4, 4>> = BSpline::new(knots, points);
+        let curve = match b {
+            None => return,
+            Some(b) => b,
         };
-        assert!( bezier.distance_to_point(PointN::new([-5.1, -5.6])) > bezier.distance_to_point(PointN::new([5.1, 5.6])));
+        // TODO this may never be reached
+        assert!(curve.distance_to_point(PointN::new([-5.1, -5.6])) > curve.distance_to_point(PointN::new([5.1, 5.6])));
     }
 
 }

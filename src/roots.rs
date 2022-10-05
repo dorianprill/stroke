@@ -7,6 +7,7 @@
 /// there will probably be no function for quartics, since specialized beziers only go up to cubic
 use super::*;
 
+#[allow(dead_code)]
 pub enum RootFindingError {
     NoRootsFound,
     FailedToConverge,
@@ -17,6 +18,7 @@ pub enum RootFindingError {
 /// Solve for the roots of the polynomial at^2 + bt + c
 /// Returns an ArrayVec of roots in the order
 /// needs to be called for x and y components separately
+#[allow(dead_code)]
 pub(crate) fn roots_square(a: NativeFloat, b: NativeFloat, c: NativeFloat) -> ArrayVec<[NativeFloat; 2]> {
     let mut result = ArrayVec::new();
 
@@ -47,6 +49,7 @@ pub(crate) fn roots_square(a: NativeFloat, b: NativeFloat, c: NativeFloat) -> Ar
 /// using cardano's algorithm (code adapted from github.com/nical/lyon)
 /// returns an ArrayVec of the present roots (max 3)
 #[allow(clippy::many_single_char_names)] // this is math, get over it
+#[allow(dead_code)]
 pub(crate) fn roots_cubic(
     a: NativeFloat,
     b: NativeFloat,
