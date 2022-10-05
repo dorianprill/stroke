@@ -54,3 +54,11 @@ where
 }
 
 
+/// Initialize with the Default value for the underlying type
+impl<T: Default + Copy, const N: usize> Default for SVector<T, N> {
+    fn default() -> Self {
+        SVector::from([T::default(); N])
+    }
+}
+
+
