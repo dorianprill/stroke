@@ -101,6 +101,42 @@ where
         )
     }
 
+
+    /// Calculates the minimum distance between given 'point' and the curve. 
+    /// Uses two passes with the same amount of steps in t: 
+    /// 1. coarse search over the whole curve
+    /// 2. fine search around the minimum yielded by the coarse search
+    pub fn distance_to_point(&self, point: P) -> P::Scalar 
+    where [(); D+1]:
+    {
+        let nsteps: usize = 64;
+        let mut tmin: P::Scalar = 0.5.into();
+        let mut dmin: P::Scalar = (point - self.control_points[0]).squared_length();
+        // 1. coarse pass
+        for i in 0..nsteps {
+            // calculate next step value
+            let t: P::Scalar = (i as NativeFloat * 1.0 as NativeFloat / (nsteps as NativeFloat)).into();
+            // calculate distance to candidate
+            let candidate = self.eval(t);
+            if (candidate - point).squared_length() < dmin {
+                tmin = t;
+                dmin = (candidate - point).squared_length();
+            }
+        }
+        // 2. fine pass 
+        for i in 0..nsteps {
+            // calculate next step value ( a 64th of a 64th from first step)
+            let t: P::Scalar = (i as NativeFloat * 1.0 as NativeFloat / ((nsteps*nsteps) as NativeFloat)).into();
+            // calculate distance to candidate centered around tmin from before
+            let candidate: P = self.eval(tmin + t - t*(nsteps as NativeFloat/ 2.0) );
+            if (candidate - point).squared_length() < dmin {
+                tmin = t;
+                dmin = (candidate - point).squared_length();
+            }
+        }
+        dmin.sqrt()
+    }
+
     /// Iteratively compute de Boor's B-spline algorithm, this computes the recursive
     /// de Boor algorithm tree from the bottom up. At each level we use the results
     /// from the previous one to compute this level and store the results in the
@@ -232,4 +268,19 @@ mod tests {
         // for now only check if has positive arclen
         assert!(curve.arclen(100) > 0.);
     }
+
+
+    fn distance_to_point() {
+        // chose some arbitrary control points and construct a cubic bezier
+        let bezier = Bezier {
+            control_points: [
+                PointN::new([0f64, 1.77f64]),
+                PointN::new([2.9f64, 0f64]),
+                PointN::new([4.3f64, 3f64]),
+                PointN::new([3.2f64, -4f64]),
+            ],
+        };
+        assert!( bezier.distance_to_point(PointN::new([-5.1, -5.6])) > bezier.distance_to_point(PointN::new([5.1, 5.6])));
+    }
+
 }
