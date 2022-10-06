@@ -186,6 +186,40 @@ where
     //     return 1.0.into() / self.curvature(t)
     // }
 
+    /// Calculates the minimum distance between given 'point' and the curve. 
+    /// Uses two passes with the same amount of steps in t: 
+    /// 1. coarse search over the whole curve
+    /// 2. fine search around the minimum yielded by the coarse search
+    pub fn distance_to_point(&self, point: P) -> P::Scalar {
+        let nsteps: usize = 64;
+        let mut tmin: P::Scalar = 0.5.into();
+        let mut dmin: P::Scalar = (point - self.start).squared_length();
+        // 1. coarse pass
+        for i in 0..nsteps {
+            // calculate next step value
+            let t: P::Scalar = (i as NativeFloat * 1.0 as NativeFloat / (nsteps as NativeFloat)).into();
+            // calculate distance to candidate
+            let candidate = self.eval(t);
+            if (candidate - point).squared_length() < dmin {
+                tmin = t;
+                dmin = (candidate - point).squared_length();
+            }
+        }
+        // 2. fine pass 
+        for i in 0..nsteps {
+            // calculate next step value ( a 64th of a 64th from first step)
+            let t: P::Scalar = (i as NativeFloat * 1.0 as NativeFloat / ((nsteps*nsteps) as NativeFloat)).into();
+            // calculate distance to candidate centered around tmin from before
+            let candidate: P = self.eval(tmin + t - t*(nsteps as NativeFloat/ 2.0) );
+            if (candidate - point).squared_length() < dmin {
+                tmin = t;
+                dmin = (candidate - point).squared_length();
+            }
+        }
+        dmin.sqrt()
+    }
+
+
     pub fn baseline(&self) -> LineSegment<P> {
         LineSegment {
             start: self.start,
@@ -558,4 +592,18 @@ mod tests {
             }
         }
     }
+
+
+    #[test]
+    fn distance_to_point() {
+        // degree 3, 4 control points => 4+3+1=8 knots
+        let curve = CubicBezier{
+            start: PointN::new([0f64, 1.77f64]),
+            ctrl1: PointN::new([1.1f64, -1f64]),
+            ctrl2: PointN::new([4.3f64, 3f64]),
+            end: PointN::new([3.2f64, -4f64]),
+        };
+        assert!(curve.distance_to_point(PointN::new([-5.1, -5.6])) > curve.distance_to_point(PointN::new([5.1, 5.6])));
+    }
+
 }
