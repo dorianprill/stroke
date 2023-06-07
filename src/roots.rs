@@ -19,7 +19,11 @@ pub enum RootFindingError {
 /// Returns an ArrayVec of roots in the order
 /// needs to be called for x and y components separately
 #[allow(dead_code)]
-pub(crate) fn roots_square(a: NativeFloat, b: NativeFloat, c: NativeFloat) -> ArrayVec<[NativeFloat; 2]> {
+pub(crate) fn roots_square(
+    a: NativeFloat,
+    b: NativeFloat,
+    c: NativeFloat,
+) -> ArrayVec<[NativeFloat; 2]> {
     let mut result = ArrayVec::new();
 
     // check if can be handled below quadratic order

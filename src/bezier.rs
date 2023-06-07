@@ -1,11 +1,11 @@
-use core::slice;
 use core::iter::IntoIterator;
+use core::slice;
 
 //use crate::roots::RootFindingError;
 
+use super::*;
 use crate::point::Point;
 use crate::spline::Spline;
-use super::*;
 
 /// General implementation of a Bezier curve of arbitrary degree (= number of control points - 1).
 /// The curve is solely defined by an array of 'control_points'. The degree is defined as degree = control_points.len() - 1.
@@ -23,14 +23,16 @@ where
     control_points: [P; N],
 }
 
-
-impl<P, const N: usize> Spline<P> for Bezier<P, {N}> where P: Point {
+impl<P, const N: usize> Spline<P> for Bezier<P, { N }>
+where
+    P: Point,
+{
     fn eval(&self, t: P::Scalar) -> P {
         self.eval(t)
     }
 }
 
-impl<P: Point, const N: usize> IntoIterator for Bezier<P, {N}> {
+impl<P: Point, const N: usize> IntoIterator for Bezier<P, { N }> {
     type Item = P;
     type IntoIter = core::array::IntoIter<Self::Item, N>;
 
@@ -39,7 +41,7 @@ impl<P: Point, const N: usize> IntoIterator for Bezier<P, {N}> {
     }
 }
 
-impl<'a, P: Point, const N: usize> IntoIterator for &'a mut Bezier<P, {N}> {
+impl<'a, P: Point, const N: usize> IntoIterator for &'a mut Bezier<P, { N }> {
     type Item = &'a mut P;
     type IntoIter = slice::IterMut<'a, P>;
 
@@ -61,7 +63,7 @@ where
     }
 
     pub fn control_points(&self) -> [P; N] {
-        self.control_points.clone()
+        self.control_points
     }
 
     /// Evaluate a point on the curve at point 't' which should be in the interval [0,1]
@@ -79,9 +81,8 @@ where
         p[0]
     }
 
-
-    /// Calculates the minimum distance between given 'point' and the curve. 
-    /// Uses two passes with the same amount of steps in t: 
+    /// Calculates the minimum distance between given 'point' and the curve.
+    /// Uses two passes with the same amount of steps in t:
     /// 1. coarse search over the whole curve
     /// 2. fine search around the minimum yielded by the coarse search
     pub fn distance_to_point(&self, point: P) -> P::Scalar {
@@ -91,7 +92,8 @@ where
         // 1. coarse pass
         for i in 0..nsteps {
             // calculate next step value
-            let t: P::Scalar = (i as NativeFloat * 1.0 as NativeFloat / (nsteps as NativeFloat)).into();
+            let t: P::Scalar =
+                (i as NativeFloat * 1.0 as NativeFloat / (nsteps as NativeFloat)).into();
             // calculate distance to candidate
             let candidate = self.eval(t);
             if (candidate - point).squared_length() < dmin {
@@ -99,12 +101,13 @@ where
                 dmin = (candidate - point).squared_length();
             }
         }
-        // 2. fine pass 
+        // 2. fine pass
         for i in 0..nsteps {
             // calculate next step value ( a 64th of a 64th from first step)
-            let t: P::Scalar = (i as NativeFloat * 1.0 as NativeFloat / ((nsteps*nsteps) as NativeFloat)).into();
+            let t: P::Scalar =
+                (i as NativeFloat * 1.0 as NativeFloat / ((nsteps * nsteps) as NativeFloat)).into();
             // calculate distance to candidate centered around tmin from before
-            let candidate: P = self.eval(tmin + t - t*(nsteps as NativeFloat/ 2.0) );
+            let candidate: P = self.eval(tmin + t - t * (nsteps as NativeFloat / 2.0));
             if (candidate - point).squared_length() < dmin {
                 tmin = t;
                 dmin = (candidate - point).squared_length();
@@ -112,7 +115,6 @@ where
         }
         dmin.sqrt()
     }
-
 
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
         // start with a copy of the original control points for now
@@ -154,7 +156,7 @@ where
         let mut new_points: [P; N - 1] = [P::default(); N - 1];
         for (i, _) in self.control_points.iter().enumerate() {
             new_points[i] =
-                (self.control_points[i + 1] - self.control_points[i]) * ((N-1) as NativeFloat);
+                (self.control_points[i + 1] - self.control_points[i]) * ((N - 1) as NativeFloat);
             if i == self.control_points.len() - 2 {
                 break;
             }
@@ -162,16 +164,14 @@ where
         Bezier::new(new_points)
     }
 
-
-
-    // /// Returns the real roots of the Bezier curve along one of its coordinate 
+    // /// Returns the real roots of the Bezier curve along one of its coordinate
     // /// axes (i.e. the control points' axes) or a specific RootFindingError.
     // /// There are the same number of roots as the degree of the curve nroots = degree = N_points-1
-    // fn real_roots(&self, 
+    // fn real_roots(&self,
     //     axis: usize,
     //     eps: Option<P::Scalar>,
     //     max_iter: Option<usize>
-    // ) -> Result<ArrayVec<[P::Scalar; N-1]>, RootFindingError> 
+    // ) -> Result<ArrayVec<[P::Scalar; N-1]>, RootFindingError>
     // {
     //     todo!();
     //     // Compute the axis-wise polynomial coefficients e.g. quadratic has N coefs a,b,c in at^2 + bt + c
@@ -193,13 +193,12 @@ where
 
     //     // 3. find candidate points for roots of that curve (compare zero crossings)
 
-
     //     // 4. search for roots using newton-raphson algo
     //     let eps = eps.unwrap_or(1e-3.into());
     //     let max_iter = max_iter.unwrap_or(128);
-    
+
     //     let mut x = P::Scalar::from(0.0);
-    
+
     //     let mut iter = 0;
     //     loop {
     //         let f = f(x);
@@ -219,15 +218,15 @@ where
     //                 return Err(RootFindingError::ZeroDerivative);
     //             }
     //         }
-    
+
     //         let x1 = x - f / d;
     //         if (x - x1).abs() < eps {
     //             return Ok(x1);
     //         }
-    
+
     //         x = x1;
     //         iter = iter + 1;
-    
+
     //         if iter == max_iter {
     //             return Err(RootFindingError::FailedToConverge);
     //         }
@@ -248,7 +247,7 @@ where
 
             arclen = arclen + (p1 - p2).squared_length().sqrt();
         }
-        return arclen;
+        arclen
     }
 }
 
@@ -294,7 +293,10 @@ mod tests {
                 PointN::new([3.2f64, -4f64]),
             ],
         };
-        assert!( bezier.distance_to_point(PointN::new([-5.1, -5.6])) > bezier.distance_to_point(PointN::new([5.1, 5.6])));
+        assert!(
+            bezier.distance_to_point(PointN::new([-5.1, -5.6]))
+                > bezier.distance_to_point(PointN::new([5.1, 5.6]))
+        );
     }
 
     #[test]

@@ -195,7 +195,7 @@ where
 
     pub fn is_linear(&self, tolerance: P::Scalar) -> bool {
         // if start and end are (nearly) the same
-        if (self.start - self.end).squared_length() < P::Scalar::from(EPSILON) {
+        if (self.start - self.end).squared_length() < P::Scalar::epsilon() {
             return false;
         }
         // else check if ctrl points lie on baseline
@@ -235,9 +235,9 @@ where
         let pi = P::Scalar::from(core::f32::consts::PI.into()).into();
 
         // check if can be handled below cubic order
-        if a.abs() < EPSILON.into() {
-            if b.abs() < EPSILON.into() {
-                if c.abs() < EPSILON.into() {
+        if a.abs() < P::Scalar::epsilon() {
+            if b.abs() < P::Scalar::epsilon() {
+                if c.abs() < P::Scalar::epsilon() {
                     // no solutions
                     return result;
                 }
@@ -251,7 +251,7 @@ where
                 let sqrt_delta = delta.sqrt();
                 result.push((-c - sqrt_delta) / (b * 2.0));
                 result.push((-c + sqrt_delta) / (b * 2.0));
-            } else if delta.abs() < EPSILON.into() {
+            } else if delta.abs() < P::Scalar::epsilon() {
                 result.push(-c / (b * 2.0));
             }
             return result;
@@ -278,7 +278,7 @@ where
             result.push(-bn * frac_1_3 + (s + t));
 
             // Don't add the repeated root when s + t == 0.
-            if (s - t).abs() < EPSILON.into() && (s + t).abs() >= EPSILON.into() {
+            if (s - t).abs() < P::Scalar::epsilon() && (s + t).abs() >= P::Scalar::epsilon() {
                 result.push(-bn * frac_1_3 - (s + t) / 2.0);
             }
         } else {
@@ -304,9 +304,9 @@ where
     fn solve_t_for_axis(&self, value: P::Scalar, axis: usize) -> ArrayVec<[P::Scalar; 3]> {
         let mut result = ArrayVec::new();
         // check if all points are the same or if the curve is really just a line
-        if self.is_a_point(EPSILON.into())
-            || (self.are_points_colinear(EPSILON.into())
-                && (self.start - self.end).squared_length() < EPSILON.into())
+        if self.is_a_point(P::Scalar::epsilon())
+            || (self.are_points_colinear(P::Scalar::epsilon())
+                && (self.start - self.end).squared_length() < P::Scalar::epsilon())
         {
             return result;
         }

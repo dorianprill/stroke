@@ -22,18 +22,17 @@ use tinyvec::ArrayVec;
 // abstraction types
 pub mod bezier_segment;
 // specialized types
+pub mod cubic_bezier;
 pub mod line;
 pub mod quadratic_bezier;
-pub mod cubic_bezier;
 // generic types
-pub mod point_generic;
 pub mod bezier;
 pub mod bspline;
+pub mod point_generic;
 
 // Traits
 pub mod point;
 pub mod spline;
-
 
 mod roots;
 
@@ -43,9 +42,9 @@ pub use bspline::BSpline;
 pub use cubic_bezier::CubicBezier;
 pub use line::LineSegment;
 pub use point::Point;
-pub use spline::Spline;
 pub use point_generic::PointN;
 pub use quadratic_bezier::QuadraticBezier;
+pub use spline::Spline;
 
 // Conditionally compiled newtype pattern used to determine which size float to use for internal constants
 // so that the library can specialize internal types for the architecture for best performance

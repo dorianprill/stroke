@@ -1,5 +1,8 @@
 use super::NativeFloat;
-use core::{ops::{Add, Div, Mul, Sub}, iter::Sum};
+use core::{
+    iter::Sum,
+    ops::{Add, Div, Mul, Sub},
+};
 use num_traits::Float;
 
 /// The Point trait is the only interface on which the library relies.

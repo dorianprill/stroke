@@ -1,5 +1,5 @@
-use core::slice;
 use core::iter::{IntoIterator, Sum};
+use core::slice;
 
 use super::*;
 //use num_traits::{Float, FromPrimitive};

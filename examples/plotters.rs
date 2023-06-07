@@ -7,7 +7,6 @@ use stroke::Point;
 use stroke::PointN;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     // control points for the cubic bezier curve
     let cpoints = vec![
         (0f64, 1.77f64),
@@ -26,10 +25,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let bezier = CubicBezier::new(
-            PointN::new([0f64, 1.77f64]),
-            PointN::new([1.1f64, -1f64]),
-            PointN::new([4.3f64, 3f64]),
-            PointN::new([3.2f64, -4f64])
+        PointN::new([0f64, 1.77f64]),
+        PointN::new([1.1f64, -1f64]),
+        PointN::new([4.3f64, 3f64]),
+        PointN::new([3.2f64, -4f64]),
     );
 
     let bounds = bezier.bounding_box();
@@ -56,7 +55,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .margin(5)
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d((bounds[0].0 - 2.0)..(xmin + 6.0) , (ymin - 1.0)..(ymax + 3.0) )?; // make graph a bit bigger than bounding box
+        .build_cartesian_2d(
+            (bounds[0].0 - 2.0)..(xmin + 6.0),
+            (ymin - 1.0)..(ymax + 3.0),
+        )?; // make graph a bit bigger than bounding box
 
     chart.configure_mesh().draw()?;
 
@@ -84,7 +86,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .draw_series(LineSeries::new(bezier_graph, &RED))?
         .label("B(t)")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
-
 
     // draw the bounding box
     chart
