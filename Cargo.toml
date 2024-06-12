@@ -35,4 +35,8 @@ features = ["libm"]    # use `Float` and `Real` without `std`
 
 # these are just for development (e.g. integration tests and examples)
 [dev-dependencies]
-plotters = "^0.3.0"
+plotters = "^0.3"
+
+[[example]]
+name = "plotters_cubic_bezier"
+test = false
