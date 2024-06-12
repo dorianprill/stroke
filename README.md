@@ -1,6 +1,7 @@
 # stroke  
 
-![Rust](https://github.com/dorianprill/brezel/workflows/Rust/badge.svg)  
+![Rust](https://github.com/dorianprill/brezel/workflows/Rust/badge.svg)
+![crates.io](https://img.shields.io/crates/v/stroke.svg)
 A zero-allocation library providing const-generic implementations of Bézier curves, B-Spline curves and specialized implementations of up to cubic Bézier curves in N-dimensional euclidean space. It is intended for general/embedded/wasm use supporting #![no_std] environments written in 100% safe Rust with minimal dependencies.  
 
 The library makes heavy use of const-generics and some related unstabilized features, so the nightly compiler is required.  
