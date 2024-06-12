@@ -1,13 +1,18 @@
 #![no_std]
 #![forbid(unsafe_code)]
 #![allow(incomplete_features)]
+
 // this is needed to use expressions in const generics such as N-1 (see curve derivatives)
 #![feature(generic_const_exprs)]
+
 // this feature is needed for tinyvec < 2.0 to compile for const generic arrays like ArrayVec<[f32;N]>
 //#![feature(min_const_generics)]
+
+// NO LONGER NECESSARY (stabilized in 1.79) 
 // removes the need for generics with associated types to specify the
 // associated type like P:Point instead of P: Point<Scalar=f64>
-#![feature(associated_type_bounds)]
+//#![feature(associated_type_bounds)]
+
 // make splines usable as Fn in trait bounds
 //#![feature(fn_traits)]
 
