@@ -6,6 +6,7 @@ use super::*;
 use super::Point;
 
 /// Point with dimensions of constant generic size N and of generic type T
+///
 /// (Implemented as Newtype Pattern on an array
 /// see book or https://www.worthe-it.co.za/blog/2020-10-31-newtype-pattern-in-rust.html)
 /// This type only interacts with the library through

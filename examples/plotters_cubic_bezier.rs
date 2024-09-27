@@ -79,13 +79,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         ))?
         .label("Control Points of B(t)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
 
     // draw the actual bezier curve
     chart
         .draw_series(LineSeries::new(bezier_graph, &RED))?
         .label("B(t)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
 
     // draw the bounding box
     chart
@@ -99,23 +99,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     (xmin, ymin),
                 ],
                 0.0,
-                &GREEN.mix(0.05),
+                GREEN.mix(0.05),
             )
-            .border_style(&GREEN),
+            .border_style(GREEN),
         )?
         .label("Bounding Box")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &GREEN));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], GREEN));
 
     // draw the convex hull of control points
     chart
-        .draw_series(AreaSeries::new(chull, 0.0, &BLUE.mix(0.0)).border_style(&BLUE))?
+        .draw_series(AreaSeries::new(chull, 0.0, BLUE.mix(0.0)).border_style(BLUE))?
         .label("CH(control_points)")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
 
     chart
         .configure_series_labels()
-        .background_style(&WHITE.mix(0.8))
-        .border_style(&BLACK)
+        .background_style(WHITE.mix(0.8))
+        .border_style(BLACK)
         .draw()?;
 
     Ok(())

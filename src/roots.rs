@@ -27,8 +27,8 @@ pub(crate) fn roots_square(
     let mut result = ArrayVec::new();
 
     // check if can be handled below quadratic order
-    if a.abs() < EPSILON.into() {
-        if b.abs() < EPSILON.into() {
+    if a.abs() < EPSILON {
+        if b.abs() < EPSILON {
             // no solutions
             return result;
         }
@@ -38,11 +38,11 @@ pub(crate) fn roots_square(
     }
     // is quadratic equation
     let delta = b * b - a * c * 4.0;
-    if delta > 0.0.into() {
+    if delta > 0.0 {
         let sqrt_delta = delta.sqrt();
         result.push((-b - sqrt_delta) / (a * 2.0));
         result.push((-b + sqrt_delta) / (a * 2.0));
-    } else if delta.abs() < EPSILON.into() {
+    } else if delta.abs() < EPSILON {
         result.push(-b / (a * 2.0));
     }
     result
@@ -64,9 +64,9 @@ pub(crate) fn roots_cubic(
     let pi: NativeFloat = core::f32::consts::PI.into();
 
     // check if can be handled below cubic order
-    if a.abs() < EPSILON.into() {
-        if b.abs() < EPSILON.into() {
-            if c.abs() < EPSILON.into() {
+    if a.abs() < EPSILON {
+        if b.abs() < EPSILON {
+            if c.abs() < EPSILON {
                 // no solutions
                 return result;
             }
@@ -76,11 +76,11 @@ pub(crate) fn roots_cubic(
         }
         // is quadratic equation
         let delta = c * c - b * d * 4.0;
-        if delta > 0.0.into() {
+        if delta > 0.0 {
             let sqrt_delta = delta.sqrt();
             result.push((-c - sqrt_delta) / (b * 2.0));
             result.push((-c + sqrt_delta) / (b * 2.0));
-        } else if delta.abs() < EPSILON.into() {
+        } else if delta.abs() < EPSILON {
             result.push(-c / (b * 2.0));
         }
         return result;
@@ -107,7 +107,7 @@ pub(crate) fn roots_cubic(
         result.push(-bn * frac_1_3 + (s + t));
 
         // Don't add the repeated root when s + t == 0.
-        if (s - t).abs() < EPSILON.into() && (s + t).abs() >= EPSILON.into() {
+        if (s - t).abs() < EPSILON && (s + t).abs() >= EPSILON {
             result.push(-bn * frac_1_3 - (s + t) / 2.0);
         }
     } else {

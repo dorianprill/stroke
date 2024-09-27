@@ -1,8 +1,8 @@
 use super::Point;
 use super::*;
 
-/// LineSegment defined by a start and an endpoint, evaluatable
-/// anywhere inbetween using interpolation parameter t: [0,1] in eval()
+/// LineSegment defined by a start and an endpoint, evaluable anywhere inbetween using interpolation parameter t: [0,1] in eval()
+///
 /// A LineSegment is equal to a linear Bezier curve, which is why there is no
 /// specialized type for that case.
 #[derive(Copy, Clone, Debug, PartialEq)]

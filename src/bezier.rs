@@ -8,6 +8,7 @@ use crate::point::Point;
 use crate::spline::Spline;
 
 /// General implementation of a Bezier curve of arbitrary degree (= number of control points - 1).
+///
 /// The curve is solely defined by an array of 'control_points'. The degree is defined as degree = control_points.len() - 1.
 /// Points on the curve can be evaluated with an interpolation parameter 't' in interval [0,1] using the eval() and eval_casteljau() methods.
 /// Generic parameters:
