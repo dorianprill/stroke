@@ -15,8 +15,10 @@ pub enum BSplineError {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum KnotVectorKind {
-    Clamped,
     Unclamped,
+    ClampedStart,
+    ClampedEnd,
+    Clamped,
 }
 
 impl core::fmt::Display for BSplineError {
@@ -35,6 +37,7 @@ impl core::fmt::Display for BSplineError {
 }
 
 /// General Implementation of a BSpline with choosable degree, control points and knots.
+///
 /// Generic parameters:
 /// P: const generic points array 'P' as defined by the Point trait
 /// F: Any float value used for the knots and interpolation (usually the same as the internal generic parameter within P<F>).
@@ -42,8 +45,8 @@ impl core::fmt::Display for BSplineError {
 /// C: Number of control points
 /// K: Number of Knots
 /// D: Degree of the piecewise function used for interpolation degree = order - 1
-/// While C, K, O relate to each other in the following manner
-///     K = C + O where O = D + 1
+/// While C, K, D relate to each other in the following manner
+///     K = C + D + 1
 #[derive(Clone)]
 pub struct BSpline<P, const K: usize, const C: usize, const D: usize>
 where
@@ -68,6 +71,7 @@ where
     /// Desired curve must have a valid number of control points and knots in relation to its degree or the constructor will return None.
     /// A B-Spline curve requires at least one more control point than the degree (`control_points.len() >
     /// degree`) and the number of knots should be equal to `control_points.len() + degree + 1`.
+    /// K = C + D + 1
     pub fn new(
         knots: [P::Scalar; K],
         control_points: [P; C],
@@ -90,16 +94,17 @@ where
                 .iter()
                 .all(|&knot| (knot - knots[knots.len() - 1]).abs() < P::Scalar::epsilon());
 
-            let knot_kind = if is_clamped_front && is_clamped_back {
-                KnotVectorKind::Clamped
-            } else {
-                KnotVectorKind::Unclamped
+            let knot_kind = match (is_clamped_front, is_clamped_back) {
+                (false, false) => KnotVectorKind::Unclamped,
+                (true, false) => KnotVectorKind::ClampedStart,
+                (false, true) => KnotVectorKind::ClampedEnd,
+                (true, true) => KnotVectorKind::Clamped,
             };
 
             Ok(BSpline {
-                knots: knots,
-                knot_kind: knot_kind,
-                control_points: control_points,
+                knots,
+                knot_kind,
+                control_points,
             })
         }
     }
@@ -141,74 +146,92 @@ where
     pub fn knot_domain(&self) -> (P::Scalar, P::Scalar) {
         match self.knot_kind {
             KnotVectorKind::Clamped => self.knot_domain_clamped(),
+            KnotVectorKind::ClampedStart => self.knot_domain_clamped_start(),
+            KnotVectorKind::ClampedEnd => self.knot_domain_clamped_end(),
             KnotVectorKind::Unclamped => self.knot_domain_unclamped(),
         }
+    }
+
+    fn knot_domain_clamped_start(&self) -> (P::Scalar, P::Scalar) {
+        // Start from knots[D], end at knots[knots.len() - 1]
+        (self.knots[D], self.knots[self.knots.len() - 1])
+    }
+
+    fn knot_domain_clamped_end(&self) -> (P::Scalar, P::Scalar) {
+        // Start from knots[0], end at knots[knots.len() - 1 - D] (C = K - D - 1)
+        (self.knots[0], self.knots[self.knots.len() - 1 - D])
     }
 
     // Returns the knot domain for a clamped B-Spline
     // where the first and last knot has multiplicity D+1
     fn knot_domain_clamped(&self) -> (P::Scalar, P::Scalar) {
+        // The valid domain is from knots[D] to knots[C] (C = K - D - 1)
         (self.knots[D], self.knots[self.knots.len() - 1 - D])
     }
 
     // Returns the knot domain for an unclamped B-Spline
     // where the first and last knot has multiplicity 1
+    // fn knot_domain_unclamped(&self) -> (P::Scalar, P::Scalar) {
+    //     (self.knots[0], self.knots[self.knots.len() - 1])
+    // }
     fn knot_domain_unclamped(&self) -> (P::Scalar, P::Scalar) {
-        (self.knots[0], self.knots[self.knots.len() - 1])
+        // The valid domain is from knots[D] to knots[C] (C = K - D - 1)
+        (self.knots[D], self.knots[C])
     }
 
-    /// Calculates the minimum distance between given 'point' and the curve.
-    /// Uses two passes with the same amount of steps in t:
-    /// 1. coarse search over the whole curve
-    /// 2. fine search around the minimum yielded by the coarse search
-    pub fn distance_to_point(&self, point: P) -> P::Scalar
-    where
-        [(); D + 1]:,
-    {
-        let nsteps: usize = 64;
-        let mut tmin: P::Scalar = 0.5.into();
-        let mut dmin: P::Scalar = (point - self.control_points[0]).squared_length();
-        let (kstart, kend) = self.knot_domain();
-        // 1. coarse pass
-        for i in 0..nsteps {
-            // calculate next step value
-            let t: P::Scalar =
-                kstart + (kend - kstart) * (i as NativeFloat / (nsteps as NativeFloat));
-            // calculate distance to candidate
-            let candidate = match self.eval(t) {
-                Ok(val) => val,
-                Err(_) => {
-                    // In case of error, return zero
-                    // this can never happen as we control the t values passed to eval()
-                    return P::Scalar::from(0.0);
-                }
-            };
-            if (candidate - point).squared_length() < dmin {
-                tmin = t;
-                dmin = (candidate - point).squared_length();
-            }
-        }
-        // 2. fine pass
-        for i in 0..nsteps {
-            // calculate next step value ( a 64th of a 64th from first step)
-            let t: P::Scalar =
-                kstart + (kend - kstart) * (i as NativeFloat / ((nsteps * nsteps) as NativeFloat));
-            // calculate distance to candidate centered around tmin from before
-            let candidate = match self.eval(tmin + t - t * (nsteps as NativeFloat / 2.0)) {
-                Ok(val) => val,
-                Err(_) => {
-                    // In case of error, return zero
-                    // this can never happen as we control the t values passed to eval()
-                    return P::Scalar::from(0.0);
-                }
-            };
-            if (candidate - point).squared_length() < dmin {
-                tmin = t;
-                dmin = (candidate - point).squared_length();
-            }
-        }
-        dmin.sqrt()
-    }
+    // /// Calculates the minimum distance between given 'point' and the curve.
+    // /// Uses two passes with the same amount of steps in t:
+    // /// 1. coarse search over the whole curve
+    // /// 2. fine search around the minimum yielded by the coarse search
+    // /// TODO FIXME INVESTIGATE
+    // pub fn distance_to_point(&self, point: P) -> P::Scalar
+    // where
+    //     [(); D + 1]:,
+    // {
+    //     let nsteps: usize = 64;
+    //     let mut tmin: P::Scalar = 0.5.into();
+    //     let mut dmin: P::Scalar = (point - self.control_points[0]).squared_length();
+    //     let (kstart, kend) = self.knot_domain();
+    //     // 1. coarse pass
+    //     for i in 0..nsteps {
+    //         // calculate next step value
+    //         let t: P::Scalar =
+    //             kstart + (kend - kstart) * (i as NativeFloat / (nsteps as NativeFloat));
+    //         // calculate distance to candidate
+    //         let candidate = match self.eval(t) {
+    //             Ok(val) => val,
+    //             Err(_) => {
+    //                 // In case of error, return zero
+    //                 // this can never happen as we control the t values passed to eval()
+    //                 return P::Scalar::from(0.0);
+    //             }
+    //         };
+    //         if (candidate - point).squared_length() < dmin {
+    //             tmin = t;
+    //             dmin = (candidate - point).squared_length();
+    //         }
+    //     }
+    //     // 2. fine pass
+    //     for i in 0..nsteps {
+    //         // calculate next step value ( a 64th of a 64th from first step)
+    //         let t: P::Scalar =
+    //             kstart + (kend - kstart) * (i as NativeFloat / ((nsteps * nsteps) as NativeFloat));
+    //         // calculate distance to candidate centered around tmin from before
+    //         let candidate = match self.eval(tmin + t - t * (nsteps as NativeFloat / 2.0)) {
+    //             Ok(val) => val,
+    //             Err(_) => {
+    //                 // In case of error, return zero
+    //                 // this can never happen as we control the t values passed to eval()
+    //                 return P::Scalar::from(0.0);
+    //             }
+    //         };
+    //         if (candidate - point).squared_length() < dmin {
+    //             tmin = t;
+    //             dmin = (candidate - point).squared_length();
+    //         }
+    //     }
+    //     dmin.sqrt()
+    // }
 
     /// Iteratively compute de Boor's B-spline algorithm, this computes the recursive
     /// de Boor algorithm tree from the bottom up. At each level we use the results
@@ -219,26 +242,12 @@ where
     where
         [(); D + 1]: Sized,
     {
-        // special cases for t equals first/last knot while evaluating a curve
-        // on the closed interval [kmin, kmax] instead of open interval [kmin, kmax)
-        // TODO unclamped case still buggy...
-        // cause may lie here, or inside the main loop below, or in knot_span_start_for_t()
-        if self.knot_kind == KnotVectorKind::Clamped
-            && (t - self.knots[self.knots.len() - 1]).abs() < P::Scalar::epsilon()
-        {
-            return Ok(self.control_points[self.control_points.len() - 1].clone());
+        // Special case when t equals the last knot value
+        if t == self.knots[self.control_points.len()] {
+            return Ok(self.control_points[self.control_points.len() - 1]);
         }
-        // else if self.knot_kind == KnotVectorKind::Unclamped && (t - self.knots[self.knots.len() - 1]).abs() < P::Scalar::epsilon() {
-        //     return Ok(self.control_points[self.control_points.len() - D].clone());
-        // }
-        // else if self.knot_kind == KnotVectorKind::Unclamped && (t - self.knots[0]).abs() < P::Scalar::epsilon() {
-        //     return Ok(self.control_points[0].clone());
-        // }
 
-        let k = match self.knot_kind {
-            KnotVectorKind::Clamped => self.clamped_knot_span_start_for_t(t),
-            KnotVectorKind::Unclamped => self.knot_span_start_for_t(t),
-        };
+        let k = self.knot_span_start_for_t(t);
 
         let k = match k {
             Some(r) => r,
@@ -251,8 +260,17 @@ where
         // Copy the control points needed for the first iteration
         // For a B-Spline of degree D, D+1 control points in the knot span contribute to the result
         for j in 0..D {
-            d[j] = self.control_points[j + k - D].clone();
+            d[j] = self.control_points[j + k - D];
         }
+
+        // // Adjust the start index to prevent negative values
+        // let start_index = if k >= D { k - D } else { 0 };
+        // // Calculate the number of control points to copy
+        // let num_points = if k >= D { D + 1 } else { k + 1 };
+        // // Copy the control points needed for the first iteration
+        // for j in 0..num_points {
+        //     d[j] = self.control_points[start_index + j];
+        // }
 
         // de Boor's algorithm
         // The result overwrites the right of the two point operands used in the current iteration
@@ -286,12 +304,21 @@ where
         Ok(d[D])
     }
 
+    fn knot_span_start_for_t(&self, t: P::Scalar) -> Option<usize> {
+        match self.knot_kind {
+            KnotVectorKind::Unclamped => self.knot_span_start_for_t_unclamped(t),
+            KnotVectorKind::ClampedStart => self.knot_span_start_for_t_clamped_start(t),
+            KnotVectorKind::Clamped => self.knot_span_start_for_t_clamped(t),
+            KnotVectorKind::ClampedEnd => self.knot_span_start_for_t_clamped_end(t),
+        }
+    }
+
     /// Return the index of the start of the knot span for given `t` for an unclamped B-Spline.
     /// This is the index of the first element that satisfies:
     ///     knots[i] <= t < knots[i+1]
     /// Because the knot vector is non-decreasing, this function uses binary search.
     /// If no element greater than the value passed is found, the function returns None.
-    fn knot_span_start_for_t(&self, t: P::Scalar) -> Option<usize> {
+    fn knot_span_start_for_t_unclamped(&self, t: P::Scalar) -> Option<usize> {
         let mut first = 0usize;
         let mut step;
         let mut count = self.knots.len() as isize;
@@ -317,24 +344,91 @@ where
     ///     knots[i] <= t < knots[i+1] where i >= degree and i < knots.len() - degree - 1
     /// Because the knot vector is non-decreasing, this function uses binary search.
     /// If no element greater than the value passed is found, the function returns None.
-    fn clamped_knot_span_start_for_t(&self, t: P::Scalar) -> Option<usize> {
-        let mut first = D;
-        let mut step;
-        let mut count = self.knots.len() - 2 * D;
-        while count > 0 {
-            step = count / 2;
-            let it = first + step as usize;
-            if t >= self.knots[it] && t < self.knots[it + 1] {
-                return Some(it);
-            }
-            if t >= self.knots[it] {
-                first = it + 1;
-                count -= step + 1;
+    fn knot_span_start_for_t_clamped(&self, t: P::Scalar) -> Option<usize> {
+        let n = self.control_points.len() - 1; // n = number of control points - 1
+        let p = D; // degree
+        if t == self.knots[n + 1] {
+            return Some(n);
+        }
+        let mut low = p;
+        let mut high = n;
+        while low <= high {
+            let mid = (low + high) / 2;
+            if t >= self.knots[mid] && t < self.knots[mid + 1] {
+                return Some(mid);
+            } else if t < self.knots[mid] {
+                high = mid - 1;
             } else {
-                count = step;
+                low = mid + 1;
             }
         }
         None
+    }
+
+    fn knot_span_start_for_t_clamped_start(&self, t: P::Scalar) -> Option<usize> {
+        let n = self.control_points.len() - 1; // n = number of control points - 1
+        let p = D; // Degree of the spline
+        let m = self.knots.len() - 1; // Last index of the knot vector
+
+        // Special case when t equals the last knot value
+        if t == self.knots[m] {
+            return Some(n);
+        }
+
+        // Valid parameter domain is from knots[p] to knots[m]
+        if t < self.knots[p] || t > self.knots[m] {
+            return None;
+        }
+
+        // Initialize binary search indices
+        let mut low = p;
+        let mut high = m - 1; // Since we compare t with knots[mid + 1], high should be m - 1
+
+        // Binary search to find the knot span
+        while low <= high {
+            let mid = (low + high) / 2;
+            if t >= self.knots[mid] && t < self.knots[mid + 1] {
+                return Some(mid);
+            } else if t < self.knots[mid] {
+                high = mid - 1;
+            } else {
+                low = mid + 1;
+            }
+        }
+
+        None // t is not within any knot span
+    }
+
+    fn knot_span_start_for_t_clamped_end(&self, t: P::Scalar) -> Option<usize> {
+        let n = self.control_points.len() - 1; // n = number of control points - 1
+
+        // Special case when t equals knots[n + 1]
+        if t == self.knots[n + 1] {
+            return Some(n);
+        }
+
+        // Valid parameter domain is from knots[0] to knots[n + 1]
+        if t < self.knots[0] || t > self.knots[n + 1] {
+            return None;
+        }
+
+        // Initialize binary search indices
+        let mut low = 0;
+        let mut high = n; // Since we compare t with knots[mid + 1], high should be n
+
+        // Binary search to find the knot span
+        while low <= high {
+            let mid = (low + high) / 2;
+            if t >= self.knots[mid] && t < self.knots[mid + 1] {
+                return Some(mid);
+            } else if t < self.knots[mid] {
+                high = mid - 1;
+            } else {
+                low = mid + 1;
+            }
+        }
+
+        None // t is not within any knot span
     }
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.
@@ -354,11 +448,11 @@ where
                     * (kmax - kmin);
             let p1 = self.eval(t).unwrap_or_else(|_| {
                 // should never happen as we control the t values passed to eval()
-                return P::default();
+                P::default()
             });
             let p2 = self.eval(t + stepsize).unwrap_or_else(|_| {
                 // should never happen as we control the t values passed to eval()
-                return P::default();
+                P::default()
             });
             arclen = arclen + (p1 - p2).squared_length().sqrt();
         }
@@ -410,13 +504,25 @@ mod tests {
         let knots: [f64; 4] = [0., 0., 1., 1.];
 
         // Create the B-Spline
-        let b: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
-        assert!(b.knot_kind == KnotVectorKind::Clamped);
+        assert!(curve.knot_kind == KnotVectorKind::Clamped);
+
+        // evaluate along the curve to find out of bounds errors
+        let (kmin, kmax) = curve.knot_domain();
+        let nsteps: usize = 100;
+        for t in 0..=nsteps {
+            let t = kmin + (t as f64 / nsteps as f64) * (kmax - kmin);
+            //dbg!(kmin, t, kmax);
+            // this curve shouldn't fail to evaluate numerically unless knot index is out of bounds
+            let _ = curve.eval(t).unwrap_or_else(|e| {
+                panic!("Unexpected error in eval: {:?}", e);
+            });
+        }
 
         // Evaluate the B-Spline at the start (t=0) and end (t=1) of the knot vector
-        let start = b.eval(0.).unwrap();
-        let end = b.eval(1.).unwrap();
+        let start = curve.eval(0.).unwrap();
+        let end = curve.eval(1.).unwrap();
 
         // Check that the start and end points match the control points
         assert_eq!(start, points[0]);
@@ -424,7 +530,7 @@ mod tests {
     }
 
     #[test]
-    fn degree_1_unclamped_construct_and_eval_endpoints() {
+    fn degree_1_unclamped_construct_and_eval() {
         // Define the control points for a degree 1 B-Spline (essentially a line)
         let points = [
             PointN::new([0f64, 0f64]),   // Start of the line at origin
@@ -435,12 +541,25 @@ mod tests {
         let knots: [f64; 4] = [0., 1., 2., 3.];
 
         // Create the B-Spline
-        let b: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
-        assert!(b.knot_kind == KnotVectorKind::Unclamped);
+        assert!(curve.knot_kind == KnotVectorKind::Unclamped);
+
+        let (kmin, kmax) = curve.knot_domain();
+
+        // evaluate along the curve to find out of bounds errors
+        let nsteps: usize = 100;
+        for t in 0..=nsteps {
+            let t = kmin + (t as f64 / nsteps as f64) * (kmax - kmin);
+            //dbg!(kmin, t, kmax);
+            // this curve shouldn't fail to evaluate numerically unless knot index is out of bounds
+            let _ = curve.eval(t).unwrap_or_else(|e| {
+                panic!("Unexpected error in eval: {:?}", e);
+            });
+        }
 
         // Evaluate the B-Spline at the start (t=0) and end (t=1) of the knot vector
-        let mid = match b.eval(1.5) {
+        let mid = match curve.eval(1.5) {
             Ok(p) => p,
             Err(e) => panic!("Error evaluating B-Spline: {}", e),
         };
@@ -453,7 +572,88 @@ mod tests {
     }
 
     #[test]
-    fn degree_3_construct_and_eval_endpoints() {
+    fn degree_2_clamped_construct_and_eval_endpoints() {
+        // Define the control points for a degree 2 B-Spline
+        let points = [
+            PointN::new([0f64, 0f64]),   // Start of the line at origin
+            PointN::new([10f64, 10f64]), // End of the line at (10, 10)
+            PointN::new([20f64, 0f64]),  // End of the line at (20, 0)
+        ];
+
+        // Define a uniform clamped knot vector for a degree 2 B-spline
+        let knots: [f64; 6] = [0., 0., 0., 1., 1., 1.];
+
+        // Create the B-Spline
+        let curve: BSpline<PointN<f64, 2>, 6, 3, 2> = BSpline::new(knots, points).unwrap();
+
+        assert!(curve.knot_kind == KnotVectorKind::Clamped);
+
+        let (kmin, kmax) = curve.knot_domain();
+
+        // evaluate along the curve to find out of bounds errors
+        let nsteps: usize = 100;
+        for t in 0..=nsteps {
+            let t = kmin + (t as f64 / nsteps as f64) * (kmax - kmin);
+            //dbg!(kmin, t, kmax);
+            // this curve shouldn't fail to evaluate numerically unless knot index is out of bounds
+            let _ = curve.eval(t).unwrap_or_else(|e| {
+                panic!("Unexpected error in eval: {:?}", e);
+            });
+        }
+
+        // Evaluate the B-Spline at the start (t=0) and end (t=1) of the knot vector
+        let start = curve.eval(0.).unwrap();
+        let end = curve.eval(1.).unwrap();
+
+        // Check that the start and end points match the control points
+        assert_eq!(start, points[0]);
+        assert_eq!(end, points[2]);
+    }
+
+    #[test]
+    fn degree_2_unclamped_construct_and_eval() {
+        // Define the control points for a degree 2 B-Spline
+        let points = [
+            PointN::new([0f64, 0f64]),   // Start of the line at origin
+            PointN::new([10f64, 10f64]), // End of the line at (10, 10)
+            PointN::new([20f64, 0f64]),  // End of the line at (20, 0)
+        ];
+
+        // Define a uniform unclamped knot vector for a degree 2 B-spline
+        let knots: [f64; 6] = [0., 1., 2., 3., 4., 5.];
+
+        // Create the B-Spline
+        let curve: BSpline<PointN<f64, 2>, 6, 3, 2> = BSpline::new(knots, points).unwrap();
+
+        assert!(curve.knot_kind == KnotVectorKind::Unclamped);
+
+        let (kmin, kmax) = curve.knot_domain();
+        // evaluate along the curve to find out of bounds errors
+        let nsteps: usize = 100;
+        for t in 0..=nsteps {
+            let t = kmin + (t as f64 / nsteps as f64) * (kmax - kmin);
+            //dbg!(kmin, t, kmax);
+            // this curve shouldn't fail to evaluate numerically unless knot index is out of bounds
+            let _ = curve.eval(t).unwrap_or_else(|e| {
+                panic!("Unexpected error in eval: {:?}", e);
+            });
+        }
+
+        // Evaluate the B-Spline at the start (t=0) mid (t=2.5) and end (t=1) of the knot vector
+        let mid = match curve.eval(2.5) {
+            Ok(p) => p,
+            Err(e) => panic!("Error evaluating B-Spline: {}", e),
+        };
+
+        // Check that the start and end points have equal distance to the midpoint of the line
+        assert!(
+            (points[1] - mid).squared_length().sqrt() - (points[0] - mid).squared_length().sqrt()
+                < EPSILON
+        );
+    }
+
+    #[test]
+    fn degree_3_clamped_construct_and_eval_endpoints() {
         // degree 3, 4 control points => 4+3+1=8 knots
         let points = [
             PointN::new([0f64, 1.77f64]),
@@ -481,17 +681,117 @@ mod tests {
         for t in 0..=nsteps {
             let t = kmin + (t as f64 / nsteps as f64) * (kmax - kmin);
             //dbg!(kmin, t, kmax);
-            // this curve shouldn't fail to evaluate numerically
+            // this curve shouldn't fail to evaluate numerically unless knot index is out of bounds
             let _ = curve.eval(t).unwrap_or_else(|e| {
                 panic!("Unexpected error in eval: {:?}", e);
             });
         }
-        // for now only check if has positive arclen
-        //assert!(curve.arclen(100) > 0.);
 
         // check if eval returns the correct error if t is out of bounds
-        assert!(curve.eval(-0.1).is_err());
-        assert!(curve.eval(3.1).is_err());
+        assert_eq!(
+            curve.eval(-0.1).err(),
+            Some(BSplineError::KnotDomainViolation)
+        );
+        assert_eq!(
+            curve.eval(2.1).err(),
+            Some(BSplineError::KnotDomainViolation)
+        );
+        // check if eval works correctly for endpoints
+        assert!(curve.eval(kmin).is_ok());
+        assert!(curve.eval(kmax).is_ok());
+        assert_eq!(curve.eval(kmin).unwrap(), points[0]);
+        assert_eq!(curve.eval(kmax).unwrap(), points[4]);
+    }
+
+    #[test]
+    fn degree_3_unclamped_construct_and_eval() {
+        // degree 3, 4 control points => 4+3+1=8 knots
+        let points = [
+            PointN::new([0f64, 1.77f64]),
+            PointN::new([1.1f64, -1f64]),
+            PointN::new([4.3f64, 3f64]),
+            PointN::new([3.2f64, -4f64]),
+            PointN::new([2.3f64, 1.77f64]),
+        ];
+        // unclamped b-spline (not necessarily going through the first and last control point)
+        let knots: [f64; 9] = [0., 1., 2., 3., 4., 5., 6., 7., 8.];
+
+        // try to make a b-spline with the given parameters
+        let b: Result<BSpline<PointN<f64, 2>, 9, 5, 3>, BSplineError> = BSpline::new(knots, points);
+
+        let curve = match b {
+            Err(e) => panic!("Error: {:?}", e),
+            Ok(b) => b,
+        };
+
+        assert!(curve.knot_kind == KnotVectorKind::Unclamped);
+        // evaluate the curve, t needs to be inside the knot domain!
+        // we need to map [0...1] to kmin..kmax
+        let (kmin, kmax) = curve.knot_domain();
+        assert!(kmin == 3.0 && kmax == 5.0);
+        let nsteps: usize = 100;
+        for t in 0..=nsteps {
+            let t = kmin + (t as f64 / nsteps as f64) * (kmax - kmin);
+            //dbg!(kmin, t, kmax);
+            // this curve shouldn't fail to evaluate numerically unless knot index is out of bounds
+            let _ = curve.eval(t).unwrap_or_else(|e| {
+                panic!("Unexpected error in eval: {:?}", e);
+            });
+        }
+
+        // check if eval returns the correct error if t is out of bounds
+        assert_eq!(
+            curve.eval(-0.1).err(),
+            Some(BSplineError::KnotDomainViolation)
+        );
+        assert_eq!(
+            curve.eval(8.1).err(),
+            Some(BSplineError::KnotDomainViolation)
+        );
+        // check if eval works correctly for endpoints
+        // since the curve is unclampend, the curves endpoints are not necessarily on the control points
+        assert!(curve.eval(kmin).is_ok());
+        assert!(curve.eval(kmax).is_ok());
+    }
+
+    #[test]
+    fn degree_4_clamped_construct_and_eval() {
+        // degree 4, 5 control points => 5+4+1=10 knots
+        let points = [
+            PointN::new([0f64, 1.77f64]),
+            PointN::new([1.1f64, -1f64]),
+            PointN::new([4.3f64, 3f64]),
+            PointN::new([3.2f64, -4f64]),
+            PointN::new([2.3f64, 1.77f64]),
+        ];
+        // clamped b-spline (goes through the first and last control point)
+        let knots: [f64; 10] = [0., 0., 0., 0., 0., 3., 3., 3., 3., 3.];
+
+        // try to make a b-spline with the given parameters
+        let b: Result<BSpline<PointN<f64, 2>, 10, 5, 4>, BSplineError> =
+            BSpline::new(knots, points);
+
+        let curve = match b {
+            Err(e) => panic!("Error: {:?}", e),
+            Ok(b) => b,
+        };
+
+        assert!(curve.knot_kind == KnotVectorKind::Clamped);
+        // evaluate the curve, t needs to be inside the knot domain!
+        // we need to map [0...1] to kmin..kmax
+        let (kmin, kmax) = curve.knot_domain();
+        assert!(kmin == 0.0 && kmax == 3.0);
+        let nsteps: usize = 100;
+        for t in 0..=nsteps {
+            let t = kmin + (t as f64 / nsteps as f64) * (kmax - kmin);
+            //dbg!(kmin, t, kmax);
+            // this curve shouldn't fail to evaluate numerically unless knot index is out of bounds
+            let _ = curve.eval(t).unwrap_or_else(|e| {
+                panic!("Unexpected error in eval: {:?}", e);
+            });
+        }
+
+        // check if eval returns the correct error if t is out of bounds
         assert_eq!(
             curve.eval(-0.1).err(),
             Some(BSplineError::KnotDomainViolation)
@@ -507,26 +807,52 @@ mod tests {
         assert_eq!(curve.eval(kmax).unwrap(), points[4]);
     }
 
-    // #[test]
-    // fn distance_to_point() {
-    //     // degree 3, 4 control points => 4+3+1=8 knots
-    //     let points = [
-    //         PointN::new([0f64, 1.77f64]),
-    //         PointN::new([1.1f64, -1f64]),
-    //         PointN::new([4.3f64, 3f64]),
-    //         PointN::new([3.2f64, -4f64]),
-    //     ];
-    //     let knots: [f64; 8] = [0., 0., 0., 1., 2., 3., 3., 3.];
-    //     // try to make a b-spline with the given parameters
-    //     let b: Result<BSpline<PointN<f64, 2>, 8, 4, 3>, BSplineError> = BSpline::new(knots, points);
-    //     let curve = match b {
-    //         Err(e) => panic!("Error: {:?}", e),
-    //         Ok(b) => b,
-    //     };
-    //     // TODO this may never be reached
-    //     assert!(
-    //         curve.distance_to_point(PointN::new([-5.1, -5.6]))
-    //             > curve.distance_to_point(PointN::new([5.1, 5.6]))
-    //     );
-    // }
+    #[test]
+    fn degree_4_unclamped_construct_and_eval() {
+        // degree 4, 5 control points => 5+4+1=10 knots
+        let points = [
+            PointN::new([0f64, 1.77f64]),
+            PointN::new([1.1f64, -1f64]),
+            PointN::new([4.3f64, 3f64]),
+            PointN::new([3.2f64, -4f64]),
+            PointN::new([2.3f64, 1.77f64]),
+            PointN::new([0.0, 0.0]),
+        ];
+        // unclamped b-spline (not necessarily going through the first and last control point)
+        let knots: [f64; 11] = [0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.];
+
+        // try to make a b-spline with the given parameters
+        let b: Result<BSpline<PointN<f64, 2>, 11, 6, 4>, BSplineError> =
+            BSpline::new(knots, points);
+
+        let curve = match b {
+            Err(e) => panic!("Error: {:?}", e),
+            Ok(b) => b,
+        };
+
+        assert!(curve.knot_kind == KnotVectorKind::Unclamped);
+        // evaluate the curve, t needs to be inside the knot domain!
+        // we need to map [0...1] to kmin..kmax
+        let (kmin, kmax) = curve.knot_domain();
+        assert!(kmin == 4.0 && kmax == 6.0);
+        let nsteps: usize = 100;
+        for t in 0..=nsteps {
+            let t = kmin + (t as f64 / nsteps as f64) * (kmax - kmin);
+            //dbg!(kmin, t, kmax);
+            // this curve shouldn't fail to evaluate numerically unless knot index is out of bounds
+            let _ = curve.eval(t).unwrap_or_else(|e| {
+                panic!("Unexpected error in eval: {:?}", e);
+            });
+        }
+
+        // check if eval returns the correct error if t is out of bounds
+        assert_eq!(
+            curve.eval(-0.1).err(),
+            Some(BSplineError::KnotDomainViolation)
+        );
+        assert_eq!(
+            curve.eval(9.1).err(),
+            Some(BSplineError::KnotDomainViolation)
+        );
+    }
 }
