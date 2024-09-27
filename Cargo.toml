@@ -25,7 +25,7 @@ exclude = [
 ]
 
 [dependencies]
-tinyvec = { version = "^1.5", features = ["rustc_1_55"] }
+tinyvec = { version = "^1.8"} #{, features = ["rustc_1_55"] }
 
 
 [dependencies.num-traits]
