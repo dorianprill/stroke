@@ -21,6 +21,12 @@ enum KnotVectorKind {
     Clamped,
 }
 
+impl Default for KnotVectorKind {
+    fn default() -> Self {
+        KnotVectorKind::Unclamped
+    }
+}
+
 impl core::fmt::Display for BSplineError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -47,7 +53,7 @@ impl core::fmt::Display for BSplineError {
 /// D: Degree of the piecewise function used for interpolation degree = order - 1
 /// While C, K, D relate to each other in the following manner
 ///     K = C + D + 1
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct BSpline<P, const K: usize, const C: usize, const D: usize>
 where
     P: Point,
@@ -58,6 +64,19 @@ where
     knot_kind: KnotVectorKind,
     /// Control points
     control_points: [P; C],
+}
+
+impl<P, const K: usize, const C: usize, const D: usize> Default for BSpline<P, K, C, D>
+where
+    P: Point,
+{
+    fn default() -> Self {
+        BSpline {
+            knots: core::array::from_fn(|_| P::Scalar::default()),
+            knot_kind: KnotVectorKind::default(),
+            control_points: core::array::from_fn(|_| P::default()),
+        }
+    }
 }
 
 impl<P, const K: usize, const C: usize, const D: usize> BSpline<P, { K }, { C }, { D }>
@@ -259,7 +278,7 @@ where
 
         // Copy the control points needed for the first iteration
         // For a B-Spline of degree D, D+1 control points in the knot span contribute to the result
-        for j in 0..D {
+        for j in 0..=D {
             d[j] = self.control_points[j + k - D];
         }
 
@@ -319,21 +338,24 @@ where
     /// Because the knot vector is non-decreasing, this function uses binary search.
     /// If no element greater than the value passed is found, the function returns None.
     fn knot_span_start_for_t_unclamped(&self, t: P::Scalar) -> Option<usize> {
-        let mut first = 0usize;
-        let mut step;
-        let mut count = self.knots.len() as isize;
-        while count > 0 {
-            step = count / 2;
-            let it = first + step as usize;
-            if t < self.knots[it + 1] || (it + 1 == self.knots.len() - 2 && t == self.knots[it + 1])
-            {
-                return Some(it);
+        if t == self.knots[C] {
+            return Some(C - 1);
+        }
+
+        let mut low = D;
+        let mut high = C - 1;
+        while low <= high {
+            let mid = (low + high) / 2;
+            if t >= self.knots[mid] && t < self.knots[mid + 1] {
+                return Some(mid);
             }
-            if t >= self.knots[it] {
-                first = it + 1;
-                count -= step + 1;
+            if t < self.knots[mid] {
+                if mid == 0 {
+                    return None;
+                }
+                high = mid - 1;
             } else {
-                count = step;
+                low = mid + 1;
             }
         }
         None
