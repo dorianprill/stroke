@@ -15,7 +15,7 @@ impl<P> BezierSegment<P>
 where
     P: Point,
 {
-    pub fn eval<F>(&self, t: P::Scalar) -> P {
+    pub fn eval(&self, t: P::Scalar) -> P {
         match self {
             BezierSegment::Linear(segment) => segment.eval(t),
             BezierSegment::Quadratic(segment) => segment.eval(t),
@@ -58,6 +58,15 @@ where
             BezierSegment::Linear(segment) => *segment,
             BezierSegment::Quadratic(segment) => segment.baseline(),
             BezierSegment::Cubic(segment) => segment.baseline(),
+        }
+    }
+
+    #[inline]
+    pub fn bounding_box(&self) -> [(P::Scalar, P::Scalar); P::DIM] {
+        match self {
+            BezierSegment::Linear(segment) => segment.bounding_box(),
+            BezierSegment::Quadratic(segment) => segment.bounding_box(),
+            BezierSegment::Cubic(segment) => segment.bounding_box(),
         }
     }
 
@@ -107,5 +116,14 @@ where
 {
     fn from(s: CubicBezier<P>) -> Self {
         BezierSegment::Cubic(s)
+    }
+}
+
+impl<P> Default for BezierSegment<P>
+where
+    P: Point,
+{
+    fn default() -> Self {
+        BezierSegment::Linear(LineSegment::new(P::default(), P::default()))
     }
 }

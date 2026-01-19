@@ -35,6 +35,8 @@ pub mod point_generic;
 // Traits
 pub mod point;
 pub mod spline;
+pub mod path;
+pub mod bspline_path;
 
 mod roots;
 
@@ -46,6 +48,8 @@ pub use line::LineSegment;
 pub use point::Point;
 pub use point_generic::PointN;
 pub use quadratic_bezier::QuadraticBezier;
+pub use bspline_path::BSplinePath;
+pub use path::BezierPath;
 pub use spline::Spline;
 
 // Conditionally compiled newtype pattern used to determine which size float to use for internal constants
