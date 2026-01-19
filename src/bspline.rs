@@ -3,7 +3,7 @@ use core::slice::*;
 use super::point::Point;
 use super::*;
 use crate::find_root::FindRoot;
-use crate::roots::RootFindingError;
+use crate::roots::{root_newton_raphson, RootFindingError};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BSplineError {
@@ -595,33 +595,21 @@ where
             t
         };
 
-        let mut x = clamp_t(start);
-        for _ in 0..max_iter {
+        let start = clamp_t(start);
+        let fx = |x: P::Scalar| {
             let t = clamp_t(x);
-            let fx = self.axis_value(t, axis)? - value;
-            if fx.abs() <= eps {
-                return Ok(t);
-            }
-
-            let dx = derivative
+            self.axis_value(t, axis).map(|v| v - value)
+        };
+        let dx = |x: P::Scalar| {
+            let t = clamp_t(x);
+            derivative
                 .eval(t)
                 .map(|p| p.axis(axis))
-                .map_err(|_| RootFindingError::FailedToConverge)?;
-            if dx.abs() <= eps {
-                return Err(RootFindingError::ZeroDerivative);
-            }
+                .map_err(|_| RootFindingError::FailedToConverge)
+        };
 
-            let x1 = x - fx / dx;
-            if (x1 - x).abs() <= eps {
-                return Ok(clamp_t(x1));
-            }
-            if x1.is_nan() {
-                return Err(RootFindingError::FailedToConverge);
-            }
-            x = x1;
-        }
-
-        Err(RootFindingError::MaxIterationsReached)
+        let root = root_newton_raphson(start, fx, dx, eps, max_iter)?;
+        Ok(clamp_t(root))
     }
 }
 

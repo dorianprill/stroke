@@ -1,7 +1,6 @@
 use crate::point::Point;
-use crate::roots::RootFindingError;
+use crate::roots::{root_newton_raphson, RootFindingError};
 use crate::NativeFloat;
-use num_traits::Float;
 
 pub trait FindRoot<P: Point> {
     /// Return the inclusive parameter domain for the curve.
@@ -35,29 +34,17 @@ pub trait FindRoot<P: Point> {
             t
         };
 
-        let mut x = clamp_t(start);
-        for _ in 0..max_iter {
+        let start = clamp_t(start);
+        let fx = |x: P::Scalar| {
             let t = clamp_t(x);
-            let fx = self.axis_value(t, axis)? - value;
-            if fx.abs() <= eps {
-                return Ok(t);
-            }
+            self.axis_value(t, axis).map(|v| v - value)
+        };
+        let dx = |x: P::Scalar| {
+            let t = clamp_t(x);
+            self.axis_derivative(t, axis)
+        };
 
-            let dx = self.axis_derivative(t, axis)?;
-            if dx.abs() <= eps {
-                return Err(RootFindingError::ZeroDerivative);
-            }
-
-            let x1 = x - fx / dx;
-            if (x1 - x).abs() <= eps {
-                return Ok(clamp_t(x1));
-            }
-            if x1.is_nan() {
-                return Err(RootFindingError::FailedToConverge);
-            }
-            x = x1;
-        }
-
-        Err(RootFindingError::MaxIterationsReached)
+        let root = root_newton_raphson(start, fx, dx, eps, max_iter)?;
+        Ok(clamp_t(root))
     }
 }

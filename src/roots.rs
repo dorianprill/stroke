@@ -140,16 +140,16 @@ pub(crate) fn root_newton_raphson<F, Func, Deriv>(
 ) -> Result<F, RootFindingError>
 where
     F: Float,
-    Func: Fn(F) -> F,
-    Deriv: Fn(F) -> F,
+    Func: Fn(F) -> Result<F, RootFindingError>,
+    Deriv: Fn(F) -> Result<F, RootFindingError>,
 {
     let mut x = start;
     for _ in 0..max_iter {
-        let fx = f(x);
+        let fx = f(x)?;
         if fx.abs() <= eps {
             return Ok(x);
         }
-        let dx = d(x);
+        let dx = d(x)?;
         if dx.abs() <= eps {
             return Err(RootFindingError::ZeroDerivative);
         }
