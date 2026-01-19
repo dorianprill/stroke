@@ -37,6 +37,7 @@ pub mod point;
 pub mod spline;
 pub mod path;
 pub mod bspline_path;
+pub mod find_root;
 
 mod roots;
 
@@ -49,6 +50,7 @@ pub use point::Point;
 pub use point_generic::PointN;
 pub use quadratic_bezier::QuadraticBezier;
 pub use bspline_path::BSplinePath;
+pub use find_root::FindRoot;
 pub use path::BezierPath;
 pub use spline::Spline;
 

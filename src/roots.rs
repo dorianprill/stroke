@@ -8,6 +8,7 @@
 use super::*;
 
 #[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RootFindingError {
     NoRootsFound,
     FailedToConverge,
@@ -130,52 +131,36 @@ pub(crate) fn roots_cubic(
 //   d:        d=f', the derivative of f
 //   eps:      Desired accuracy of solution
 //   max_iter: Number of iterations until a solution shall be found
-// pub(crate) fn root_newton_raphson<Func, Deriv>(
-//     start: NativeFloat,
-//     f: Func,
-//     d: Deriv,
-//     eps: Option<NativeFloat>,
-//     max_iter: Option<usize>,
-// ) -> Result<NativeFloat, RootFindingError>
-// where
-//     Func: Fn(NativeFloat) -> NativeFloat,
-//     Deriv: Fn(NativeFloat) -> NativeFloat,
-// {
-//     let eps = eps.unwrap_or(1e-3);
-//     let max_iter = max_iter.unwrap_or(128);
-
-//     let mut x = start;
-
-//     let mut iter = 0;
-//     loop {
-//         let f = f(x);
-//         let d = d(x);
-//         if f < eps {
-//             return Ok(x);
-//         }
-//         // if derivative is 0
-//         if d < EPSILON {
-//             // either try to choose a better starting point
-//             if iter == 0 {
-//                 x = x + 1.0;
-//                 iter = iter + 1;
-//                 continue;
-//             // or fail
-//             } else {
-//                 return Err(RootFindingError::ZeroDerivative);
-//             }
-//         }
-
-//         let x1 = x - f / d;
-//         if (x - x1).abs() < eps {
-//             return Ok(x1);
-//         }
-
-//         x = x1;
-//         iter = iter + 1;
-
-//         if iter == max_iter {
-//             return Err(RootFindingError::FailedToConverge);
-//         }
-//     }
-// }
+pub(crate) fn root_newton_raphson<F, Func, Deriv>(
+    start: F,
+    f: Func,
+    d: Deriv,
+    eps: F,
+    max_iter: usize,
+) -> Result<F, RootFindingError>
+where
+    F: Float,
+    Func: Fn(F) -> F,
+    Deriv: Fn(F) -> F,
+{
+    let mut x = start;
+    for _ in 0..max_iter {
+        let fx = f(x);
+        if fx.abs() <= eps {
+            return Ok(x);
+        }
+        let dx = d(x);
+        if dx.abs() <= eps {
+            return Err(RootFindingError::ZeroDerivative);
+        }
+        let x1 = x - fx / dx;
+        if (x1 - x).abs() <= eps {
+            return Ok(x1);
+        }
+        if x1.is_nan() {
+            return Err(RootFindingError::FailedToConverge);
+        }
+        x = x1;
+    }
+    Err(RootFindingError::MaxIterationsReached)
+}
