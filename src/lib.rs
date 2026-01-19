@@ -17,10 +17,8 @@
 
 use core::ops::{Add, Mul, Sub};
 
-extern crate num_traits;
 use num_traits::float::Float;
 
-extern crate tinyvec;
 use tinyvec::ArrayVec;
 
 // abstraction types
@@ -37,6 +35,9 @@ pub mod point_generic;
 // Traits
 pub mod point;
 pub mod spline;
+pub mod path;
+pub mod bspline_path;
+pub mod find_root;
 
 mod roots;
 
@@ -48,6 +49,9 @@ pub use line::LineSegment;
 pub use point::Point;
 pub use point_generic::PointN;
 pub use quadratic_bezier::QuadraticBezier;
+pub use bspline_path::BSplinePath;
+pub use find_root::FindRoot;
+pub use path::BezierPath;
 pub use spline::Spline;
 
 // Conditionally compiled newtype pattern used to determine which size float to use for internal constants

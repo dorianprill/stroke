@@ -2,6 +2,8 @@ use core::slice::*;
 
 use super::point::Point;
 use super::*;
+use crate::find_root::FindRoot;
+use crate::roots::{root_newton_raphson, RootFindingError};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BSplineError {
@@ -19,6 +21,12 @@ enum KnotVectorKind {
     ClampedStart,
     ClampedEnd,
     Clamped,
+}
+
+impl Default for KnotVectorKind {
+    fn default() -> Self {
+        KnotVectorKind::Unclamped
+    }
 }
 
 impl core::fmt::Display for BSplineError {
@@ -47,7 +55,7 @@ impl core::fmt::Display for BSplineError {
 /// D: Degree of the piecewise function used for interpolation degree = order - 1
 /// While C, K, D relate to each other in the following manner
 ///     K = C + D + 1
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct BSpline<P, const K: usize, const C: usize, const D: usize>
 where
     P: Point,
@@ -58,6 +66,19 @@ where
     knot_kind: KnotVectorKind,
     /// Control points
     control_points: [P; C],
+}
+
+impl<P, const K: usize, const C: usize, const D: usize> Default for BSpline<P, K, C, D>
+where
+    P: Point,
+{
+    fn default() -> Self {
+        BSpline {
+            knots: core::array::from_fn(|_| P::Scalar::default()),
+            knot_kind: KnotVectorKind::default(),
+            control_points: core::array::from_fn(|_| P::default()),
+        }
+    }
 }
 
 impl<P, const K: usize, const C: usize, const D: usize> BSpline<P, { K }, { C }, { D }>
@@ -259,7 +280,7 @@ where
 
         // Copy the control points needed for the first iteration
         // For a B-Spline of degree D, D+1 control points in the knot span contribute to the result
-        for j in 0..D {
+        for j in 0..=D {
             d[j] = self.control_points[j + k - D];
         }
 
@@ -319,21 +340,24 @@ where
     /// Because the knot vector is non-decreasing, this function uses binary search.
     /// If no element greater than the value passed is found, the function returns None.
     fn knot_span_start_for_t_unclamped(&self, t: P::Scalar) -> Option<usize> {
-        let mut first = 0usize;
-        let mut step;
-        let mut count = self.knots.len() as isize;
-        while count > 0 {
-            step = count / 2;
-            let it = first + step as usize;
-            if t < self.knots[it + 1] || (it + 1 == self.knots.len() - 2 && t == self.knots[it + 1])
-            {
-                return Some(it);
+        if t == self.knots[C] {
+            return Some(C - 1);
+        }
+
+        let mut low = D;
+        let mut high = C - 1;
+        while low <= high {
+            let mid = (low + high) / 2;
+            if t >= self.knots[mid] && t < self.knots[mid + 1] {
+                return Some(mid);
             }
-            if t >= self.knots[it] {
-                first = it + 1;
-                count -= step + 1;
+            if t < self.knots[mid] {
+                if mid == 0 {
+                    return None;
+                }
+                high = mid - 1;
             } else {
-                count = step;
+                low = mid + 1;
             }
         }
         None
@@ -459,7 +483,7 @@ where
         arclen
     }
 
-    /// Returns the derivative curve of self which has N-1 control points.
+    /// Returns the derivative curve of self which has C-1 control points and K-2 knots.
     /// The derivative of an nth degree B-Spline curve is an (n-1)th degree (d) B-Spline curve,
     /// with the same knot vector, and new control points Q0...Qn-1 derived from the
     /// original control points Pi as:
@@ -467,21 +491,138 @@ where
     /// Qi =    ----------------- (P[i+1]-P[i])
     ///         k[i+d+1] - k[i+1].
     /// with degree = curve_order - 1
-    /// TODO test & verify!
-    pub fn derivative(&self) -> BSpline<P, K, { C - 1 }, { D - 1 }> {
-        let mut new_points: [P; C - 1] = [P::default(); C - 1];
-        for (i, _) in self.control_points.iter().enumerate() {
-            new_points[i] = (self.control_points[i + 1] - self.control_points[i])
-                * ((D) as NativeFloat / (self.knots[i + D + 1] - self.knots[i + 1]).into());
-            if i == self.control_points.len() - 2 {
-                break;
-            }
-        }
+    pub fn derivative(&self) -> BSpline<P, { K - 2 }, { C - 1 }, { D - 1 }>
+    where
+        [(); D - 1]: Sized,
+        [(); C - 1]: Sized,
+        [(); K - 2]: Sized,
+    {
+        let derivative_knots: [P::Scalar; K - 2] =
+            core::array::from_fn(|i| self.knots[i + 1]);
+        let derivative_points: [P; C - 1] = core::array::from_fn(|i| {
+            (self.control_points[i + 1] - self.control_points[i])
+                * ((D) as NativeFloat / (self.knots[i + D + 1] - self.knots[i + 1]).into())
+        });
+
+        let degree = D - 1;
+        let is_clamped_front = derivative_knots[0..=degree]
+            .iter()
+            .all(|&knot| (knot - derivative_knots[0]).abs() < P::Scalar::epsilon());
+        let is_clamped_back = derivative_knots[derivative_knots.len() - degree - 1..]
+            .iter()
+            .all(|&knot| (knot - derivative_knots[derivative_knots.len() - 1]).abs() < P::Scalar::epsilon());
+
+        let knot_kind = match (is_clamped_front, is_clamped_back) {
+            (false, false) => KnotVectorKind::Unclamped,
+            (true, false) => KnotVectorKind::ClampedStart,
+            (false, true) => KnotVectorKind::ClampedEnd,
+            (true, true) => KnotVectorKind::Clamped,
+        };
+
         BSpline {
-            knots: self.knots,
-            knot_kind: self.knot_kind,
-            control_points: new_points,
+            knots: derivative_knots,
+            knot_kind,
+            control_points: derivative_points,
         }
+    }
+
+    fn derivative_curve(
+        &self,
+    ) -> Result<BSpline<P, { K - 2 }, { C - 1 }, { D - 1 }>, RootFindingError>
+    where
+        [(); D - 1]: Sized,
+        [(); C - 1]: Sized,
+        [(); K - 2]: Sized,
+    {
+        Ok(self.derivative())
+    }
+
+    /// Find a root for a particular axis using Newton-Raphson on the scalar axis function.
+    pub fn root_newton_axis(
+        &self,
+        value: P::Scalar,
+        axis: usize,
+        start: P::Scalar,
+        eps: Option<P::Scalar>,
+        max_iter: Option<usize>,
+    ) -> Result<P::Scalar, RootFindingError>
+    where
+        [(); D + 1]: Sized,
+        [(); D - 1]: Sized,
+        [(); D]: Sized,
+        [(); C - 1]: Sized,
+        [(); (D - 1) + 1]: Sized,
+        [(); K - 2]: Sized,
+    {
+        FindRoot::root_newton_axis(self, value, axis, start, eps, max_iter)
+    }
+}
+
+impl<P, const K: usize, const C: usize, const D: usize> FindRoot<P> for BSpline<P, K, C, D>
+where
+    P: Point,
+    [(); D + 1]: Sized,
+    [(); D - 1]: Sized,
+    [(); D]: Sized,
+    [(); C - 1]: Sized,
+    [(); (D - 1) + 1]: Sized,
+    [(); K - 2]: Sized,
+{
+    fn parameter_domain(&self) -> (P::Scalar, P::Scalar) {
+        self.knot_domain()
+    }
+
+    fn axis_value(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
+        self.eval(t)
+            .map(|p| p.axis(axis))
+            .map_err(|_| RootFindingError::FailedToConverge)
+    }
+
+    fn axis_derivative(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
+        let derivative = self.derivative_curve()?;
+        derivative
+            .eval(t)
+            .map(|p| p.axis(axis))
+            .map_err(|_| RootFindingError::FailedToConverge)
+    }
+
+    fn root_newton_axis(
+        &self,
+        value: P::Scalar,
+        axis: usize,
+        start: P::Scalar,
+        eps: Option<P::Scalar>,
+        max_iter: Option<usize>,
+    ) -> Result<P::Scalar, RootFindingError> {
+        let eps = eps.unwrap_or_else(|| P::Scalar::from(1e-6 as NativeFloat));
+        let max_iter = max_iter.unwrap_or(64);
+        let (kmin, kmax) = self.knot_domain();
+        let derivative = self.derivative_curve()?;
+
+        let clamp_t = |mut t: P::Scalar| {
+            if t < kmin {
+                t = kmin;
+            } else if t > kmax {
+                t = kmax;
+            }
+            t
+        };
+
+        let start = clamp_t(start);
+        let fx = |x: P::Scalar| {
+            let t = clamp_t(x);
+            self.axis_value(t, axis).map(|v| v - value)
+        };
+        let dx = |x: P::Scalar| {
+            let t = clamp_t(x);
+            derivative
+                .eval(t)
+                .map(|p| p.axis(axis))
+                .map_err(|_| RootFindingError::FailedToConverge)
+        };
+
+        let root = root_newton_raphson(start, fx, dx, eps, max_iter)?;
+        Ok(clamp_t(root))
     }
 }
 
@@ -854,5 +995,38 @@ mod tests {
             curve.eval(9.1).err(),
             Some(BSplineError::KnotDomainViolation)
         );
+    }
+
+    #[test]
+    fn root_newton_axis_linear() {
+        let points = [PointN::new([0f64]), PointN::new([2f64])];
+        let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+        let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+
+        let root = curve
+            .root_newton_axis(1.0, 0, 0.25, None, Some(64))
+            .unwrap();
+        assert!((root - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn root_newton_axis_zero_derivative() {
+        let points = [PointN::new([1f64]), PointN::new([1f64])];
+        let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+        let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+
+        let result = curve.root_newton_axis(0.0, 0, 0.5, None, Some(8));
+        assert!(matches!(result, Err(RootFindingError::ZeroDerivative)));
+    }
+
+    #[test]
+    fn derivative_reduces_knots_and_control_points() {
+        let points = [PointN::new([0f64]), PointN::new([2f64])];
+        let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+        let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+
+        let derivative = curve.derivative();
+        assert_eq!(derivative.knots, [0.0, 1.0]);
+        assert_eq!(derivative.control_points, [PointN::new([2.0])]);
     }
 }

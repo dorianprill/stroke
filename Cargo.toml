@@ -12,7 +12,8 @@ repository = "https://github.com/dorianprill/stroke"
 readme = "README.md"
 keywords = ["point", "bezier", "spline", "graphics", "path" ]
 categories = ["no-std", "science", "graphics", "mathematics", "data-structures" ]
-edition = "2021"
+edition = "2024"
+rust-version = "1.85"
 license = "MIT"
 
 

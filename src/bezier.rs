@@ -4,8 +4,13 @@ use core::slice;
 //use crate::roots::RootFindingError;
 
 use super::*;
+use crate::find_root::FindRoot;
 use crate::point::Point;
+use crate::roots::RootFindingError;
 use crate::spline::Spline;
+
+const MAX_ROOT_DEPTH: usize = 32;
+const ROOT_TOLERANCE: NativeFloat = 1e-6;
 
 /// General implementation of a Bezier curve of arbitrary degree (= number of control points - 1).
 ///
@@ -250,6 +255,199 @@ where
         }
         arclen
     }
+
+    /// Find parameter values where the derivative crosses zero for a given axis.
+    pub fn derivative_roots(&self, axis: usize) -> ArrayVec<[P::Scalar; N - 1]>
+    where
+        [(); N - 1]: Sized,
+        [P::Scalar; N - 1]: tinyvec::Array<Item = P::Scalar>,
+    {
+        self.derivative_roots_with_tolerance(axis, P::Scalar::from(ROOT_TOLERANCE))
+    }
+
+    /// Find parameter values where the derivative crosses zero for a given axis using a tolerance.
+    pub fn derivative_roots_with_tolerance(
+        &self,
+        axis: usize,
+        tolerance: P::Scalar,
+    ) -> ArrayVec<[P::Scalar; N - 1]>
+    where
+        [(); N - 1]: Sized,
+        [P::Scalar; N - 1]: tinyvec::Array<Item = P::Scalar>,
+    {
+        if N < 2 {
+            return ArrayVec::new();
+        }
+        let control = self.derivative_axis_control_points(axis);
+        let mut roots = ArrayVec::<[P::Scalar; N - 1]>::new();
+        let t0 = P::Scalar::from(0.0 as NativeFloat);
+        let t1 = P::Scalar::from(1.0 as NativeFloat);
+        Self::find_roots_1d(control, t0, t1, 0, tolerance, &mut roots);
+
+        roots.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+        let mut unique = ArrayVec::<[P::Scalar; N - 1]>::new();
+        for &root in roots.iter() {
+            if unique
+                .last()
+                .map(|v| (root - *v).abs() > tolerance)
+                .unwrap_or(true)
+            {
+                unique.push(root);
+            }
+        }
+        unique
+    }
+
+    /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension.
+    pub fn bounding_box(&self) -> [(P::Scalar, P::Scalar); P::DIM]
+    where
+        [(); N - 1]: Sized,
+        [P::Scalar; N - 1]: tinyvec::Array<Item = P::Scalar>,
+    {
+        let tolerance = P::Scalar::from(ROOT_TOLERANCE);
+        let mut bounds = [(P::Scalar::default(), P::Scalar::default()); P::DIM];
+        let zero = P::Scalar::from(0.0 as NativeFloat);
+        let one = P::Scalar::from(1.0 as NativeFloat);
+
+        for dim in 0..P::DIM {
+            let mut min = self.control_points[0].axis(dim);
+            let mut max = min;
+            let end = self.control_points[N - 1].axis(dim);
+            if end < min {
+                min = end;
+            }
+            if end > max {
+                max = end;
+            }
+
+            let roots = self.derivative_roots_with_tolerance(dim, tolerance);
+            for &t in roots.iter() {
+                if t > zero && t < one {
+                    let value = self.eval(t).axis(dim);
+                    if value < min {
+                        min = value;
+                    }
+                    if value > max {
+                        max = value;
+                    }
+                }
+            }
+            bounds[dim] = (min, max);
+        }
+
+        bounds
+    }
+
+    /// Find a root for a particular axis using Newton-Raphson on the scalar axis function.
+    pub fn root_newton_axis(
+        &self,
+        value: P::Scalar,
+        axis: usize,
+        start: P::Scalar,
+        eps: Option<P::Scalar>,
+        max_iter: Option<usize>,
+    ) -> Result<P::Scalar, RootFindingError>
+    where
+        [(); N - 1]: Sized,
+    {
+        FindRoot::root_newton_axis(self, value, axis, start, eps, max_iter)
+    }
+
+    fn derivative_axis_control_points(&self, axis: usize) -> [P::Scalar; N - 1]
+    where
+        [(); N - 1]: Sized,
+    {
+        let scale = (N - 1) as NativeFloat;
+        core::array::from_fn(|i| {
+            (self.control_points[i + 1].axis(axis) - self.control_points[i].axis(axis)) * scale
+        })
+    }
+
+    fn find_roots_1d<const M: usize>(
+        control: [P::Scalar; M],
+        t0: P::Scalar,
+        t1: P::Scalar,
+        depth: usize,
+        tolerance: P::Scalar,
+        results: &mut ArrayVec<[P::Scalar; M]>,
+    ) where
+        [P::Scalar; M]: tinyvec::Array<Item = P::Scalar>,
+    {
+        let mut min = control[0];
+        let mut max = control[0];
+        for value in &control[1..] {
+            if *value < min {
+                min = *value;
+            }
+            if *value > max {
+                max = *value;
+            }
+        }
+
+        if min > P::Scalar::from(0.0 as NativeFloat)
+            || max < P::Scalar::from(0.0 as NativeFloat)
+        {
+            return;
+        }
+
+        if depth >= MAX_ROOT_DEPTH || (max - min).abs() <= tolerance {
+            let denom = control[M - 1] - control[0];
+            let root = if denom.abs() > tolerance {
+                t0 + (P::Scalar::from(0.0 as NativeFloat) - control[0]) * (t1 - t0) / denom
+            } else {
+                (t0 + t1) * P::Scalar::from(0.5 as NativeFloat)
+            };
+            if results.len() < results.capacity() {
+                results.push(root);
+            }
+            return;
+        }
+
+        let (left, right) = Self::subdivide_1d(control);
+        let mid = (t0 + t1) * P::Scalar::from(0.5 as NativeFloat);
+        Self::find_roots_1d(left, t0, mid, depth + 1, tolerance, results);
+        Self::find_roots_1d(right, mid, t1, depth + 1, tolerance, results);
+    }
+
+    fn subdivide_1d<const M: usize>(
+        control: [P::Scalar; M],
+    ) -> ([P::Scalar; M], [P::Scalar; M]) {
+        let half = P::Scalar::from(0.5 as NativeFloat);
+        let mut left = [P::Scalar::default(); M];
+        let mut right = [P::Scalar::default(); M];
+        let mut temp = control;
+
+        for i in 0..M {
+            left[i] = temp[0];
+            right[M - 1 - i] = temp[M - 1 - i];
+            for j in 0..(M - 1 - i) {
+                temp[j] = (temp[j] + temp[j + 1]) * half;
+            }
+        }
+
+        (left, right)
+    }
+}
+
+impl<P, const N: usize> FindRoot<P> for Bezier<P, { N }>
+where
+    P: Point,
+    [(); N - 1]: Sized,
+{
+    fn parameter_domain(&self) -> (P::Scalar, P::Scalar) {
+        (
+            P::Scalar::from(0.0 as NativeFloat),
+            P::Scalar::from(1.0 as NativeFloat),
+        )
+    }
+
+    fn axis_value(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
+        Ok(self.eval(t).axis(axis))
+    }
+
+    fn axis_derivative(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
+        Ok(self.derivative().eval(t).axis(axis))
+    }
 }
 
 #[cfg(test)]
@@ -379,6 +577,129 @@ mod tests {
             let t = t as f64 * 1f64 / (nsteps as f64);
             let err = quadratic_bezier.eval(t) - generic_bezier.eval(t);
             assert!(err.squared_length() < EPSILON);
+        }
+    }
+
+    #[test]
+    fn derivative_root_quadratic_1d() {
+        let bezier = Bezier {
+            control_points: [
+                PointN::new([0f64]),
+                PointN::new([1f64]),
+                PointN::new([0f64]),
+            ],
+        };
+
+        let roots = bezier.derivative_roots(0);
+        assert_eq!(roots.len(), 1);
+        assert!((roots[0] - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn derivative_roots_cubic_two_roots() {
+        let bezier = Bezier {
+            control_points: [
+                PointN::new([0f64]),
+                PointN::new([4f64]),
+                PointN::new([-4f64]),
+                PointN::new([0f64]),
+            ],
+        };
+
+        let roots = bezier.derivative_roots(0);
+        assert_eq!(roots.len(), 2);
+
+        let expected = 0.5;
+        let offset = (3.0f64).sqrt() / 6.0;
+        let r0 = expected - offset;
+        let r1 = expected + offset;
+        assert!((roots[0] - r0).abs() < 1e-4);
+        assert!((roots[1] - r1).abs() < 1e-4);
+    }
+
+    #[test]
+    fn derivative_roots_no_roots() {
+        let bezier = Bezier {
+            control_points: [
+                PointN::new([0f64]),
+                PointN::new([1f64]),
+                PointN::new([2f64]),
+            ],
+        };
+
+        let roots = bezier.derivative_roots(0);
+        assert!(roots.is_empty());
+    }
+
+    #[test]
+    fn bounding_box_cubic_1d_extrema() {
+        let bezier = Bezier {
+            control_points: [
+                PointN::new([0f64]),
+                PointN::new([4f64]),
+                PointN::new([-4f64]),
+                PointN::new([0f64]),
+            ],
+        };
+
+        let offset = (3.0f64).sqrt() / 6.0;
+        let t0 = 0.5 - offset;
+        let t1 = 0.5 + offset;
+        let v0 = bezier.eval(t0).axis(0);
+        let v1 = bezier.eval(t1).axis(0);
+        let expected_min = v0.min(v1);
+        let expected_max = v0.max(v1);
+
+        let bounds = bezier.bounding_box();
+        assert!((bounds[0].0 - expected_min).abs() < 1e-4);
+        assert!((bounds[0].1 - expected_max).abs() < 1e-4);
+    }
+
+    #[test]
+    fn root_newton_axis_linear() {
+        let bezier = Bezier {
+            control_points: [PointN::new([0f64]), PointN::new([2f64])],
+        };
+
+        let root = bezier
+            .root_newton_axis(1.0, 0, 0.25, None, Some(64))
+            .unwrap();
+        assert!((root - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn root_newton_axis_zero_derivative() {
+        let bezier = Bezier {
+            control_points: [PointN::new([1f64]), PointN::new([1f64])],
+        };
+
+        let result = bezier.root_newton_axis(0.0, 0, 0.5, None, Some(8));
+        assert!(matches!(result, Err(RootFindingError::ZeroDerivative)));
+    }
+
+    #[test]
+    fn bounding_box_matches_cubic_specialization() {
+        let generic_bezier = Bezier {
+            control_points: [
+                PointN::new([0f64, 1.77f64]),
+                PointN::new([1.1f64, -1f64]),
+                PointN::new([4.3f64, 3f64]),
+                PointN::new([3.2f64, -4f64]),
+            ],
+        };
+        let cubic_bezier = CubicBezier::new(
+            PointN::new([0f64, 1.77f64]),
+            PointN::new([1.1f64, -1f64]),
+            PointN::new([4.3f64, 3f64]),
+            PointN::new([3.2f64, -4f64]),
+        );
+
+        let generic_bounds = generic_bezier.bounding_box();
+        let cubic_bounds = cubic_bezier.bounding_box();
+        let tol = 1e-5;
+        for i in 0..2 {
+            assert!((generic_bounds[i].0 - cubic_bounds[i].0).abs() < tol);
+            assert!((generic_bounds[i].1 - cubic_bounds[i].1).abs() < tol);
         }
     }
 }

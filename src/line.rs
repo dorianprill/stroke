@@ -25,7 +25,7 @@ where
 
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
         // compute the split point by interpolation
-        let ctrl_ab = self.start + (self.start - self.end) * t;
+        let ctrl_ab = self.start + (self.end - self.start) * t;
 
         (
             LineSegment {
@@ -65,13 +65,7 @@ where
             //         .zip(v2.into_iter())
             //         .map(|(x1, x2)| x1 * x2)
             //         .sum::<P::Scalar>();
-            let mut t = P::Scalar::from(0.0);
-            if dot / l2 < P::Scalar::from(1.0) {
-                t = dot / l2;
-            }
-            if t < P::Scalar::from(0.0) {
-                t = P::Scalar::from(0.0);
-            }
+            let t = (dot / l2).clamp(P::Scalar::from(0.0), P::Scalar::from(1.0));
             let projection = self.start + (self.end - self.start) * t; // Projection falls on the segment
 
             (p - projection).squared_length().sqrt()
@@ -149,5 +143,29 @@ mod tests {
         // dist to midpoint (t=0.5) should be 1
         let p2 = PointN::new([1.5f64, 2f64, 0f64]);
         assert!(((p2 - line.eval(0.5)).squared_length().sqrt() - 1.0).abs() < EPSILON);
+    }
+
+    #[test]
+    fn line_segment_split_midpoint() {
+        let line = LineSegment {
+            start: PointN::new([0f64, 0f64]),
+            end: PointN::new([4f64, 0f64]),
+        };
+
+        let (left, right) = line.split(0.5);
+        assert_eq!(left.start, PointN::new([0.0, 0.0]));
+        assert_eq!(left.end, PointN::new([2.0, 0.0]));
+        assert_eq!(right.start, PointN::new([2.0, 0.0]));
+        assert_eq!(right.end, PointN::new([4.0, 0.0]));
+    }
+
+    #[test]
+    fn line_segment_distance_to_point_after_end() {
+        let line = LineSegment {
+            start: PointN::new([0f64, 0f64]),
+            end: PointN::new([1f64, 0f64]),
+        };
+        let p = PointN::new([2f64, 0f64]);
+        assert!((line.distance_to_point(p) - 1.0).abs() < EPSILON);
     }
 }
