@@ -17,10 +17,8 @@
 
 use core::ops::{Add, Mul, Sub};
 
-extern crate num_traits;
 use num_traits::float::Float;
 
-extern crate tinyvec;
 use tinyvec::ArrayVec;
 
 // abstraction types
