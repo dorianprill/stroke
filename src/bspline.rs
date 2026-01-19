@@ -2,6 +2,8 @@ use core::slice::*;
 
 use super::point::Point;
 use super::*;
+use crate::find_root::FindRoot;
+use crate::roots::RootFindingError;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BSplineError {
@@ -505,6 +507,122 @@ where
             control_points: new_points,
         }
     }
+
+    fn derivative_curve(&self) -> Result<BSpline<P, { K - 2 }, { C - 1 }, { D - 1 }>, RootFindingError>
+    where
+        [(); D - 1]: Sized,
+        [(); C - 1]: Sized,
+        [(); K - 2]: Sized,
+    {
+        let derivative_knots: [P::Scalar; K - 2] =
+            core::array::from_fn(|i| self.knots[i + 1]);
+        let derivative_points: [P; C - 1] = core::array::from_fn(|i| {
+            (self.control_points[i + 1] - self.control_points[i])
+                * ((D) as NativeFloat / (self.knots[i + D + 1] - self.knots[i + 1]).into())
+        });
+        BSpline::new(derivative_knots, derivative_points)
+            .map_err(|_| RootFindingError::FailedToConverge)
+    }
+
+    /// Find a root for a particular axis using Newton-Raphson on the scalar axis function.
+    pub fn root_newton_axis(
+        &self,
+        value: P::Scalar,
+        axis: usize,
+        start: P::Scalar,
+        eps: Option<P::Scalar>,
+        max_iter: Option<usize>,
+    ) -> Result<P::Scalar, RootFindingError>
+    where
+        [(); D + 1]: Sized,
+        [(); D - 1]: Sized,
+        [(); D]: Sized,
+        [(); C - 1]: Sized,
+        [(); (D - 1) + 1]: Sized,
+        [(); K - 2]: Sized,
+    {
+        FindRoot::root_newton_axis(self, value, axis, start, eps, max_iter)
+    }
+}
+
+impl<P, const K: usize, const C: usize, const D: usize> FindRoot<P> for BSpline<P, K, C, D>
+where
+    P: Point,
+    [(); D + 1]: Sized,
+    [(); D - 1]: Sized,
+    [(); D]: Sized,
+    [(); C - 1]: Sized,
+    [(); (D - 1) + 1]: Sized,
+    [(); K - 2]: Sized,
+{
+    fn parameter_domain(&self) -> (P::Scalar, P::Scalar) {
+        self.knot_domain()
+    }
+
+    fn axis_value(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
+        self.eval(t)
+            .map(|p| p.axis(axis))
+            .map_err(|_| RootFindingError::FailedToConverge)
+    }
+
+    fn axis_derivative(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
+        let derivative = self.derivative_curve()?;
+        derivative
+            .eval(t)
+            .map(|p| p.axis(axis))
+            .map_err(|_| RootFindingError::FailedToConverge)
+    }
+
+    fn root_newton_axis(
+        &self,
+        value: P::Scalar,
+        axis: usize,
+        start: P::Scalar,
+        eps: Option<P::Scalar>,
+        max_iter: Option<usize>,
+    ) -> Result<P::Scalar, RootFindingError> {
+        let eps = eps.unwrap_or_else(|| P::Scalar::from(1e-6 as NativeFloat));
+        let max_iter = max_iter.unwrap_or(64);
+        let (kmin, kmax) = self.knot_domain();
+        let derivative = self.derivative_curve()?;
+
+        let clamp_t = |mut t: P::Scalar| {
+            if t < kmin {
+                t = kmin;
+            } else if t > kmax {
+                t = kmax;
+            }
+            t
+        };
+
+        let mut x = clamp_t(start);
+        for _ in 0..max_iter {
+            let t = clamp_t(x);
+            let fx = self.axis_value(t, axis)? - value;
+            if fx.abs() <= eps {
+                return Ok(t);
+            }
+
+            let dx = derivative
+                .eval(t)
+                .map(|p| p.axis(axis))
+                .map_err(|_| RootFindingError::FailedToConverge)?;
+            if dx.abs() <= eps {
+                return Err(RootFindingError::ZeroDerivative);
+            }
+
+            let x1 = x - fx / dx;
+            if (x1 - x).abs() <= eps {
+                return Ok(clamp_t(x1));
+            }
+            if x1.is_nan() {
+                return Err(RootFindingError::FailedToConverge);
+            }
+            x = x1;
+        }
+
+        Err(RootFindingError::MaxIterationsReached)
+    }
 }
 
 #[cfg(test)]
@@ -876,5 +994,27 @@ mod tests {
             curve.eval(9.1).err(),
             Some(BSplineError::KnotDomainViolation)
         );
+    }
+
+    #[test]
+    fn root_newton_axis_linear() {
+        let points = [PointN::new([0f64]), PointN::new([2f64])];
+        let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+        let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+
+        let root = curve
+            .root_newton_axis(1.0, 0, 0.25, None, Some(64))
+            .unwrap();
+        assert!((root - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn root_newton_axis_zero_derivative() {
+        let points = [PointN::new([1f64]), PointN::new([1f64])];
+        let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+        let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+
+        let result = curve.root_newton_axis(0.0, 0, 0.5, None, Some(8));
+        assert!(matches!(result, Err(RootFindingError::ZeroDerivative)));
     }
 }
