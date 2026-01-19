@@ -483,7 +483,7 @@ where
         arclen
     }
 
-    /// Returns the derivative curve of self which has N-1 control points.
+    /// Returns the derivative curve of self which has C-1 control points and K-2 knots.
     /// The derivative of an nth degree B-Spline curve is an (n-1)th degree (d) B-Spline curve,
     /// with the same knot vector, and new control points Q0...Qn-1 derived from the
     /// original control points Pi as:
@@ -491,24 +491,7 @@ where
     /// Qi =    ----------------- (P[i+1]-P[i])
     ///         k[i+d+1] - k[i+1].
     /// with degree = curve_order - 1
-    /// TODO test & verify!
-    pub fn derivative(&self) -> BSpline<P, K, { C - 1 }, { D - 1 }> {
-        let mut new_points: [P; C - 1] = [P::default(); C - 1];
-        for (i, _) in self.control_points.iter().enumerate() {
-            new_points[i] = (self.control_points[i + 1] - self.control_points[i])
-                * ((D) as NativeFloat / (self.knots[i + D + 1] - self.knots[i + 1]).into());
-            if i == self.control_points.len() - 2 {
-                break;
-            }
-        }
-        BSpline {
-            knots: self.knots,
-            knot_kind: self.knot_kind,
-            control_points: new_points,
-        }
-    }
-
-    fn derivative_curve(&self) -> Result<BSpline<P, { K - 2 }, { C - 1 }, { D - 1 }>, RootFindingError>
+    pub fn derivative(&self) -> BSpline<P, { K - 2 }, { C - 1 }, { D - 1 }>
     where
         [(); D - 1]: Sized,
         [(); C - 1]: Sized,
@@ -520,8 +503,38 @@ where
             (self.control_points[i + 1] - self.control_points[i])
                 * ((D) as NativeFloat / (self.knots[i + D + 1] - self.knots[i + 1]).into())
         });
-        BSpline::new(derivative_knots, derivative_points)
-            .map_err(|_| RootFindingError::FailedToConverge)
+
+        let degree = D - 1;
+        let is_clamped_front = derivative_knots[0..=degree]
+            .iter()
+            .all(|&knot| (knot - derivative_knots[0]).abs() < P::Scalar::epsilon());
+        let is_clamped_back = derivative_knots[derivative_knots.len() - degree - 1..]
+            .iter()
+            .all(|&knot| (knot - derivative_knots[derivative_knots.len() - 1]).abs() < P::Scalar::epsilon());
+
+        let knot_kind = match (is_clamped_front, is_clamped_back) {
+            (false, false) => KnotVectorKind::Unclamped,
+            (true, false) => KnotVectorKind::ClampedStart,
+            (false, true) => KnotVectorKind::ClampedEnd,
+            (true, true) => KnotVectorKind::Clamped,
+        };
+
+        BSpline {
+            knots: derivative_knots,
+            knot_kind,
+            control_points: derivative_points,
+        }
+    }
+
+    fn derivative_curve(
+        &self,
+    ) -> Result<BSpline<P, { K - 2 }, { C - 1 }, { D - 1 }>, RootFindingError>
+    where
+        [(); D - 1]: Sized,
+        [(); C - 1]: Sized,
+        [(); K - 2]: Sized,
+    {
+        Ok(self.derivative())
     }
 
     /// Find a root for a particular axis using Newton-Raphson on the scalar axis function.
@@ -1004,5 +1017,16 @@ mod tests {
 
         let result = curve.root_newton_axis(0.0, 0, 0.5, None, Some(8));
         assert!(matches!(result, Err(RootFindingError::ZeroDerivative)));
+    }
+
+    #[test]
+    fn derivative_reduces_knots_and_control_points() {
+        let points = [PointN::new([0f64]), PointN::new([2f64])];
+        let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+        let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+
+        let derivative = curve.derivative();
+        assert_eq!(derivative.knots, [0.0, 1.0]);
+        assert_eq!(derivative.control_points, [PointN::new([2.0])]);
     }
 }

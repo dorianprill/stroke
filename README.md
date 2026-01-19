@@ -1,12 +1,13 @@
 # stroke  
 
-![Rust](https://github.com/dorianprill/brezel/workflows/Rust/badge.svg)
+![Rust](https://github.com/dorianprill/stroke/actions/workflows/rust.yml/badge.svg)
 ![crates.io](https://img.shields.io/crates/v/stroke.svg)
 
 A zero-allocation library providing const-generic implementations of Bézier curves, B-Spline curves and specialized implementations of up to cubic Bézier curves in N-dimensional euclidean space. It is intended for general/embedded/wasm use supporting #![no_std] environments written in 100% safe Rust with minimal dependencies.  
 
-The library makes heavy use of const-generics and some related unstabilized features, so the nightly compiler is required.  
+The library makes heavy use of const-generics and `generic_const_exprs`, so the nightly compiler is required.  
 It comes with a const-generic N-dimensional Point type so you can use the library without any other dependencies.  
+`PointN` uses the platform's `NativeFloat` (f64 on 64-bit, f32 otherwise) for its scalar operations.  
 Should you want to integrate with types provided by another library, you are able to do so by implementing the small Point trait that the library relies upon (given it makes no distinction between a point and its position vector).  
 
 ![A Cubic Bézier Curve with Bounding Box and Convex Hull rendered by plotters.rs](https://raw.githubusercontent.com/dorianprill/stroke-rs/main/cubic_bezier_bounding_box.png)  
@@ -49,7 +50,7 @@ These are the main supported features. Some further utility methods are exposed 
 - [x] arc length (linear approx.)
 - [ ] arc length (Legendre-Gauss)
 - [ ] curvature/radius (Frenet-Serret Frame)
-- [ ] bounding box
+- [x] bounding box
 - [ ] tight box
 
 ### Generic B-Splines
@@ -69,4 +70,4 @@ If you're looking for a published crate for rendering with gpu support you shoul
 
 Also, there's [Twinklebear/bspline](https://github.com/Twinklebear/bspline) which is a very clean and useful library for just bsplines. However, it depends on std and its simple Interpolate trait defines no way to access the individual dimensions of the points and hence implements no derivatives in the library.  
 
-This clear online book [A Primer on Bézier Curves](https://pomax.github.io/Bézierinfo/) helped me with a lot of the algorithms involved.
+This clear online book [A Primer on Bézier Curves](https://pomax.github.io/bezierinfo/) helped me with a lot of the algorithms involved.

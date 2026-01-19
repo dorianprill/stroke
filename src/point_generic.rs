@@ -30,7 +30,7 @@ impl<T: Default + Copy, const N: usize> Default for PointN<T, N> {
 
 impl<T, const N: usize> PartialEq for PointN<T, N>
 where
-    T: PartialOrd,
+    T: PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         for i in 0..N {
@@ -162,7 +162,7 @@ where
     const DIM: usize = { N };
 
     fn axis(&self, index: usize) -> Self::Scalar {
-        assert!(index <= N);
+        assert!(index < N);
         self.0[index].into()
     }
 
