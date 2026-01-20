@@ -1,9 +1,14 @@
+//! Mixed Bezier path utilities.
+
 use core::slice;
 
+use num_traits::{Float, NumCast};
 use crate::bezier_segment::BezierSegment;
-use super::*;
+use super::{ArrayVec, CubicBezier, LineSegment, Point, PointIndex, QuadraticBezier};
 
 /// A path composed of mixed Bezier segments (line/quadratic/cubic).
+///
+/// Component-aware helpers (e.g. bounding boxes) require `PointIndex`.
 pub struct BezierPath<P, const N: usize>
 where
     P: Point,
@@ -16,24 +21,29 @@ where
     P: Point,
     [BezierSegment<P>; N]: tinyvec::Array<Item = BezierSegment<P>>,
 {
+    /// Create an empty path with capacity `N`.
     pub fn new() -> Self {
         BezierPath {
             segments: ArrayVec::new(),
         }
     }
 
+    /// Return the number of segments currently stored.
     pub fn len(&self) -> usize {
         self.segments.len()
     }
 
+    /// Return true if the path is empty.
     pub fn is_empty(&self) -> bool {
         self.segments.len() == 0
     }
 
+    /// Iterate over the stored segments.
     pub fn segments(&self) -> slice::Iter<'_, BezierSegment<P>> {
         self.segments.iter()
     }
 
+    /// Push a segment, returning false if the path is at capacity.
     pub fn push(&mut self, segment: BezierSegment<P>) -> bool {
         if self.segments.len() < self.segments.capacity() {
             self.segments.push(segment);
@@ -43,26 +53,37 @@ where
         }
     }
 
+    /// Push a line segment, returning false if the path is at capacity.
     pub fn push_line(&mut self, segment: LineSegment<P>) -> bool {
         self.push(segment.into())
     }
 
+    /// Push a quadratic segment, returning false if the path is at capacity.
     pub fn push_quadratic(&mut self, segment: QuadraticBezier<P>) -> bool {
         self.push(segment.into())
     }
 
+    /// Push a cubic segment, returning false if the path is at capacity.
     pub fn push_cubic(&mut self, segment: CubicBezier<P>) -> bool {
         self.push(segment.into())
     }
 
-    /// Evaluate a point along the path for t in [0,1]. Returns None for empty paths.
+    /// Evaluate a point along the path for `t` in `[0, 1]`.
+    /// Values outside the range are clamped. Returns None for empty paths.
     pub fn eval(&self, t: P::Scalar) -> Option<P> {
         let (index, local_t) = self.segment_parameter(t)?;
         Some(self.segments[index].eval(local_t))
     }
 
     /// Return the bounding box across all segments. Returns None for empty paths.
-    pub fn bounding_box(&self) -> Option<[(P::Scalar, P::Scalar); P::DIM]> {
+    pub fn bounding_box(&self) -> Option<[(P::Scalar, P::Scalar); P::DIM]>
+    where
+        P: PointIndex,
+        [P::Scalar; 1]: tinyvec::Array<Item = P::Scalar>,
+        [P::Scalar; 2]: tinyvec::Array<Item = P::Scalar>,
+        [P::Scalar; 3]: tinyvec::Array<Item = P::Scalar>,
+        [P::Scalar; 4]: tinyvec::Array<Item = P::Scalar>,
+    {
         let mut iter = self.segments.iter();
         let first = match iter.next() {
             Some(segment) => segment.bounding_box(),
@@ -91,18 +112,20 @@ where
             return None;
         }
 
-        let mut t_native: NativeFloat = t.into();
-        t_native = t_native.clamp(0.0, 1.0);
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let t = t.clamp(zero, one);
 
-        let count_native = count as NativeFloat;
-        let scaled = t_native * count_native;
-        if scaled >= count_native {
-            return Some((count - 1, P::Scalar::from(1.0)));
+        let count_scalar = <P::Scalar as NumCast>::from(count as f64).unwrap();
+        let scaled = t * count_scalar;
+        if scaled >= count_scalar {
+            return Some((count - 1, one));
         }
 
-        let index = scaled.floor() as usize;
-        let local = scaled - index as NativeFloat;
-        Some((index, P::Scalar::from(local)))
+        let index = num_traits::cast::<P::Scalar, usize>(scaled.floor()).unwrap_or(0);
+        let index_scalar = <P::Scalar as NumCast>::from(index as f64).unwrap();
+        let local = scaled - index_scalar;
+        Some((index, local))
     }
 }
 
@@ -118,6 +141,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::{PointN, PointNorm, EPSILON};
     use super::*;
 
     #[test]
@@ -136,10 +160,10 @@ mod tests {
         assert_eq!(p0, PointN::new([0.0, 0.0]));
 
         let p1 = path.eval(0.25).unwrap();
-        assert!((p1 - PointN::new([0.5, 0.0])).squared_length() < EPSILON);
+        assert!((p1 - PointN::new([0.5, 0.0])).squared_norm() < EPSILON);
 
         let p2 = path.eval(0.75).unwrap();
-        assert!((p2 - PointN::new([1.0, 0.5])).squared_length() < EPSILON);
+        assert!((p2 - PointN::new([1.0, 0.5])).squared_norm() < EPSILON);
     }
 
     #[test]

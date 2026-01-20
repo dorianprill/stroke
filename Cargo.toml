@@ -27,12 +27,16 @@ exclude = [
 
 [dependencies]
 tinyvec = { version = "^1.8"} #{, features = ["rustc_1_55"] }
+nalgebra = { version = "^0.32", default-features = false, features = ["libm"], optional = true }
 
 
 [dependencies.num-traits]
 version = "^0.2"
 default-features = false
 features = ["libm"]    # use `Float` and `Real` without `std`
+
+[features]
+nalgebra = ["dep:nalgebra"]
 
 # these are just for development (e.g. integration tests and examples)
 [dev-dependencies]

@@ -1,42 +1,51 @@
-use super::NativeFloat;
-use core::{
-    iter::Sum,
-    ops::{Add, Div, Mul, Sub},
-};
+//! Point traits and capability helpers.
+
+use core::ops::{Add, Index, Mul, Sub};
 use num_traits::Float;
 
-/// The Point trait defines constituents Trait requirements and is the only interface on which the library relies.
+/// Core point abstraction used across the library.
 ///
-/// The associated constant DIM is necessary so that the memory layout of
-/// its implementing type can be made known to the library, whenever new instances are returned.
+/// `Point` models a fixed-dimension vector space element. Curve evaluation
+/// only relies on these operations; geometry helpers are provided via
+/// capability traits like [`PointIndex`] and [`PointNorm`].
 pub trait Point:
-    Add<Self, Output = Self>
-    + Sub<Self, Output = Self>
-    + Mul<Self::Scalar, Output = Self>
-    + Mul<NativeFloat, Output = Self>
-    + Copy
-    + PartialEq
-    //+ PartialOrd
-    + Default
-    + IntoIterator
+    Add<Self, Output = Self> + Sub<Self, Output = Self> + Mul<Self::Scalar, Output = Self> + Copy
 {
-    type Scalar: Float
-        + Default
-        + PartialEq
-        + From<NativeFloat>
-        + Into<NativeFloat>
-        + Add<NativeFloat, Output = Self::Scalar>
-        + Sub<NativeFloat, Output = Self::Scalar>
-        + Mul<NativeFloat, Output = Self::Scalar>
-        + Div<NativeFloat, Output = Self::Scalar>
-        + Sum<NativeFloat>;
+    /// Scalar type used for interpolation and arithmetic.
+    type Scalar: Float;
+    /// Compile-time dimension of the point.
     const DIM: usize;
-    // Returns the component of the Point on its axis corresponding to index e.g. [0, 1, 2] -> [x, y, z]
-    /// Panics if index is greater than implementors dimension
-    // TODO maybe remove in favour of iterator (?)
-    fn axis(&self, index: usize) -> Self::Scalar;
-
-    // Returns the squared L2-Norm of the Point interpreted as a Vector
-    // TODO this could be moved into the library because computability is ensured by its existing trait bounds
-    fn squared_length(&self) -> Self::Scalar;
 }
+
+/// Optional capability trait for component access via indexing.
+///
+/// This is required for methods that need per-axis values (e.g. bounding boxes).
+pub trait PointIndex: Point + Index<usize, Output = Self::Scalar> {}
+
+impl<T> PointIndex for T where T: Point + Index<usize, Output = Self::Scalar> {}
+
+/// Optional capability trait for dot products.
+///
+/// Used by distance and projection helpers.
+pub trait PointDot: PointIndex {
+    fn dot(&self, other: &Self) -> Self::Scalar {
+        let mut sum = <Self::Scalar as num_traits::NumCast>::from(0.0).unwrap();
+        for i in 0..Self::DIM {
+            sum = sum + self[i] * other[i];
+        }
+        sum
+    }
+}
+
+impl<T> PointDot for T where T: PointIndex {}
+
+/// Optional capability trait for norms.
+///
+/// Provides `squared_norm()`; it does not require allocation or dynamic sizing.
+pub trait PointNorm: PointDot {
+    fn squared_norm(&self) -> Self::Scalar {
+        self.dot(self)
+    }
+}
+
+impl<T> PointNorm for T where T: PointDot {}

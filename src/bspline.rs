@@ -1,17 +1,29 @@
+//! Const-generic B-spline curves.
+
 use core::slice::*;
 
-use super::point::Point;
-use super::*;
+use num_traits::{Float, NumCast};
+use super::{Point, PointIndex, PointNorm};
 use crate::find_root::FindRoot;
 use crate::roots::{root_newton_raphson, RootFindingError};
 
+const ROOT_TOLERANCE: f64 = 1e-6;
+const MAX_ROOT_ITER: usize = 64;
+
+/// Errors returned by B-spline construction or evaluation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BSplineError {
+    /// The curve has fewer control points than required by its degree.
     TooFewControlPoints,
+    /// The knot vector has fewer entries than required by the degree and control points.
     TooFewKnots,
+    /// The knot vector has more entries than required by the degree and control points.
     TooManyKnots,
+    /// The knot vector is not non-decreasing.
     DecreasingKnots,
+    /// The evaluation parameter is outside the knot domain.
     KnotDomainViolation,
+    /// The de Boor evaluation encountered a NaN alpha value.
     EvaluationAlphaIsNaN,
 }
 
@@ -44,17 +56,15 @@ impl core::fmt::Display for BSplineError {
     }
 }
 
-/// General Implementation of a BSpline with choosable degree, control points and knots.
+/// Const-generic B-spline curve with fixed control-point and knot counts.
 ///
-/// Generic parameters:
-/// P: const generic points array 'P' as defined by the Point trait
-/// F: Any float value used for the knots and interpolation (usually the same as the internal generic parameter within P<F>).
-/// const generic parameters:
-/// C: Number of control points
-/// K: Number of Knots
-/// D: Degree of the piecewise function used for interpolation degree = order - 1
-/// While C, K, D relate to each other in the following manner
-///     K = C + D + 1
+/// The scalar type used for the knots and interpolation is `P::Scalar`.
+///
+/// # Parameters
+/// - `P`: point type implementing [`Point`](crate::point::Point).
+/// - `C`: number of control points.
+/// - `K`: number of knots (`K = C + D + 1`).
+/// - `D`: degree (order - 1).
 #[derive(Clone, Copy)]
 pub struct BSpline<P, const K: usize, const C: usize, const D: usize>
 where
@@ -70,7 +80,8 @@ where
 
 impl<P, const K: usize, const C: usize, const D: usize> Default for BSpline<P, K, C, D>
 where
-    P: Point,
+    P: Point + Default,
+    P::Scalar: Default,
 {
     fn default() -> Self {
         BSpline {
@@ -200,6 +211,150 @@ where
         (self.knots[D], self.knots[C])
     }
 
+    /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension.
+    pub fn bounding_box(&self) -> [(P::Scalar, P::Scalar); P::DIM]
+    where
+        P: PointIndex,
+        [(); D + 1]: Sized,
+        [(); D - 1]: Sized,
+        [(); (D - 1) + 1]: Sized,
+        [(); C - 1]: Sized,
+        [(); K - 2]: Sized,
+    {
+        let (kmin, kmax) = self.knot_domain();
+        let tolerance = <P::Scalar as NumCast>::from(ROOT_TOLERANCE).unwrap();
+        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+
+        let start = self.eval(kmin).unwrap_or(self.control_points[0]);
+        let end = self.eval(kmax).unwrap_or(self.control_points[C - 1]);
+
+        let derivative = self.derivative();
+        let mut bounds = [(zero, zero); P::DIM];
+
+        for dim in 0..P::DIM {
+            let mut min = start[dim];
+            let mut max = min;
+            let end_value = end[dim];
+            if end_value < min {
+                min = end_value;
+            }
+            if end_value > max {
+                max = end_value;
+            }
+
+            let mut update = |t: P::Scalar| {
+                if let Ok(p) = self.eval(t) {
+                    let value = p[dim];
+                    if value < min {
+                        min = value;
+                    }
+                    if value > max {
+                        max = value;
+                    }
+                }
+            };
+
+            for i in 0..K - 1 {
+                let mut t0 = self.knots[i];
+                let mut t1 = self.knots[i + 1];
+                if t1 <= t0 {
+                    continue;
+                }
+                if t1 < kmin || t0 > kmax {
+                    continue;
+                }
+                if t0 < kmin {
+                    t0 = kmin;
+                }
+                if t1 > kmax {
+                    t1 = kmax;
+                }
+
+                let steps = (D + 1) * 2;
+                let steps_scalar = <P::Scalar as NumCast>::from(steps as f64).unwrap();
+                let span = t1 - t0;
+                let mut prev_t = t0;
+                let mut prev_f = match derivative.eval(prev_t) {
+                    Ok(p) => p[dim],
+                    Err(_) => continue,
+                };
+                if prev_f.abs() <= tolerance {
+                    update(prev_t);
+                }
+
+                for j in 1..=steps {
+                    let alpha = <P::Scalar as NumCast>::from(j as f64).unwrap() / steps_scalar;
+                    let t = t0 + span * alpha;
+                    let f = match derivative.eval(t) {
+                        Ok(p) => p[dim],
+                        Err(_) => break,
+                    };
+                    if f.abs() <= tolerance {
+                        update(t);
+                    }
+                    if prev_f * f < zero {
+                        if let Some(root) = self.bisect_axis_root(&derivative, dim, prev_t, t, tolerance, half) {
+                            update(root);
+                        }
+                    }
+                    prev_t = t;
+                    prev_f = f;
+                }
+            }
+
+            bounds[dim] = (min, max);
+        }
+
+        bounds
+    }
+
+    fn bisect_axis_root(
+        &self,
+        derivative: &BSpline<P, { K - 2 }, { C - 1 }, { D - 1 }>,
+        axis: usize,
+        mut a: P::Scalar,
+        mut b: P::Scalar,
+        tolerance: P::Scalar,
+        half: P::Scalar,
+    ) -> Option<P::Scalar>
+    where
+        P: PointIndex,
+        [(); D - 1]: Sized,
+        [(); (D - 1) + 1]: Sized,
+        [(); C - 1]: Sized,
+        [(); K - 2]: Sized,
+    {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let mut fa = derivative.eval(a).ok().map(|p| p[axis])?;
+        let fb = derivative.eval(b).ok().map(|p| p[axis])?;
+        if fa.abs() <= tolerance {
+            return Some(a);
+        }
+        if fb.abs() <= tolerance {
+            return Some(b);
+        }
+        if fa * fb > zero {
+            return None;
+        }
+
+        for _ in 0..MAX_ROOT_ITER {
+            let mid = (a + b) * half;
+            let fm = derivative.eval(mid).ok().map(|p| p[axis])?;
+            if fm.abs() <= tolerance || (b - a).abs() <= tolerance {
+                return Some(mid);
+            }
+            if fa * fm <= zero {
+                b = mid;
+            } else {
+                a = mid;
+                fa = fm;
+            }
+        }
+
+        Some((a + b) * half)
+    }
+
     // /// Calculates the minimum distance between given 'point' and the curve.
     // /// Uses two passes with the same amount of steps in t:
     // /// 1. coarse search over the whole curve
@@ -211,7 +366,7 @@ where
     // {
     //     let nsteps: usize = 64;
     //     let mut tmin: P::Scalar = 0.5.into();
-    //     let mut dmin: P::Scalar = (point - self.control_points[0]).squared_length();
+    //     let mut dmin: P::Scalar = (point - self.control_points[0]).squared_norm();
     //     let (kstart, kend) = self.knot_domain();
     //     // 1. coarse pass
     //     for i in 0..nsteps {
@@ -224,12 +379,12 @@ where
     //             Err(_) => {
     //                 // In case of error, return zero
     //                 // this can never happen as we control the t values passed to eval()
-    //                 return P::Scalar::from(0.0);
+    //                 return <P::Scalar as NumCast>::from(0.0);
     //             }
     //         };
-    //         if (candidate - point).squared_length() < dmin {
+    //         if (candidate - point).squared_norm() < dmin {
     //             tmin = t;
-    //             dmin = (candidate - point).squared_length();
+    //             dmin = (candidate - point).squared_norm();
     //         }
     //     }
     //     // 2. fine pass
@@ -243,12 +398,12 @@ where
     //             Err(_) => {
     //                 // In case of error, return zero
     //                 // this can never happen as we control the t values passed to eval()
-    //                 return P::Scalar::from(0.0);
+    //                 return <P::Scalar as NumCast>::from(0.0);
     //             }
     //         };
-    //         if (candidate - point).squared_length() < dmin {
+    //         if (candidate - point).squared_norm() < dmin {
     //             tmin = t;
-    //             dmin = (candidate - point).squared_length();
+    //             dmin = (candidate - point).squared_norm();
     //         }
     //     }
     //     dmin.sqrt()
@@ -276,7 +431,7 @@ where
         };
 
         // Create a second array for storing intermediate results
-        let mut d: [P; D + 1] = [P::default(); D + 1];
+        let mut d: [P; D + 1] = core::array::from_fn(|_| self.control_points[0]);
 
         // Copy the control points needed for the first iteration
         // For a B-Spline of degree D, D+1 control points in the knot span contribute to the result
@@ -302,14 +457,16 @@ where
                 // calculate alpha, avoid division by zero
                 let numerator = t - self.knots[j + k - D];
                 let denominator = self.knots[j + 1 + k - r] - self.knots[j + k - D];
+                let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+                let one = <P::Scalar as NumCast>::from(1.0).unwrap();
                 let alpha: P::Scalar;
                 if numerator < P::Scalar::epsilon() {
                     // we are at the start of a knot span (interpolation d[j-1] -> d[j])
-                    alpha = 0.0.into();
+                    alpha = zero;
                 } else if denominator.abs() < P::Scalar::epsilon() {
                     // we are at then end of a knot span (interpolation d[j-1] -> d[j])
                     // this will lead to d[j] simply being copied to d[j]
-                    alpha = 1.0.into();
+                    alpha = one;
                 } else {
                     // inside a knot span (interpolation d[j-1] -> d[j])
                     alpha = numerator / denominator;
@@ -319,7 +476,7 @@ where
                 }
                 // The right of two points is overwritten by the result
                 // to be used in the next iteration
-                d[j] = d[j - 1] * (1.0 - alpha.into()) + d[j] * alpha;
+                d[j] = d[j - 1] * (one - alpha) + d[j] * alpha;
             }
         }
         Ok(d[D])
@@ -459,26 +616,27 @@ where
     /// This approximation is unfeasable if desired accuracy is greater than ~2 decimal places
     pub fn arclen(&self, nsteps: usize) -> P::Scalar
     where
+        P: PointNorm,
         [(); D + 1]: Sized,
     {
-        let stepsize = P::Scalar::from(1.0 / (nsteps as NativeFloat));
-        let mut arclen: P::Scalar = 0.0.into();
+        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
+        let stepsize = <P::Scalar as NumCast>::from(1.0).unwrap() / nsteps_scalar;
+        let mut arclen: P::Scalar = <P::Scalar as NumCast>::from(0.0).unwrap();
         // evaluate the curve, t needs to be inside the knot domain!
         // we need to map [0...1] to kmin..kmax
         let (kmin, kmax) = self.knot_domain();
         for t in 0..=nsteps {
             let t = kmin
-                + (P::Scalar::from(t as NativeFloat) / P::Scalar::from(nsteps as NativeFloat))
-                    * (kmax - kmin);
+                + (<P::Scalar as NumCast>::from(t as f64).unwrap() / nsteps_scalar) * (kmax - kmin);
             let p1 = self.eval(t).unwrap_or_else(|_| {
                 // should never happen as we control the t values passed to eval()
-                P::default()
+                self.control_points[0]
             });
             let p2 = self.eval(t + stepsize).unwrap_or_else(|_| {
                 // should never happen as we control the t values passed to eval()
-                P::default()
+                self.control_points[0]
             });
-            arclen = arclen + (p1 - p2).squared_length().sqrt();
+            arclen = arclen + (p1 - p2).squared_norm().sqrt();
         }
         arclen
     }
@@ -500,8 +658,9 @@ where
         let derivative_knots: [P::Scalar; K - 2] =
             core::array::from_fn(|i| self.knots[i + 1]);
         let derivative_points: [P; C - 1] = core::array::from_fn(|i| {
-            (self.control_points[i + 1] - self.control_points[i])
-                * ((D) as NativeFloat / (self.knots[i + D + 1] - self.knots[i + 1]).into())
+            let scale = <P::Scalar as NumCast>::from(D as f64).unwrap()
+                / (self.knots[i + D + 1] - self.knots[i + 1]);
+            (self.control_points[i + 1] - self.control_points[i]) * scale
         });
 
         let degree = D - 1;
@@ -553,6 +712,7 @@ where
         [(); C - 1]: Sized,
         [(); (D - 1) + 1]: Sized,
         [(); K - 2]: Sized,
+        P: PointIndex,
     {
         FindRoot::root_newton_axis(self, value, axis, start, eps, max_iter)
     }
@@ -560,7 +720,7 @@ where
 
 impl<P, const K: usize, const C: usize, const D: usize> FindRoot<P> for BSpline<P, K, C, D>
 where
-    P: Point,
+    P: PointIndex,
     [(); D + 1]: Sized,
     [(); D - 1]: Sized,
     [(); D]: Sized,
@@ -574,7 +734,7 @@ where
 
     fn axis_value(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
         self.eval(t)
-            .map(|p| p.axis(axis))
+            .map(|p| p[axis])
             .map_err(|_| RootFindingError::FailedToConverge)
     }
 
@@ -582,7 +742,7 @@ where
         let derivative = self.derivative_curve()?;
         derivative
             .eval(t)
-            .map(|p| p.axis(axis))
+            .map(|p| p[axis])
             .map_err(|_| RootFindingError::FailedToConverge)
     }
 
@@ -594,7 +754,7 @@ where
         eps: Option<P::Scalar>,
         max_iter: Option<usize>,
     ) -> Result<P::Scalar, RootFindingError> {
-        let eps = eps.unwrap_or_else(|| P::Scalar::from(1e-6 as NativeFloat));
+        let eps = eps.unwrap_or_else(|| <P::Scalar as NumCast>::from(1e-6).unwrap());
         let max_iter = max_iter.unwrap_or(64);
         let (kmin, kmax) = self.knot_domain();
         let derivative = self.derivative_curve()?;
@@ -617,7 +777,7 @@ where
             let t = clamp_t(x);
             derivative
                 .eval(t)
-                .map(|p| p.axis(axis))
+                .map(|p| p[axis])
                 .map_err(|_| RootFindingError::FailedToConverge)
         };
 
@@ -629,9 +789,9 @@ where
 #[cfg(test)]
 mod tests {
     //use std;
-    use super::PointN;
     use super::*;
     //use crate::num_traits::{Pow};
+    use crate::{PointN, EPSILON};
 
     #[test]
     fn degree_1_clamped_construct_and_eval_endpoints() {
@@ -707,7 +867,7 @@ mod tests {
 
         // Check that the start and end points have equal distance to the midpoint of the line
         assert!(
-            (points[1] - mid).squared_length().sqrt() - (points[0] - mid).squared_length().sqrt()
+            (points[1] - mid).squared_norm().sqrt() - (points[0] - mid).squared_norm().sqrt()
                 < EPSILON
         );
     }
@@ -788,7 +948,7 @@ mod tests {
 
         // Check that the start and end points have equal distance to the midpoint of the line
         assert!(
-            (points[1] - mid).squared_length().sqrt() - (points[0] - mid).squared_length().sqrt()
+            (points[1] - mid).squared_norm().sqrt() - (points[0] - mid).squared_norm().sqrt()
                 < EPSILON
         );
     }
@@ -1028,5 +1188,28 @@ mod tests {
         let derivative = curve.derivative();
         assert_eq!(derivative.knots, [0.0, 1.0]);
         assert_eq!(derivative.control_points, [PointN::new([2.0])]);
+    }
+
+    #[test]
+    fn bspline_bounding_box_contains_samples() {
+        let knots: [f64; 8] = [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0];
+        let points = [
+            PointN::new([0.0, 0.0]),
+            PointN::new([1.0, 2.0]),
+            PointN::new([2.0, -1.0]),
+            PointN::new([3.0, 1.5]),
+            PointN::new([4.0, 0.0]),
+        ];
+        let curve: BSpline<PointN<f64, 2>, 8, 5, 2> = BSpline::new(knots, points).unwrap();
+        let bounds = curve.bounding_box();
+        let (kmin, kmax) = curve.knot_domain();
+        let steps = 200;
+
+        for i in 0..=steps {
+            let t = kmin + (kmax - kmin) * (i as f64 / steps as f64);
+            let p = curve.eval(t).unwrap();
+            assert!(p[0] >= bounds[0].0 - EPSILON && p[0] <= bounds[0].1 + EPSILON);
+            assert!(p[1] >= bounds[1].0 - EPSILON && p[1] <= bounds[1].1 + EPSILON);
+        }
     }
 }

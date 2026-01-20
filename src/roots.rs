@@ -1,11 +1,14 @@
-/// roots.rs
-/// const-generic functions to find polynomial roots using tinyvec::ArrayVec
-/// available functions:
-///   roots_square()
-///   roots_cubic()
-///   roots_newton() WIP
-/// there will probably be no function for quartics, since specialized beziers only go up to cubic
-use super::*;
+//! Polynomial root helpers using `tinyvec::ArrayVec`.
+//!
+//! Available functions:
+//! - `roots_square()`
+//! - `roots_cubic()`
+//! - `root_newton_raphson()`
+//!
+//! There will probably be no function for quartics, since specialized
+//! Beziers only go up to cubic.
+use num_traits::Float;
+use super::{ArrayVec, EPSILON, NativeFloat};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

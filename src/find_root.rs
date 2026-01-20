@@ -1,8 +1,11 @@
-use crate::point::Point;
-use crate::roots::{root_newton_raphson, RootFindingError};
-use crate::NativeFloat;
+//! Root-finding helpers for curve types that support per-axis evaluation.
 
-pub trait FindRoot<P: Point> {
+use num_traits::NumCast;
+use crate::point::PointIndex;
+use crate::roots::{root_newton_raphson, RootFindingError};
+
+/// Helper trait for 1D root finding along a curve axis.
+pub trait FindRoot<P: PointIndex> {
     /// Return the inclusive parameter domain for the curve.
     fn parameter_domain(&self) -> (P::Scalar, P::Scalar);
 
@@ -21,7 +24,7 @@ pub trait FindRoot<P: Point> {
         eps: Option<P::Scalar>,
         max_iter: Option<usize>,
     ) -> Result<P::Scalar, RootFindingError> {
-        let eps = eps.unwrap_or_else(|| P::Scalar::from(1e-6 as NativeFloat));
+        let eps = eps.unwrap_or_else(|| <P::Scalar as NumCast>::from(1e-6).unwrap());
         let max_iter = max_iter.unwrap_or(64);
         let (kmin, kmax) = self.parameter_domain();
 
