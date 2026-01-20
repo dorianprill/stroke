@@ -1,21 +1,23 @@
-use core::iter::{IntoIterator, Sum};
+//! Const-generic point type for users who do not want external math dependencies.
+
+use core::iter::IntoIterator;
+use core::ops::{Add, Index, IndexMut, Mul, Sub};
 use core::slice;
 
-use super::*;
-//use num_traits::{Float, FromPrimitive};
+use num_traits::Float;
 use super::Point;
 
 /// Point with dimensions of constant generic size N and of generic type T
 ///
 /// (Implemented as Newtype Pattern on an array
 /// see book or https://www.worthe-it.co.za/blog/2020-10-31-newtype-pattern-in-rust.html)
-/// This type only interacts with the library through
-/// the point trait, so you are free to use your own
-/// Point/Coord/Vec structures instead by implementing the (small) trait
+/// This type implements [`Point`](crate::point::Point) and `Index<usize>` so it
+/// can be used with component-aware helpers like bounding boxes.
 #[derive(Debug, Copy, Clone)]
 pub struct PointN<T, const N: usize>([T; N]);
 
 impl<T, const N: usize> PointN<T, N> {
+    /// Construct a point from a fixed-size array of components.
     pub fn new(array: [T; N]) -> Self {
         PointN(array)
     }
@@ -44,7 +46,7 @@ where
 
 impl<T, const N: usize> Add for PointN<T, N>
 where
-    T: Add<Output = T> + Clone + Copy,
+    T: Add<Output = T> + Copy,
 {
     type Output = Self;
 
@@ -61,7 +63,7 @@ where
 /// convenient if you want to use the type externally
 impl<T, const N: usize> Add<T> for PointN<T, N>
 where
-    T: Add<Output = T> + Clone + Copy,
+    T: Add<Output = T> + Copy,
 {
     type Output = Self;
 
@@ -76,7 +78,7 @@ where
 
 impl<T, const N: usize> Sub for PointN<T, N>
 where
-    T: Sub<Output = T> + Clone + Copy,
+    T: Sub<Output = T> + Copy,
 {
     type Output = Self;
 
@@ -93,7 +95,7 @@ where
 /// convenient if you want to use the type externally
 impl<T, const N: usize> Sub<T> for PointN<T, N>
 where
-    T: Sub<Output = T> + Clone + Copy,
+    T: Sub<Output = T> + Copy,
 {
     type Output = Self;
 
@@ -111,7 +113,7 @@ where
     // The mulitplication is done by mulitpling T * U => T, this
     // trait bound for T will specify this requirement as the mul operator is
     // translated to using the first operand as self and the second as rhs.
-    T: Mul<U, Output = T> + Clone + Copy, //+ SizedFloat,
+    T: Mul<U, Output = T> + Copy, //+ SizedFloat,
     U: Clone + Copy,
 {
     type Output = PointN<T, N>;
@@ -143,34 +145,24 @@ impl<'a, T, const N: usize> IntoIterator for &'a mut PointN<T, N> {
     }
 }
 
+impl<T, const N: usize> Index<usize> for PointN<T, N> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl<T, const N: usize> IndexMut<usize> for PointN<T, N> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
+
 impl<T, const N: usize> Point for PointN<T, N>
 where
-    T: Float
-        + Copy
-        + Default
-        + Add<T, Output = T>
-        + Add<NativeFloat, Output = T>
-        + Sub<T, Output = T>
-        + Sub<NativeFloat, Output = T>
-        + Mul<T, Output = T>
-        + Mul<NativeFloat, Output = T>
-        + Sum<NativeFloat>
-        + From<NativeFloat>
-        + Into<NativeFloat>,
+    T: Float,
 {
-    type Scalar = NativeFloat;
-    const DIM: usize = { N };
-
-    fn axis(&self, index: usize) -> Self::Scalar {
-        assert!(index < N);
-        self.0[index].into()
-    }
-
-    fn squared_length(&self) -> Self::Scalar {
-        let mut sqr_dist = 0.0;
-        for i in 0..N {
-            sqr_dist += (self.0[i] * self.0[i]).into();
-        }
-        sqr_dist
-    }
+    type Scalar = T;
+    const DIM: usize = N;
 }

@@ -4,6 +4,31 @@
 // this is needed to use expressions in const generics such as N-1 (see curve derivatives)
 #![feature(generic_const_exprs)]
 
+//! A const-generic, no-std spline library for Bezier and B-spline curves.
+//!
+//! The core abstraction is the [`Point`](crate::point::Point) trait, which models
+//! a fixed-dimension vector space element. Optional capability traits such as
+//! [`PointIndex`](crate::point::PointIndex), [`PointDot`](crate::point::PointDot),
+//! and [`PointNorm`](crate::point::PointNorm) enable component access and
+//! geometric helpers when required.
+//!
+//! # Examples
+//! ```rust
+//! use stroke::{Bezier, PointN};
+//!
+//! let curve = Bezier::<PointN<f32, 2>, 3>::new([
+//!     PointN::new([0.0, 0.0]),
+//!     PointN::new([1.0, 0.0]),
+//!     PointN::new([1.0, 1.0]),
+//! ]);
+//!
+//! let mid = curve.eval(0.5);
+//! # let _ = mid;
+//! ```
+//!
+//! # Feature flags
+//! - `nalgebra`: implements `Point` for `nalgebra::SVector<T, D>` (add `nalgebra` as a dependency).
+
 // this feature was needed for tinyvec < 2.0 to compile for const generic arrays like ArrayVec<[f32;N]>
 //#![feature(min_const_generics)]
 
@@ -14,10 +39,6 @@
 
 // make splines usable as Fn in trait bounds
 //#![feature(fn_traits)]
-
-use core::ops::{Add, Mul, Sub};
-
-use num_traits::float::Float;
 
 use tinyvec::ArrayVec;
 
@@ -47,6 +68,7 @@ pub use bspline::BSpline;
 pub use cubic_bezier::CubicBezier;
 pub use line::LineSegment;
 pub use point::Point;
+pub use point::{PointDot, PointIndex, PointNorm};
 pub use point_generic::PointN;
 pub use quadratic_bezier::QuadraticBezier;
 pub use bspline_path::BSplinePath;

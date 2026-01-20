@@ -3,7 +3,6 @@ use plotters::prelude::*;
 
 extern crate stroke;
 use stroke::CubicBezier;
-use stroke::Point;
 use stroke::PointN;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -43,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for t in 0..nsteps {
         let t = t as f64 * 1f64 / (nsteps as f64);
         let p = bezier.eval_casteljau(t);
-        bezier_graph.push((p.axis(0), p.axis(1)));
+        bezier_graph.push((p[0], p[1]));
     }
 
     let root = BitMapBackend::new("cubic_bezier_bounding_box.png", (640, 480)).into_drawing_area();

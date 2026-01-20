@@ -1,7 +1,12 @@
-use super::LineSegment;
-use super::Point;
-use super::*;
+//! Quadratic Bezier curve specialization.
 
+use num_traits::{Float, NumCast};
+use super::{ArrayVec, LineSegment, Point, PointIndex, PointNorm};
+
+/// Quadratic Bezier curve defined by start, control, and end points.
+///
+/// Methods that need component access or norms add `PointIndex`/`PointNorm`
+/// bounds as required.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct QuadraticBezier<P: Point> {
     pub(crate) start: P,
@@ -21,13 +26,14 @@ where
     /// Evaluates the quadratic bezier curve at 't' using direct evaluation, which may not be numerically stable
     pub fn eval(&self, t: P::Scalar) -> P {
         let t2 = t * t;
-        let one_t = -t + 1.0;
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let one_t = one - t;
         let one_t2 = one_t * one_t;
 
-        self.start * one_t2 + self.ctrl * 2.0 * one_t * t + self.end * t2
+        self.start * one_t2 + self.ctrl * <P::Scalar as NumCast>::from(2.0).unwrap() * one_t * t + self.end * t2
     }
 
-    /// Evaluates the cubic bezier curve at t using the numerically stable De Casteljau algorithm
+    /// Evaluates the quadratic bezier curve at t using the numerically stable De Casteljau algorithm
     pub fn eval_casteljau(&self, t: P::Scalar) -> P {
         // unrolled de casteljau algorithm
         // _1ab is the first iteration from first (a) to second (b) control point and so on
@@ -37,10 +43,12 @@ where
         ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t
     }
 
+    /// Return the control points array.
     pub fn control_points(&self) -> [P; 3] {
         [self.start, self.ctrl, self.end]
     }
 
+    /// Split the curve at `t` into two sub-curves.
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
         // unrolled de casteljau algorithm
         // _1ab is the first iteration from first (a) to second (b) control point and so on
@@ -63,33 +71,20 @@ where
         )
     }
 
-    /// Sample the a particular coordinate axis of the curve at t (expecting t between 0 and 1).
-    /// Shortcut for curve.eval(t).axis(k)
-    /// This function can panic!
-    /// TODO may add something like const_assert for Point's const DIM
-    pub fn axis(&self, t: P::Scalar, axis: usize) -> P::Scalar {
-        let t2 = t * t;
-        let one_t = -t + 1.0;
-        let one_t2 = one_t * one_t;
-
-        self.start.axis(axis) * one_t2
-            + self.ctrl.axis(axis) * 2.0 * one_t * t
-            + self.end.axis(axis) * t2
-    }
-
     /// Return the derivative curve.
     /// The derivative is also a bezier curve but of degree n-1.
     /// In the case of a quadratic derivative it is just a line segment
     /// which also implementes eval(), as it is just a linear bezier curve.
     pub fn derivative(&self) -> LineSegment<P> {
+        let two = <P::Scalar as NumCast>::from(2.0).unwrap();
         LineSegment {
-            start: (self.ctrl - self.start) * 2.0,
-            end: (self.end - self.ctrl) * 2.0,
+            start: (self.ctrl - self.start) * two,
+            end: (self.end - self.ctrl) * two,
         }
     }
 
     /// Direct Derivative - Sample the axis coordinate at 'axis' of the curve's derivative at t
-    /// without creating a new curve. This is a convenience function for .derivative().eval(t).axis(n)  
+    /// without creating a new curve. This is a convenience function for .derivative().eval(t)[n]  
     /// Parameters:
     ///   t: the sampling parameter on the curve interval [0..1]
     ///   axis: the index of the coordinate axis [0..N]
@@ -97,13 +92,17 @@ where
     ///   Scalar value of the points own type type F  
     /// May be deprecated in the future.  
     /// This function can cause out of bounds panic when axis is larger than dimension of P
-    pub fn dd(&self, t: P::Scalar, axis: usize) -> P::Scalar {
-        let t = t.into();
-        let c0 = t * 2.0 - 2.0;
-        let c1 = 2.0 - 4.0 * t;
-        let c2 = 2.0 * t;
+    pub fn dd(&self, t: P::Scalar, axis: usize) -> P::Scalar
+    where
+        P: PointIndex,
+    {
+        let two = <P::Scalar as NumCast>::from(2.0).unwrap();
+        let four = <P::Scalar as NumCast>::from(4.0).unwrap();
+        let c0 = t * two - two;
+        let c1 = two - four * t;
+        let c2 = two * t;
 
-        self.start.axis(axis) * c0 + self.ctrl.axis(axis) * c1 + self.end.axis(axis) * c2
+        self.start[axis] * c0 + self.ctrl[axis] * c1 + self.end[axis] * c2
     }
 
     // /// Calculates the curvature of the curve at point t
@@ -145,15 +144,19 @@ where
     /// This works quite well, at ~32 segments it should already provide an error < 0.5
     /// Remember arclen also works by linear approximation, not the integral, so we have to accept error!
     /// This approximation is unfeasable if desired accuracy is greater than 2 decimal places
-    pub fn arclen(&self, nsteps: usize) -> P::Scalar {
-        let stepsize = P::Scalar::from(1.0 / (nsteps as NativeFloat));
-        let mut arclen: P::Scalar = 0.0.into();
+    pub fn arclen(&self, nsteps: usize) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
+        let stepsize = <P::Scalar as NumCast>::from(1.0).unwrap() / nsteps_scalar;
+        let mut arclen: P::Scalar = <P::Scalar as NumCast>::from(0.0).unwrap();
         for t in 1..nsteps {
-            let t = P::Scalar::from(t as NativeFloat * 1.0 / (nsteps as NativeFloat));
+            let t = <P::Scalar as NumCast>::from(t as f64).unwrap() / nsteps_scalar;
             let p1 = self.eval_casteljau(t);
             let p2 = self.eval_casteljau(t + stepsize);
 
-            arclen = arclen + (p1 - p2).squared_length().sqrt();
+            arclen = arclen + (p1 - p2).squared_norm().sqrt();
         }
         arclen
     }
@@ -166,12 +169,19 @@ where
         a: P::Scalar,
         b: P::Scalar,
         c: P::Scalar,
-    ) -> ArrayVec<[P::Scalar; 2]> {
+    ) -> ArrayVec<[P::Scalar; 2]>
+    where
+        [P::Scalar; 2]: tinyvec::Array<Item = P::Scalar>,
+    {
         let mut result = ArrayVec::new();
+        let eps = P::Scalar::epsilon();
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let two = <P::Scalar as NumCast>::from(2.0).unwrap();
+        let four = <P::Scalar as NumCast>::from(4.0).unwrap();
 
         // check if can be handled below quadratic order
-        if a.abs() < EPSILON.into() {
-            if b.abs() < EPSILON.into() {
+        if a.abs() < eps {
+            if b.abs() < eps {
                 // no solutions
                 return result;
             }
@@ -180,13 +190,13 @@ where
             return result;
         }
         // is quadratic equation
-        let delta = b * b - a * c * 4.0;
-        if delta > 0.0.into() {
+        let delta = b * b - a * c * four;
+        if delta > zero {
             let sqrt_delta = delta.sqrt();
-            result.push((-b - sqrt_delta) / (a * 2.0));
-            result.push((-b + sqrt_delta) / (a * 2.0));
-        } else if delta.abs() < EPSILON.into() {
-            result.push(-b / (a * 2.0));
+            result.push((-b - sqrt_delta) / (a * two));
+            result.push((-b + sqrt_delta) / (a * two));
+        } else if delta.abs() < eps {
+            result.push(-b / (a * two));
         }
         result
     }
@@ -196,30 +206,37 @@ where
     /// Uses two passes with the same amount of steps in t: 
     /// 1. coarse search over the whole curve
     /// 2. fine search around the minimum yielded by the coarse search
-    pub fn distance_to_point(&self, point: P) -> P::Scalar {
+    pub fn distance_to_point(&self, point: P) -> P::Scalar
+    where
+        P: PointNorm,
+    {
         let nsteps: usize = 64;
-        let mut tmin: P::Scalar = 0.5.into();
-        let mut dmin: P::Scalar = (point - self.start).squared_length();
+        let mut tmin: P::Scalar = <P::Scalar as NumCast>::from(0.5).unwrap();
+        let mut dmin: P::Scalar = (point - self.start).squared_norm();
+        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
         // 1. coarse pass
         for i in 0..nsteps {
             // calculate next step value
-            let t: P::Scalar = (i as NativeFloat * 1.0 as NativeFloat / (nsteps as NativeFloat)).into();
+            let t: P::Scalar = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
             // calculate distance to candidate
             let candidate = self.eval(t);
-            if (candidate - point).squared_length() < dmin {
+            if (candidate - point).squared_norm() < dmin {
                 tmin = t;
-                dmin = (candidate - point).squared_length();
+                dmin = (candidate - point).squared_norm();
             }
         }
         // 2. fine pass 
+        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+        let nsteps_half = nsteps_scalar * half;
+        let fine_div = <P::Scalar as NumCast>::from((nsteps * nsteps) as f64).unwrap();
         for i in 0..nsteps {
             // calculate next step value ( a 64th of a 64th from first step)
-            let t: P::Scalar = (i as NativeFloat * 1.0 as NativeFloat / ((nsteps*nsteps) as NativeFloat)).into();
+            let t: P::Scalar = <P::Scalar as NumCast>::from(i as f64).unwrap() / fine_div;
             // calculate distance to candidate centered around tmin from before
-            let candidate: P = self.eval(tmin + t - t*(nsteps as NativeFloat/ 2.0) );
-            if (candidate - point).squared_length() < dmin {
+            let candidate: P = self.eval(tmin + t - t * nsteps_half );
+            if (candidate - point).squared_norm() < dmin {
                 tmin = t;
-                dmin = (candidate - point).squared_length();
+                dmin = (candidate - point).squared_norm();
             }
         }
         dmin.sqrt()
@@ -235,10 +252,13 @@ where
     }
 
     /// Checks if, given some tolerance, the curve can be considered equal to a line segment
-    pub fn is_linear(&self, tolerance: P::Scalar) -> bool {
+    pub fn is_linear(&self, tolerance: P::Scalar) -> bool
+    where
+        P: PointNorm,
+    {
         // if start and end are (nearly) the same
-        // TODO using squared length vs machine epsilon OK?
-        if (self.start - self.end).squared_length() < EPSILON.into() {
+        // TODO using squared norm vs machine epsilon OK?
+        if (self.start - self.end).squared_norm() < P::Scalar::epsilon() {
             return false;
         }
         // else check if ctrl points lie on baseline i.e. all points are colinear
@@ -247,18 +267,24 @@ where
 
     /// Determines if, given some tolerance, all of the control points are colinear
     /// This private function is wrapped publically by is_linear()
-    fn are_points_colinear(&self, tolerance: P::Scalar) -> bool {
+    fn are_points_colinear(&self, tolerance: P::Scalar) -> bool
+    where
+        P: PointNorm,
+    {
         let line = self.baseline();
         line.distance_to_point(self.ctrl) <= tolerance
     }
 
     /// Determines if, given some tolerance, the control points of the curve can be considered equal.
     /// If true, the curve is just a singular point
-    pub fn is_a_point(&self, tolerance: P::Scalar) -> bool {
+    pub fn is_a_point(&self, tolerance: P::Scalar) -> bool
+    where
+        P: PointNorm,
+    {
         let tolerance_squared = tolerance * tolerance;
         // Use <= so that tolerance can be zero.
-        (self.start - self.end).squared_length() <= tolerance_squared
-            && (self.start - self.ctrl).squared_length() <= tolerance_squared
+        (self.start - self.end).squared_norm() <= tolerance_squared
+            && (self.start - self.ctrl).squared_norm() <= tolerance_squared
     }
 
     /// Solves the quadratic bezier function given a particular coordinate axis value
@@ -268,22 +294,30 @@ where
     /// axis: the index of the axis
     /// Returns those roots of the function that are in the interval [0.0, 1.0].
     #[allow(dead_code)]
-    fn solve_t_for_axis(&self, value: P::Scalar, axis: usize) -> ArrayVec<[P::Scalar; 3]> {
+    fn solve_t_for_axis(&self, value: P::Scalar, axis: usize) -> ArrayVec<[P::Scalar; 3]>
+    where
+        P: PointIndex + PointNorm,
+        [P::Scalar; 2]: tinyvec::Array<Item = P::Scalar>,
+        [P::Scalar; 3]: tinyvec::Array<Item = P::Scalar>,
+    {
         let mut result = ArrayVec::new();
-        if self.is_a_point(EPSILON.into())
-            || (self.are_points_colinear(0.0.into())
-                && (self.start - self.end).squared_length() < EPSILON.into())
+        if self.is_a_point(P::Scalar::epsilon())
+            || (self.are_points_colinear(<P::Scalar as NumCast>::from(0.0).unwrap())
+                && (self.start - self.end).squared_norm() < P::Scalar::epsilon())
         {
             return result;
         }
         // these are just the x or y components of the points
-        let a = self.start.axis(axis) + self.ctrl.axis(axis) * -2.0 + self.end.axis(axis);
-        let b = self.start.axis(axis) * -2.0 + self.ctrl.axis(axis) * 2.0;
-        let c = self.start.axis(axis) - value.into();
+        let a = self.start[axis] + self.ctrl[axis] * <P::Scalar as NumCast>::from(-2.0).unwrap() + self.end[axis];
+        let b = self.start[axis] * <P::Scalar as NumCast>::from(-2.0).unwrap()
+            + self.ctrl[axis] * <P::Scalar as NumCast>::from(2.0).unwrap();
+        let c = self.start[axis] - value;
 
         let roots = self.real_roots(a, b, c);
-        for root in roots {
-            if root > 0.0.into() && root < 1.0.into() {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        for &root in roots.iter() {
+            if root > zero && root < one {
                 result.push(root);
             }
         }
@@ -292,30 +326,37 @@ where
     }
 
     /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension (its index)
-    pub fn bounding_box(&self) -> [(P::Scalar, P::Scalar); P::DIM] {
-        let mut bounds = [(0.0.into(), 0.0.into()); P::DIM];
+    pub fn bounding_box(&self) -> [(P::Scalar, P::Scalar); P::DIM]
+    where
+        P: PointIndex,
+        [P::Scalar; 1]: tinyvec::Array<Item = P::Scalar>,
+        [P::Scalar; 3]: tinyvec::Array<Item = P::Scalar>,
+    {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let mut bounds = [(zero, zero); P::DIM];
         let derivative = self.derivative();
         // calculate coefficients for the derivative as a function of t: at + b
         // po: [1, -1]
         // p1: [0,  1]
         //      b   a
-        let a = derivative.start * -1.0 + derivative.end;
+        let a = derivative.start * <P::Scalar as NumCast>::from(-1.0).unwrap() + derivative.end;
         let b = derivative.start;
 
-        for (dim, _) in a.into_iter().enumerate() {
+        for dim in 0..P::DIM {
             // calculate roots for t over x axis and plug them into the bezier function
             //  to get x,y values (make vec 2 bigger for t=0,t=1 values)
             let mut extrema: ArrayVec<[P::Scalar; 3]> = ArrayVec::new();
-            extrema.extend(derivative.root(a.axis(dim), b.axis(dim)).into_iter());
+            extrema.extend(derivative.root(a[dim], b[dim]).iter().copied());
             // only retain roots for which t is in [0..1]
-            extrema.retain(|root| -> bool { root > &mut 0.0.into() && root < &mut 1.0.into() });
+            extrema.retain(|root| -> bool { *root > zero && *root < one });
             // evaluates roots in original function
             for t in extrema.iter_mut() {
-                *t = self.eval_casteljau(*t).axis(dim);
+                *t = self.eval_casteljau(*t)[dim];
             }
             // add y-values for start and end point as candidates
-            extrema.push(self.start.axis(dim));
-            extrema.push(self.end.axis(dim));
+            extrema.push(self.start[dim]);
+            extrema.push(self.end[dim]);
             // sort to get min and max values for bounding box
             extrema.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
 
@@ -331,8 +372,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    //use crate::num_traits::{Pow};
-    use super::PointN;
+    use crate::{PointN, EPSILON};
     //TODO test needs to be adapted for 8 segments of quadratic order
     // #[test]
     // fn circle_approximation_error()
@@ -437,7 +477,7 @@ mod tests {
             let p1 = bezier.eval(t);
             let p2 = bezier.eval_casteljau(t);
             let err = p2 - p1;
-            assert!(err.squared_length() < EPSILON);
+            assert!(err.squared_norm() < EPSILON);
         }
     }
 
@@ -459,10 +499,10 @@ mod tests {
             let t = t as f64 * 1f64 / (nsteps as f64);
             // left
             let mut err = bezier.eval(t / 2.0) - left.eval(t);
-            assert!(err.squared_length() < EPSILON);
+            assert!(err.squared_norm() < EPSILON);
             // right
             err = bezier.eval((t * 0.5) + 0.5) - right.eval(t);
-            assert!(err.squared_length() < EPSILON);
+            assert!(err.squared_norm() < EPSILON);
         }
     }
 
