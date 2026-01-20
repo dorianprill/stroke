@@ -7,8 +7,40 @@ A zero-allocation library providing const-generic implementations of Bézier cur
 
 The library makes heavy use of const-generics and `generic_const_exprs`, so the nightly compiler is required.  
 It comes with a const-generic N-dimensional Point type so you can use the library without any other dependencies.  
-`PointN` uses the platform's `NativeFloat` (f64 on 64-bit, f32 otherwise) for its scalar operations.  
-Should you want to integrate with types provided by another library, you are able to do so by implementing the small Point trait that the library relies upon (given it makes no distinction between a point and its position vector).  
+`PointN<T, N>` uses your chosen scalar `T` (typically `f32`/`f64`) and keeps the dimension at compile time.  
+Should you want to integrate with types provided by another library, implement the small `Point` trait. Optional extension traits (`PointIndex`, `PointDot`, `PointNorm`) unlock component access and geometric helpers when needed.  
+
+### Integration features
+
+- `nalgebra`: implements `Point` for `nalgebra::SVector<T, D>` (no_std + libm).
+  Requires `T: nalgebra::RealField + num_traits::Float` (typically `f32` or `f64`).
+
+Example:
+```rust
+use nalgebra::SVector;
+use stroke::Bezier;
+
+let curve = Bezier::<SVector<f32, 2>, 3>::new([
+    SVector::<f32, 2>::new(0.0, 0.0),
+    SVector::<f32, 2>::new(1.0, 0.0),
+    SVector::<f32, 2>::new(1.0, 1.0),
+]);
+
+let mid = curve.eval(0.5);
+```
+
+Enable with:
+```
+stroke = { version = "0.2.0", features = ["nalgebra"] }
+nalgebra = { version = "0.32", default-features = false, features = ["libm"] }
+```
+
+## Examples
+
+- `bezier_path`: mixed Bezier path segments; run `cargo run --example bezier_path`.
+- `bspline_path`: basic B-spline path evaluation; run `cargo run --example bspline_path`.
+- `plotters_cubic_bezier`: render a cubic Bezier with plotters; run `cargo run --example plotters_cubic_bezier`.
+- `nalgebra_basic`: Bezier with nalgebra SVector; run `cargo run --example nalgebra_basic --features nalgebra`.
 
 ![A Cubic Bézier Curve with Bounding Box and Convex Hull rendered by plotters.rs](https://raw.githubusercontent.com/dorianprill/stroke-rs/main/cubic_bezier_bounding_box.png)  
 
