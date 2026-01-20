@@ -62,6 +62,9 @@ pub mod find_root;
 
 mod roots;
 
+#[cfg(feature = "nalgebra")]
+mod adapters;
+
 // export common types at crate root
 pub use bezier::Bezier;
 pub use bspline::BSpline;
