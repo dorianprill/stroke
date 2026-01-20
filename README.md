@@ -93,7 +93,7 @@ These are the main supported features. Some further utility methods are exposed 
 - [x] arc length (linear approx.)
 - [ ] arc length (Legendre-Gauss)
 - [ ] curvature/radius (Frenet-Serret Frame)
-- [ ] bounding box
+- [x] bounding box
 - [ ] tight box
   
 ## Related  
