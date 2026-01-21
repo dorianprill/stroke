@@ -47,14 +47,6 @@ where
         )
     }
 
-    // DEPRECATED
-    // pub fn to_line(&self) -> Line<P> {
-    //     Line {
-    //         origin: self.start,
-    //         vector: self.end - self.start,
-    //     }
-    // }
-
     /// Return the distance from the LineSegment to Point p by calculating the projection
     pub fn distance_to_point(&self, p: P) -> P::Scalar
     where

@@ -102,7 +102,7 @@ where
     /// the `control_points` using a piecewise polynomial of `degree` within intervals specified by the `knots`.
     /// The knots _must_ be sorted in non-decreasing order; the constructor rejects decreasing knots.
     /// The degree is defined as `curve_order - 1`.
-    /// Desired curve must have a valid number of control points and knots in relation to its degree or the constructor will return None.
+    /// Desired curve must have a valid number of control points and knots in relation to its degree or the constructor will return an error.
     /// A B-Spline curve requires at least one more control point than the degree (`control_points.len() >
     /// degree`) and the number of knots should be equal to `control_points.len() + degree + 1`.
     /// K = C + D + 1

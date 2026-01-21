@@ -26,7 +26,6 @@ pub struct CubicBezier<P> {
     pub(crate) end: P,
 }
 
-//#[allow(dead_code)]
 impl<P> CubicBezier<P>
 where
     P: Point,
@@ -172,44 +171,6 @@ where
             + self.ctrl2[axis] * c2
             + self.end[axis] * c3
     }
-
-    // pub fn curvature(&self, t: P::Scalar) -> F
-    // where
-    // F: P::Scalarloat,
-    // P:  Sub<P, Output = P>
-    //     + Add<P, Output = P>
-    //     + Mul<F, Output = P>,
-    // P::Scalar: Sub<F, Output = F>
-    //     + Add<F, Output = F>
-    //     + Mul<F, Output = F>
-    //     + Float
-    //     + Into
-    // {
-    //     let d = self.derivative();
-    //     let dd = d.derivative();
-    //     let dx = d.x(t);
-    //     let dy = d.y(t);
-    //     let ddx = dd.x(t);
-    //     let ddy = dd.y(t);
-    //     let numerator = dx * ddy.into() - ddx * dy;
-    //     let denominator = (dx*dx + dy*dy).powf(1.5.into());
-    //     return numerator / denominator
-    // }
-
-    // pub fn radius(&self, t: P::Scalar) -> F
-    // where
-    // F: P::Scalarloat,
-    // P:  Sub<P, Output = P>
-    //     + Add<P, Output = P>
-    //     + Mul<F, Output = P>,
-    // P::Scalar: Sub<F, Output = F>
-    //     + Add<F, Output = F>
-    //     + Mul<F, Output = F>
-    //     + Float
-    //     + Into
-    // {
-    //     return 1.0.into() / self.curvature(t)
-    // }
 
     /// Approximate the minimum distance between given `point` and the curve.
     /// Uses a coarse sampling pass over the full domain and a local search around

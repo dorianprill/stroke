@@ -108,41 +108,6 @@ where
         self.start[axis] * c0 + self.ctrl[axis] * c1 + self.end[axis] * c2
     }
 
-    // /// Calculates the curvature of the curve at point t
-    // /// The curvature is the inverse of the radius of the tangential circle at t: k=1/r
-    // pub fn curvature(&self, t: P::Scalar) -> F
-    // where
-    // F: P::Scalarloat,
-    // P::Scalar: Sub<F, Output = F>
-    //     + Add<F, Output = F>
-    //     + Mul<F, Output = F>
-    //     + Into
-    //     + From
-    // {
-    //     let d = self.derivative();
-    //     let dd = d.derivative();
-    //     let dx = d.x(t);
-    //     let dy = d.y(t);
-    //     let (ddx, ddy) = dd;
-    //     let numerator = dx * ddy.into() - ddx * dy;
-    //     let denominator = (dx*dx + dy*dy).powf(1.5.into());
-    //     return numerator / denominator
-    // }
-
-    // /// Calculates the radius of the tangential circle at t
-    // /// It is the inverse of the curvature at t: r=1/k
-    // pub fn radius(&self, t: P::Scalar) -> F
-    // where
-    // F: P::Scalarloat,
-    // P::Scalar: Sub<F, Output = F>
-    //     + Add<F, Output = F>
-    //     + Mul<F, Output = F>
-    //     + Into
-    //     + From
-    // {
-    //     return 1.0.into() / self.curvature(t)
-    // }
-
     /// Approximates the arc length of the curve by flattening it with straight line segments.
     /// This works quite well, at ~32 segments it should already provide an error < 0.5
     /// Remember arclen also works by linear approximation, not the integral, so we have to accept error!
@@ -399,93 +364,29 @@ where
 mod tests {
     use super::*;
     use crate::{PointN, EPSILON};
-    //TODO test needs to be adapted for 8 segments of quadratic order
-    // #[test]
-    // fn circle_approximation_error()
-    // {
-    //     // define closure for unit circle
-    //     let circle = |p: Point2<f64>| -> f64 { ( p.x.pow(2) as f64
-    //                                             + p.y.pow(2) as f64)
-    //                                             .sqrt() - 1f64};
 
-    //     // define control points for 4 bezier segments
-    //     // control points are chosen for minimum radial distance error
-    //     // according to: http://spencermortensen.com/articles/bezier-circle/
-    //     // TODO don't hardcode values
-    //     let c               = 0.551915024494;
-    //     let max_drift_perc  = 0.019608; // radial drift percent
-    //     let max_error       = max_drift_perc * 0.01; // absolute max radial error
+    #[test]
+    fn eval_endpoints() {
+        let bezier = QuadraticBezier::new(
+            PointN::new([0f64, 0f64]),
+            PointN::new([1f64, 1f64]),
+            PointN::new([2f64, 0f64]),
+        );
 
-    //     let bezier_quadrant_1= QuadraticBezier{ start:  Point2{x:0f64,  y:1f64},
-    //                                             ctrl: Point2{x:1f64,  y:c},
-    //                                             end:   Point2{x:1f64,  y:0f64}};
-    //     let bezier_quadrant_2 = QuadraticBezier{ start:  Point2{x:1f64,  y:0f64},
-    //                                             ctrl: Point2{x:c,  y:-1f64},
-    //                                             end:   Point2{x:0f64,  y:-1f64}};
-    //     let bezier_quadrant_3 = QuadraticBezier{ start:  Point2{x:0f64,  y:-1f64},
-    //                                             ctrl: Point2{x:-1f64,  y:-c},
-    //                                             end:   Point2{x:-1f64,  y:0f64}};
-    //     let bezier_quadrant_4 = QuadraticBezier{ start:  Point2{x:-1f64,    y:0f64},
-    //                                             ctrl: Point2{x:-c,     y:1f64},
-    //                                             end:   Point2{x:0f64,   y:1f64}};
-    //     let nsteps =  1000;
-    //     for t in 0..nsteps {
-    //         let t = t as f64 * 1f64/(nsteps as f64);
+        assert_eq!(bezier.eval(0.0), PointN::new([0.0, 0.0]));
+        assert_eq!(bezier.eval(1.0), PointN::new([2.0, 0.0]));
+    }
 
-    //         let point = bezier_quadrant_1.eval(t);
-    //         let contour = circle(point);
-    //         assert!( contour.abs() <= max_error );
-
-    //         let point = bezier_quadrant_2.eval(t);
-    //         let contour = circle(point);
-    //         assert!( contour.abs() <= max_error );
-
-    //         let point = bezier_quadrant_3.eval(t);
-    //         let contour = circle(point);
-    //         assert!( contour.abs() <= max_error );
-
-    //         let point = bezier_quadrant_4.eval(t);
-    //         let contour = circle(point);
-    //         assert!( contour.abs() <= max_error );
-    //     }
-    // }
-
-    //TODO test needs to be adapted for 8 segments of quadratic order
-    // #[test]
-    // fn circle_circumference_approximation()
-    // {
-    //     // define control points for 8 quadratic bezier segments to best approximate a unit circle
-    //     // control points are chosen for minimum radial distance error, see circle_approximation_error() in this file
-    //     // given this, the circumference will also be close to 2*pi
-    //     // (remember arclen also works by linear approximation, not the true integral, so we have to accept error)!
-    //     // This approximation is unfeasable if desired accuracy is greater than 2 decimal places (at 1000 steps)
-    //     // TODO don't hardcode values, solve for them
-    //     let c         = 0.551915024494;
-    //     let max_error = 1e-2;
-    //     let nsteps  = 1e3 as usize;
-    //     let pi        = 3.14159265359;
-    //     let tau       = 2.*pi;
-
-    //     let bezier_quadrant_1= QuadraticBezier{ start:  Point2{x:0f64,  y:1f64},
-    //                                             ctrl: Point2{x:1f64,  y:c},
-    //                                             end:   Point2{x:1f64,  y:0f64}};
-    //     let bezier_quadrant_2 = QuadraticBezier{ start:  Point2{x:1f64,  y:0f64},
-    //                                             ctrl: Point2{x:c,  y:-1f64},
-    //                                             end:   Point2{x:0f64,  y:-1f64}};
-    //     let bezier_quadrant_3 = QuadraticBezier{ start:  Point2{x:0f64,  y:-1f64},
-    //                                             ctrl: Point2{x:-1f64,  y:-c},
-    //                                             end:   Point2{x:-1f64,  y:0f64}};
-    //     let bezier_quadrant_4 = QuadraticBezier{ start:  Point2{x:-1f64,    y:0f64},
-    //                                             ctrl: Point2{x:-c,     y:1f64},
-    //                                             end:   Point2{x:0f64,   y:1f64}};
-    //     let circumference = bezier_quadrant_1.arclen::<P::Scalar>(nsteps) +
-    //                             bezier_quadrant_2.arclen::<P::Scalar>(nsteps) +
-    //                             bezier_quadrant_3.arclen::<P::Scalar>(nsteps) +
-    //                             bezier_quadrant_4.arclen::<P::Scalar>(nsteps);
-    //     //dbg!(circumference);
-    //     //dbg!(tau);
-    //     assert!( ((tau + max_error) > circumference) && ((tau - max_error) < circumference) );
-    // }
+    #[test]
+    fn arclen_line_approx() {
+        let bezier = QuadraticBezier::new(
+            PointN::new([0f64, 0f64]),
+            PointN::new([1f64, 0f64]),
+            PointN::new([2f64, 0f64]),
+        );
+        let length = bezier.arclen(32);
+        assert!((length - 2.0).abs() < 1e-3);
+    }
 
     #[test]
     fn eval_equivalence() {
