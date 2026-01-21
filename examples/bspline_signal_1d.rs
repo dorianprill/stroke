@@ -14,9 +14,12 @@ fn main() {
     });
 
     // Interpolate the samples with a cubic B-spline.
+    // We solve a tridiagonal system to recover control points that force the
+    // spline to pass through the sample values at uniform parameter steps.
     let control = interpolate_cubic_uniform(&samples);
     let control_points: [PointN<f64, 1>; CONTROL_POINTS] =
         core::array::from_fn(|i| PointN::new([control[i]]));
+    // Use a clamped uniform knot vector so the spline starts/ends at the samples.
     let knots = open_uniform_knots();
     let spline: BSpline<PointN<f64, 1>, KNOTS, CONTROL_POINTS, DEGREE> =
         BSpline::new(knots, control_points).expect("valid knot vector");
@@ -50,6 +53,7 @@ fn main() {
         let row = value_to_row(value, min, max, height);
         grid[row][i] = '*';
     }
+    // Overlay samples as 'o' on top of the spline curve.
     for (i, value) in samples.iter().copied().enumerate() {
         let col = ((i as f64) * (width - 1) as f64 / (samples.len() - 1) as f64).round() as usize;
         let row = value_to_row(value, min, max, height);
@@ -70,6 +74,7 @@ fn value_to_row(value: f64, min: f64, max: f64, height: usize) -> usize {
     y.round().clamp(0.0, (height - 1) as f64) as usize
 }
 
+// Open uniform (clamped) knot vector for a cubic spline with uniform spacing.
 fn open_uniform_knots() -> [f64; KNOTS] {
     let end = (CONTROL_POINTS - DEGREE) as f64;
     core::array::from_fn(|i| {
@@ -83,8 +88,10 @@ fn open_uniform_knots() -> [f64; KNOTS] {
     })
 }
 
+// Solve for control points P so the cubic B-spline interpolates the samples.
+// For uniform knots, interior samples satisfy: P_{i-1} + 4 P_i + P_{i+1} = 6 D_i.
+// Endpoints are clamped: P_0 = D_0, P_{n-1} = D_{n-1}.
 fn interpolate_cubic_uniform(samples: &[f64; CONTROL_POINTS]) -> [f64; CONTROL_POINTS] {
-    // Solve for control points P so the cubic B-spline interpolates the samples.
     let n = samples.len();
     let mut a = [[0.0; CONTROL_POINTS + 1]; CONTROL_POINTS];
 
@@ -105,6 +112,7 @@ fn interpolate_cubic_uniform(samples: &[f64; CONTROL_POINTS]) -> [f64; CONTROL_P
     gaussian_elimination(&mut a)
 }
 
+// Solve the dense system in-place with Gauss-Jordan elimination.
 fn gaussian_elimination(matrix: &mut [[f64; CONTROL_POINTS + 1]; CONTROL_POINTS]) -> [f64; CONTROL_POINTS] {
     for i in 0..CONTROL_POINTS {
         let mut pivot = i;
@@ -113,6 +121,7 @@ fn gaussian_elimination(matrix: &mut [[f64; CONTROL_POINTS + 1]; CONTROL_POINTS]
                 pivot = r;
             }
         }
+        // If the pivot is tiny, the system is ill-conditioned; keep going with the current row.
         if matrix[pivot][i].abs() < 1e-12 {
             continue;
         }
