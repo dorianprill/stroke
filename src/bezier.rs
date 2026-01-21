@@ -515,6 +515,18 @@ mod tests {
     }
 
     #[test]
+    fn arclen_line_approx() {
+        let bezier: Bezier<PointN<f64, 2>, 2> = Bezier::new([
+            PointN::new([0.0, 0.0]),
+            PointN::new([10.0, 0.0]),
+        ]);
+        let expected = (bezier.eval(1.0) - bezier.eval(0.0)).squared_norm().sqrt();
+        let length = bezier.arclen(32);
+        let tolerance = expected * 0.05;
+        assert!((length - expected).abs() <= tolerance);
+    }
+
+    #[test]
     fn split_equivalence() {
         // chose some arbitrary control points and construct a cubic bezier
         let bezier = Bezier {

@@ -903,6 +903,21 @@ mod tests {
     }
 
     #[test]
+    fn arclen_line_approx() {
+        let points = [
+            PointN::new([0f64, 0f64]),
+            PointN::new([10f64, 0f64]),
+        ];
+        let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+        let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+
+        let expected = (points[1] - points[0]).squared_norm().sqrt();
+        let length = curve.arclen(32).unwrap();
+        let tolerance = 1e-6;
+        assert!((length - expected).abs() <= tolerance);
+    }
+
+    #[test]
     fn degree_2_clamped_construct_and_eval_endpoints() {
         // Define the control points for a degree 2 B-Spline
         let points = [
