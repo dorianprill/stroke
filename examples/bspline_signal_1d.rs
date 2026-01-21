@@ -36,7 +36,12 @@ fn main() {
 
     let mut min = curve_values[0];
     let mut max = curve_values[0];
-    for v in curve_values.iter().copied().chain(samples.iter().copied()) {
+    for v in curve_values
+        .iter()
+        .copied()
+        .chain(samples.iter().copied())
+        .chain(control.iter().copied())
+    {
         if v < min {
             min = v;
         }
@@ -53,14 +58,16 @@ fn main() {
         let row = value_to_row(value, min, max, height);
         grid[row][i] = '*';
     }
-    // Overlay samples as 'o' on top of the spline curve.
-    for (i, value) in samples.iter().copied().enumerate() {
-        let col = ((i as f64) * (width - 1) as f64 / (samples.len() - 1) as f64).round() as usize;
+    // Overlay control points as letters.
+    for (i, value) in control.iter().copied().enumerate() {
+        let col =
+            ((i as f64) * (width - 1) as f64 / (control.len() - 1) as f64).round() as usize;
         let row = value_to_row(value, min, max, height);
-        grid[row][col] = 'o';
+        let letter = if i < CONTROL_POINTS / 2 { 'a' } else { 'b' };
+        grid[row][col] = letter;
     }
 
-    println!("B-spline interpolation of a 1D signal (o = samples, * = spline)");
+    println!("B-spline interpolation of a 1D signal (* = spline, a/b = control points)");
     println!("domain: [{:.2}, {:.2}], range: [{:.2}, {:.2}]", kmin, kmax, min, max);
     for row in grid {
         let line: String = row.into_iter().collect();
