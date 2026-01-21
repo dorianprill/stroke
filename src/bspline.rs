@@ -629,32 +629,46 @@ where
     }
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.
-    /// This approximation is unfeasable if desired accuracy is greater than ~2 decimal places
-    pub fn arclen(&self, nsteps: usize) -> P::Scalar
+    /// This approximation is unfeasable if desired accuracy is greater than ~2 decimal places.
+    /// Returns an error if evaluation fails inside the knot domain.
+    pub fn arclen(&self, nsteps: usize) -> Result<P::Scalar, BSplineError>
     where
         P: PointNorm,
         [(); D + 1]: Sized,
     {
+        let nsteps = nsteps.max(1);
         let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let stepsize = <P::Scalar as NumCast>::from(1.0).unwrap() / nsteps_scalar;
-        let mut arclen: P::Scalar = <P::Scalar as NumCast>::from(0.0).unwrap();
-        // evaluate the curve, t needs to be inside the knot domain!
-        // we need to map [0...1] to kmin..kmax
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let mut arclen: P::Scalar = zero;
         let (kmin, kmax) = self.knot_domain();
-        for t in 0..=nsteps {
-            let t = kmin
-                + (<P::Scalar as NumCast>::from(t as f64).unwrap() / nsteps_scalar) * (kmax - kmin);
-            let p1 = self.eval(t).unwrap_or_else(|_| {
-                // should never happen as we control the t values passed to eval()
-                self.control_points[0]
-            });
-            let p2 = self.eval(t + stepsize).unwrap_or_else(|_| {
-                // should never happen as we control the t values passed to eval()
-                self.control_points[0]
-            });
+        let span = kmax - kmin;
+        let dt = span / nsteps_scalar;
+
+        for i in 0..nsteps {
+            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
+            let mut t0 = kmin + dt * i_scalar;
+            let mut t1 = if i + 1 == nsteps {
+                kmax
+            } else {
+                t0 + dt
+            };
+            if t0 < kmin {
+                t0 = kmin;
+            } else if t0 > kmax {
+                t0 = kmax;
+            }
+            if t1 < kmin {
+                t1 = kmin;
+            } else if t1 > kmax {
+                t1 = kmax;
+            }
+
+            let p1 = self.eval(t0)?;
+            let p2 = self.eval(t1)?;
             arclen = arclen + (p1 - p2).squared_norm().sqrt();
         }
-        arclen
+
+        Ok(arclen)
     }
 
     /// Returns the derivative curve of self which has C-1 control points and K-2 knots.
