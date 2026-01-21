@@ -8,7 +8,6 @@ use super::*;
 use crate::find_root::FindRoot;
 use crate::point::{Point, PointIndex, PointNorm};
 use crate::roots::RootFindingError;
-use crate::spline::Spline;
 
 const MAX_ROOT_DEPTH: usize = 32;
 const ROOT_TOLERANCE: f64 = 1e-6;
@@ -30,15 +29,6 @@ where
 {
     /// Control points which define the curve and hence its degree
     control_points: [P; N],
-}
-
-impl<P, const N: usize> Spline<P> for Bezier<P, { N }>
-where
-    P: Point,
-{
-    fn eval(&self, t: P::Scalar) -> P {
-        self.eval(t)
-    }
 }
 
 impl<P: Point, const N: usize> IntoIterator for Bezier<P, { N }> {
