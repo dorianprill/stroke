@@ -90,7 +90,7 @@ These are the main supported features. Some further utility methods are exposed 
 - [x] evaluation (De Boor)
 - [x] split
 - [x] derivative
-- [x] arc length (linear approx.)
+- [x] arc length (linear approx.; returns Result on eval errors)
 - [ ] arc length (Legendre-Gauss)
 - [ ] curvature/radius (Frenet-Serret Frame)
 - [x] bounding box
