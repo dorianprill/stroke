@@ -688,8 +688,13 @@ where
         let derivative_knots: [P::Scalar; K - 2] =
             core::array::from_fn(|i| self.knots[i + 1]);
         let derivative_points: [P; C - 1] = core::array::from_fn(|i| {
-            let scale = <P::Scalar as NumCast>::from(D as f64).unwrap()
-                / (self.knots[i + D + 1] - self.knots[i + 1]);
+            let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+            let denom = self.knots[i + D + 1] - self.knots[i + 1];
+            let scale = if denom.abs() < P::Scalar::epsilon() {
+                zero
+            } else {
+                <P::Scalar as NumCast>::from(D as f64).unwrap() / denom
+            };
             (self.control_points[i + 1] - self.control_points[i]) * scale
         });
 

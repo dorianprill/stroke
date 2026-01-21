@@ -254,13 +254,20 @@ where
     where
         P: PointNorm,
     {
+        let nsteps = nsteps.max(1);
         let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let stepsize = <P::Scalar as NumCast>::from(1.0).unwrap() / nsteps_scalar;
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let stepsize = one / nsteps_scalar;
         let mut arclen: P::Scalar = <P::Scalar as NumCast>::from(0.0).unwrap();
-        for t in 1..nsteps {
-            let t = <P::Scalar as NumCast>::from(t as f64).unwrap() / nsteps_scalar;
-            let p1 = self.eval(t);
-            let p2 = self.eval(t + stepsize);
+        for i in 0..nsteps {
+            let t0 = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
+            let t1 = if i + 1 == nsteps {
+                one
+            } else {
+                t0 + stepsize
+            };
+            let p1 = self.eval(t0);
+            let p2 = self.eval(t1);
 
             arclen = arclen + (p1 - p2).squared_norm().sqrt();
         }
