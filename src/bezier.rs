@@ -11,6 +11,7 @@ use crate::roots::RootFindingError;
 
 const MAX_ROOT_DEPTH: usize = 32;
 const ROOT_TOLERANCE: f64 = 1e-6;
+const DEFAULT_DISTANCE_STEPS_PER_PASS: usize = 32;
 
 /// General implementation of a Bezier curve of arbitrary degree (`N - 1`).
 ///
@@ -64,7 +65,7 @@ where
         self.control_points
     }
 
-    /// Evaluate a point on the curve at point 't' which should be in the interval [0,1]
+    /// Evaluate a point on the curve at point 't' which should be in the interval [0,1] (unchecked!)
     /// This is implemented using De Casteljau's algorithm (over a temporary array with const generic sizing)
     pub fn eval(&self, t: P::Scalar) -> P {
         //let t = t.into();
@@ -80,15 +81,16 @@ where
         p[0]
     }
 
-    /// Calculates the minimum distance between given 'point' and the curve.
+    /// Approximate the minimum distance between given `point` and the curve.
     /// Uses two passes with the same amount of steps in t:
     /// 1. coarse search over the whole curve
     /// 2. fine search around the minimum yielded by the coarse search
-    pub fn distance_to_point(&self, point: P) -> P::Scalar
+    /// `nsteps` is the number of samples per pass.
+    pub fn distance_to_point_approx(&self, point: P, nsteps: usize) -> P::Scalar
     where
         P: PointNorm,
     {
-        let nsteps: usize = 64;
+        let nsteps = nsteps.max(1);
         let mut tmin: P::Scalar = <P::Scalar as NumCast>::from(0.5).unwrap();
         let mut dmin: P::Scalar = (point - self.control_points[0]).squared_norm();
         let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
@@ -118,6 +120,15 @@ where
             }
         }
         dmin.sqrt()
+    }
+
+    /// Approximate the minimum distance between given `point` and the curve using
+    /// a default sampling resolution (64 total samples across two passes).
+    pub fn distance_to_point(&self, point: P) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        self.distance_to_point_approx(point, DEFAULT_DISTANCE_STEPS_PER_PASS)
     }
 
     /// Split the curve at `t` into two sub-curves.
