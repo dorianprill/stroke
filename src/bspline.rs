@@ -897,7 +897,9 @@ mod tests {
 
         // Check that the start and end points have equal distance to the midpoint of the line
         assert!(
-            (points[1] - mid).squared_norm().sqrt() - (points[0] - mid).squared_norm().sqrt()
+            ((points[1] - mid).squared_norm().sqrt()
+                - (points[0] - mid).squared_norm().sqrt())
+                .abs()
                 < EPSILON
         );
     }
@@ -921,9 +923,9 @@ mod tests {
     fn degree_2_clamped_construct_and_eval_endpoints() {
         // Define the control points for a degree 2 B-Spline
         let points = [
-            PointN::new([0f64, 0f64]),   // Start of the line at origin
-            PointN::new([10f64, 10f64]), // End of the line at (10, 10)
-            PointN::new([20f64, 0f64]),  // End of the line at (20, 0)
+            PointN::new([0f64, 0f64]),   // Start of the curve at origin
+            PointN::new([10f64, 10f64]), // Control point off the baseline
+            PointN::new([20f64, 0f64]),  // End of the curve at (20, 0)
         ];
 
         // Define a uniform clamped knot vector for a degree 2 B-spline
@@ -991,11 +993,13 @@ mod tests {
             Err(e) => panic!("Error evaluating B-Spline: {}", e),
         };
 
-        // Check that the start and end points have equal distance to the midpoint of the line
-        assert!(
-            (points[1] - mid).squared_norm().sqrt() - (points[0] - mid).squared_norm().sqrt()
-                < EPSILON
-        );
+        // Check that the point stays within the control point bounds.
+        let (min_x, max_x) = (points[0][0].min(points[1][0]).min(points[2][0]),
+            points[0][0].max(points[1][0]).max(points[2][0]));
+        let (min_y, max_y) = (points[0][1].min(points[1][1]).min(points[2][1]),
+            points[0][1].max(points[1][1]).max(points[2][1]));
+        assert!(mid[0] >= min_x - EPSILON && mid[0] <= max_x + EPSILON);
+        assert!(mid[1] >= min_y - EPSILON && mid[1] <= max_y + EPSILON);
     }
 
     #[test]
