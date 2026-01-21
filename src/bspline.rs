@@ -9,7 +9,8 @@ use crate::roots::{root_newton_raphson, RootFindingError};
 
 const ROOT_TOLERANCE: f64 = 1e-6;
 const MAX_ROOT_ITER: usize = 64;
-const DEFAULT_DISTANCE_STEPS_PER_PASS: usize = 32;
+const DEFAULT_DISTANCE_STEPS: usize = 64;
+const LOCAL_SEARCH_ITERS: usize = 16;
 
 /// Errors returned by B-spline construction or evaluation.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -357,10 +358,8 @@ where
     }
 
     /// Approximate the minimum distance between given `point` and the curve.
-    /// Uses two passes with the same amount of steps in t:
-    /// 1. coarse search over the whole curve
-    /// 2. fine search around the minimum yielded by the coarse search
-    /// `nsteps` is the number of samples per pass.
+    /// Uses a coarse sampling pass over the knot domain and a local search around
+    /// the best sample. `nsteps` is the number of coarse samples.
     pub fn distance_to_point_approx(
         &self,
         point: P,
@@ -375,54 +374,53 @@ where
         let span = kmax - kmin;
         let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
         let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+        let three = <P::Scalar as NumCast>::from(3.0).unwrap();
 
-        let start = self.eval(kmin)?;
-        let mut tmin = kmin;
-        let mut dmin = (start - point).squared_norm();
-
-        // 1. coarse pass
-        for i in 0..nsteps {
+        let mut best_i = 0usize;
+        let mut best_d = (self.eval(kmin)? - point).squared_norm();
+        for i in 1..=nsteps {
             let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
             let t = kmin + span * (i_scalar / nsteps_scalar);
             let candidate = self.eval(t)?;
             let distance = (candidate - point).squared_norm();
-            if distance < dmin {
-                tmin = t;
-                dmin = distance;
+            if distance < best_d {
+                best_d = distance;
+                best_i = i;
             }
         }
 
-        // 2. fine pass
-        let nsteps_half = nsteps_scalar * half;
-        let fine_div = <P::Scalar as NumCast>::from((nsteps * nsteps) as f64).unwrap();
-        for i in 0..nsteps {
-            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
-            let t_offset = span * (i_scalar / fine_div);
-            let mut t = tmin + t_offset - t_offset * nsteps_half;
-            if t < kmin {
-                t = kmin;
-            } else if t > kmax {
-                t = kmax;
-            }
-            let candidate = self.eval(t)?;
-            let distance = (candidate - point).squared_norm();
-            if distance < dmin {
-                tmin = t;
-                dmin = distance;
+        let left_i = if best_i == 0 { 0 } else { best_i - 1 };
+        let right_i = if best_i == nsteps { nsteps } else { best_i + 1 };
+        let mut left = kmin
+            + span * (<P::Scalar as NumCast>::from(left_i as f64).unwrap() / nsteps_scalar);
+        let mut right = kmin
+            + span * (<P::Scalar as NumCast>::from(right_i as f64).unwrap() / nsteps_scalar);
+
+        for _ in 0..LOCAL_SEARCH_ITERS {
+            let third = (right - left) / three;
+            let t1 = left + third;
+            let t2 = right - third;
+            let d1 = (self.eval(t1)? - point).squared_norm();
+            let d2 = (self.eval(t2)? - point).squared_norm();
+            if d1 < d2 {
+                right = t2;
+            } else {
+                left = t1;
             }
         }
 
-        Ok(dmin.sqrt())
+        let t = (left + right) * half;
+        Ok((self.eval(t)? - point).squared_norm().sqrt())
     }
 
     /// Approximate the minimum distance between given `point` and the curve using
-    /// a default sampling resolution (64 total samples across two passes).
+    /// a default sampling resolution.
     pub fn distance_to_point(&self, point: P) -> Result<P::Scalar, BSplineError>
     where
         P: PointNorm,
         [(); D + 1]: Sized,
     {
-        self.distance_to_point_approx(point, DEFAULT_DISTANCE_STEPS_PER_PASS)
+        self.distance_to_point_approx(point, DEFAULT_DISTANCE_STEPS)
     }
 
     /// Iteratively compute de Boor's B-spline algorithm, this computes the recursive
