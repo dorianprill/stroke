@@ -74,7 +74,7 @@ where
         // start with a copy of the original control points array and succesively use it for evaluation
         let mut p: [P; N] = self.control_points;
         // loop up to degree = control_points.len() -1
-        for i in 1..=p.len() {
+        for i in 1..p.len() {
             for j in 0..p.len() - i {
                 p[j] = p[j] * (one - t) + p[j + 1] * t;
             }
