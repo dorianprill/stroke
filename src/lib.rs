@@ -29,17 +29,6 @@
 //! # Feature flags
 //! - `nalgebra`: implements `Point` for `nalgebra::SVector<T, D>` (add `nalgebra` as a dependency).
 
-// this feature was needed for tinyvec < 2.0 to compile for const generic arrays like ArrayVec<[f32;N]>
-//#![feature(min_const_generics)]
-
-// NO LONGER NECESSARY (stabilized in 1.79)
-// removes the need for generics with associated types to specify the
-// associated type like P:Point instead of P: Point<Scalar=f64>
-//#![feature(associated_type_bounds)]
-
-// make splines usable as Fn in trait bounds
-//#![feature(fn_traits)]
-
 use tinyvec::ArrayVec;
 
 // abstraction types
@@ -77,24 +66,10 @@ pub use bspline_path::BSplinePath;
 pub use find_root::FindRoot;
 pub use path::BezierPath;
 
-// Conditionally compiled newtype pattern used to determine which size float to use for internal constants
-// so that the library can specialize internal types for the architecture for best performance
-// TODO An FPU size definition is not available to the compiler, so
-
-//   1. Either fix everything to 32-bit and accept performance loss (how it's done now)
-
-//   2. Make this value a 'must-config' in cargo.toml (requires either external libraries
-//      or must wait for additional float types)
-
-// If it is a modern 64 bit architecture, it likely also has a 64 bit FPU
+// Per-architecture epsilon used by tests.
+#[cfg(test)]
 #[cfg(target_pointer_width = "64")]
-type NativeFloat = f64;
-#[cfg(target_pointer_width = "64")]
-const EPSILON: f64 = f64::EPSILON;
-// For now, we fix all non-64 bit architectures to 32bit floats
-// as smaller-width architectures are more likely to have different int/float sizes if they have a fpu
+pub(crate) const EPSILON: f64 = f64::EPSILON;
+#[cfg(test)]
 #[cfg(not(target_pointer_width = "64"))]
-type NativeFloat = f32;
-#[cfg(not(target_pointer_width = "64"))]
-const EPSILON: f32 = f32::EPSILON;
-// This might change when/if Rust gets additional types like f16 or f24
+pub(crate) const EPSILON: f32 = f32::EPSILON;

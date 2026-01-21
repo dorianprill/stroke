@@ -3,6 +3,9 @@
 use num_traits::{Float, NumCast};
 use super::{ArrayVec, LineSegment, Point, PointIndex, PointNorm, QuadraticBezier};
 
+const DEFAULT_DISTANCE_STEPS: usize = 64;
+const LOCAL_SEARCH_ITERS: usize = 16;
+
 /// Cubic Bezier curve defined by four points: start, two control points, and end.
 ///
 /// The curve is defined by:
@@ -23,7 +26,6 @@ pub struct CubicBezier<P> {
     pub(crate) end: P,
 }
 
-//#[allow(dead_code)]
 impl<P> CubicBezier<P>
 where
     P: Point,
@@ -80,13 +82,20 @@ where
     where
         P: PointNorm,
     {
+        let nsteps = nsteps.max(1);
         let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let stepsize = <P::Scalar as NumCast>::from(1.0).unwrap() / nsteps_scalar;
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let stepsize = one / nsteps_scalar;
         let mut arclen = <P::Scalar as NumCast>::from(0.0).unwrap();
-        for t in 1..nsteps {
-            let t = <P::Scalar as NumCast>::from(t as f64).unwrap() / nsteps_scalar;
-            let p1 = self.eval_casteljau(t);
-            let p2 = self.eval_casteljau(t + stepsize);
+        for i in 0..nsteps {
+            let t0 = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
+            let t1 = if i + 1 == nsteps {
+                one
+            } else {
+                t0 + stepsize
+            };
+            let p1 = self.eval_casteljau(t0);
+            let p2 = self.eval_casteljau(t1);
 
             arclen = arclen + (p1 - p2).squared_norm().sqrt();
         }
@@ -163,82 +172,60 @@ where
             + self.end[axis] * c3
     }
 
-    // pub fn curvature(&self, t: P::Scalar) -> F
-    // where
-    // F: P::Scalarloat,
-    // P:  Sub<P, Output = P>
-    //     + Add<P, Output = P>
-    //     + Mul<F, Output = P>,
-    // P::Scalar: Sub<F, Output = F>
-    //     + Add<F, Output = F>
-    //     + Mul<F, Output = F>
-    //     + Float
-    //     + Into
-    // {
-    //     let d = self.derivative();
-    //     let dd = d.derivative();
-    //     let dx = d.x(t);
-    //     let dy = d.y(t);
-    //     let ddx = dd.x(t);
-    //     let ddy = dd.y(t);
-    //     let numerator = dx * ddy.into() - ddx * dy;
-    //     let denominator = (dx*dx + dy*dy).powf(1.5.into());
-    //     return numerator / denominator
-    // }
+    /// Approximate the minimum distance between given `point` and the curve.
+    /// Uses a coarse sampling pass over the full domain and a local search around
+    /// the best sample. `nsteps` is the number of coarse samples.
+    pub fn distance_to_point_approx(&self, point: P, nsteps: usize) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        let nsteps = nsteps.max(1);
+        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+        let three = <P::Scalar as NumCast>::from(3.0).unwrap();
 
-    // pub fn radius(&self, t: P::Scalar) -> F
-    // where
-    // F: P::Scalarloat,
-    // P:  Sub<P, Output = P>
-    //     + Add<P, Output = P>
-    //     + Mul<F, Output = P>,
-    // P::Scalar: Sub<F, Output = F>
-    //     + Add<F, Output = F>
-    //     + Mul<F, Output = F>
-    //     + Float
-    //     + Into
-    // {
-    //     return 1.0.into() / self.curvature(t)
-    // }
+        let mut best_i = 0usize;
+        let mut best_d = (self.eval(zero) - point).squared_norm();
+        for i in 1..=nsteps {
+            let t = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
+            let candidate = self.eval(t);
+            let d = (candidate - point).squared_norm();
+            if d < best_d {
+                best_d = d;
+                best_i = i;
+            }
+        }
 
-    /// Calculates the minimum distance between given 'point' and the curve.
-    /// Uses two passes with the same amount of steps in t:
-    /// 1. coarse search over the whole curve
-    /// 2. fine search around the minimum yielded by the coarse search
+        let left_i = if best_i == 0 { 0 } else { best_i - 1 };
+        let right_i = if best_i == nsteps { nsteps } else { best_i + 1 };
+        let mut left = <P::Scalar as NumCast>::from(left_i as f64).unwrap() / nsteps_scalar;
+        let mut right = <P::Scalar as NumCast>::from(right_i as f64).unwrap() / nsteps_scalar;
+
+        for _ in 0..LOCAL_SEARCH_ITERS {
+            let third = (right - left) / three;
+            let t1 = left + third;
+            let t2 = right - third;
+            let d1 = (self.eval(t1) - point).squared_norm();
+            let d2 = (self.eval(t2) - point).squared_norm();
+            if d1 < d2 {
+                right = t2;
+            } else {
+                left = t1;
+            }
+        }
+
+        let t = (left + right) * half;
+        (self.eval(t) - point).squared_norm().sqrt()
+    }
+
+    /// Approximate the minimum distance between given `point` and the curve using
+    /// a default sampling resolution.
     pub fn distance_to_point(&self, point: P) -> P::Scalar
     where
         P: PointNorm,
     {
-        let nsteps: usize = 64;
-        let mut tmin: P::Scalar = <P::Scalar as NumCast>::from(0.5).unwrap();
-        let mut dmin: P::Scalar = (point - self.start).squared_norm();
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        // 1. coarse pass
-        for i in 0..nsteps {
-            // calculate next step value
-            let t: P::Scalar = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
-            // calculate distance to candidate
-            let candidate = self.eval(t);
-            if (candidate - point).squared_norm() < dmin {
-                tmin = t;
-                dmin = (candidate - point).squared_norm();
-            }
-        }
-        // 2. fine pass
-        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
-        let nsteps_half = nsteps_scalar * half;
-        let fine_div = <P::Scalar as NumCast>::from((nsteps * nsteps) as f64).unwrap();
-        for i in 0..nsteps {
-            // calculate next step value ( a 64th of a 64th from first step)
-            let t: P::Scalar = <P::Scalar as NumCast>::from(i as f64).unwrap() / fine_div;
-            // calculate distance to candidate centered around tmin from before
-            let candidate: P = self.eval(tmin + t - t * nsteps_half);
-            if (candidate - point).squared_norm() < dmin {
-                tmin = t;
-                dmin = (candidate - point).squared_norm();
-            }
-        }
-        dmin.sqrt()
+        self.distance_to_point_approx(point, DEFAULT_DISTANCE_STEPS)
     }
 
     /// Returns the line segment formed by the curve's start and end points.

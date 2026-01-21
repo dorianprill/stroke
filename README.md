@@ -3,6 +3,10 @@
 ![Rust](https://github.com/dorianprill/stroke/actions/workflows/rust.yml/badge.svg)
 ![crates.io](https://img.shields.io/crates/v/stroke.svg)
 
+![A Cubic Bézier Curve with Bounding Box and Convex Hull rendered by plotters.rs](https://raw.githubusercontent.com/dorianprill/stroke-rs/main/cubic_bezier_bounding_box.png)  
+
+made with [plotters.rs](https://github.com/38/plotters)  
+
 A zero-allocation library providing const-generic implementations of Bézier curves, B-Spline curves and specialized implementations of up to cubic Bézier curves in N-dimensional euclidean space. It is intended for general/embedded/wasm use supporting #![no_std] environments written in 100% safe Rust with minimal dependencies.  
 
 The library makes heavy use of const-generics and `generic_const_exprs`, so the nightly compiler is required.  
@@ -34,18 +38,6 @@ Enable with:
 stroke = { version = "0.2.0", features = ["nalgebra"] }
 nalgebra = { version = "0.32", default-features = false, features = ["libm"] }
 ```
-
-## Examples
-
-- `bezier_path`: mixed Bezier path segments; run `cargo run --example bezier_path`.
-- `bspline_path`: basic B-spline path evaluation; run `cargo run --example bspline_path`.
-- `bspline_signal_1d`: 1D signal interpolation with a cubic B-spline; run `cargo run --example bspline_signal_1d`.
-- `plotters_cubic_bezier`: render a cubic Bezier with plotters; run `cargo run --example plotters_cubic_bezier`.
-- `nalgebra_basic`: Bezier with nalgebra SVector; run `cargo run --example nalgebra_basic --features nalgebra`.
-
-![A Cubic Bézier Curve with Bounding Box and Convex Hull rendered by plotters.rs](https://raw.githubusercontent.com/dorianprill/stroke-rs/main/cubic_bezier_bounding_box.png)  
-
-made with [plotters.rs](https://github.com/38/plotters)  
 
 Right now, the generic versions don't implement all methods that the specialized versions do (as the algorithms get a bit more complicated) but should reach parity eventually.
 
@@ -96,6 +88,19 @@ These are the main supported features. Some further utility methods are exposed 
 - [ ] curvature/radius (Frenet-Serret Frame)
 - [x] bounding box
 - [ ] tight box
+
+### Approximation Notes
+
+- `arclen` and `distance_to_point*` use sampling-based approximations; increase steps for accuracy.
+- `BSpline::arclen` returns `Result` because evaluation is fallible outside the knot domain.
+
+## Examples
+
+- `bezier_path`: mixed Bezier path segments; run `cargo run --example bezier_path`.
+- `bspline_path`: basic B-spline path evaluation; run `cargo run --example bspline_path`.
+- `bspline_signal_1d`: 1D signal interpolation with a cubic B-spline; run `cargo run --example bspline_signal_1d`.
+- `plotters_cubic_bezier`: render a cubic Bezier with plotters; run `cargo run --example plotters_cubic_bezier`.
+- `nalgebra_basic`: Bezier with nalgebra SVector; run `cargo run --example nalgebra_basic --features nalgebra`.
   
 ## Related  
 
