@@ -39,6 +39,7 @@ nalgebra = { version = "0.32", default-features = false, features = ["libm"] }
 
 - `bezier_path`: mixed Bezier path segments; run `cargo run --example bezier_path`.
 - `bspline_path`: basic B-spline path evaluation; run `cargo run --example bspline_path`.
+- `bspline_signal_1d`: 1D signal interpolation with a cubic B-spline; run `cargo run --example bspline_signal_1d`.
 - `plotters_cubic_bezier`: render a cubic Bezier with plotters; run `cargo run --example plotters_cubic_bezier`.
 - `nalgebra_basic`: Bezier with nalgebra SVector; run `cargo run --example nalgebra_basic --features nalgebra`.
 
