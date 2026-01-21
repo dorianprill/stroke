@@ -134,7 +134,9 @@ mod tests {
         };
 
         let mid = line.eval(0.5);
-        assert!((mid - line.start).squared_norm() - (mid - line.end).squared_norm() < EPSILON)
+        let diff =
+            ((mid - line.start).squared_norm() - (mid - line.end).squared_norm()).abs();
+        assert!(diff < EPSILON * 10.0);
     }
 
     /// Check whether classic pythagorean equality holds for sides 3, 4 with hypothenuse 5
@@ -147,7 +149,7 @@ mod tests {
         };
         // dist to start should be 4; dist to end should be 5
         let p1 = PointN::new([0f64, 5f64, 0f64]);
-        assert!(line.distance_to_point(p1) - 4.0.abs() < EPSILON);
+        assert!((line.distance_to_point(p1) - 4.0).abs() < EPSILON);
         assert!(((p1 - line.start).squared_norm().sqrt() - 4.0).abs() < EPSILON);
         assert!(((p1 - line.end).squared_norm().sqrt() - 5.0).abs() < EPSILON);
         // dist to midpoint (t=0.5) should be 1

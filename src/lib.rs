@@ -55,7 +55,6 @@ pub mod point_generic;
 
 // Traits
 pub mod point;
-pub mod spline;
 pub mod path;
 pub mod bspline_path;
 pub mod find_root;
@@ -77,7 +76,6 @@ pub use quadratic_bezier::QuadraticBezier;
 pub use bspline_path::BSplinePath;
 pub use find_root::FindRoot;
 pub use path::BezierPath;
-pub use spline::Spline;
 
 // Conditionally compiled newtype pattern used to determine which size float to use for internal constants
 // so that the library can specialize internal types for the architecture for best performance

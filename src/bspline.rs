@@ -9,6 +9,7 @@ use crate::roots::{root_newton_raphson, RootFindingError};
 
 const ROOT_TOLERANCE: f64 = 1e-6;
 const MAX_ROOT_ITER: usize = 64;
+const DEFAULT_DISTANCE_STEPS_PER_PASS: usize = 32;
 
 /// Errors returned by B-spline construction or evaluation.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -98,7 +99,7 @@ where
 {
     /// Create a new B-spline curve that interpolates
     /// the `control_points` using a piecewise polynomial of `degree` within intervals specified by the `knots`.
-    /// The knots _must_ be sorted in non-decreasing order, the constructor enforces this which may yield undesired results.
+    /// The knots _must_ be sorted in non-decreasing order; the constructor rejects decreasing knots.
     /// The degree is defined as `curve_order - 1`.
     /// Desired curve must have a valid number of control points and knots in relation to its degree or the constructor will return None.
     /// A B-Spline curve requires at least one more control point than the degree (`control_points.len() >
@@ -355,59 +356,74 @@ where
         Some((a + b) * half)
     }
 
-    // /// Calculates the minimum distance between given 'point' and the curve.
-    // /// Uses two passes with the same amount of steps in t:
-    // /// 1. coarse search over the whole curve
-    // /// 2. fine search around the minimum yielded by the coarse search
-    // /// TODO FIXME INVESTIGATE
-    // pub fn distance_to_point(&self, point: P) -> P::Scalar
-    // where
-    //     [(); D + 1]:,
-    // {
-    //     let nsteps: usize = 64;
-    //     let mut tmin: P::Scalar = 0.5.into();
-    //     let mut dmin: P::Scalar = (point - self.control_points[0]).squared_norm();
-    //     let (kstart, kend) = self.knot_domain();
-    //     // 1. coarse pass
-    //     for i in 0..nsteps {
-    //         // calculate next step value
-    //         let t: P::Scalar =
-    //             kstart + (kend - kstart) * (i as NativeFloat / (nsteps as NativeFloat));
-    //         // calculate distance to candidate
-    //         let candidate = match self.eval(t) {
-    //             Ok(val) => val,
-    //             Err(_) => {
-    //                 // In case of error, return zero
-    //                 // this can never happen as we control the t values passed to eval()
-    //                 return <P::Scalar as NumCast>::from(0.0);
-    //             }
-    //         };
-    //         if (candidate - point).squared_norm() < dmin {
-    //             tmin = t;
-    //             dmin = (candidate - point).squared_norm();
-    //         }
-    //     }
-    //     // 2. fine pass
-    //     for i in 0..nsteps {
-    //         // calculate next step value ( a 64th of a 64th from first step)
-    //         let t: P::Scalar =
-    //             kstart + (kend - kstart) * (i as NativeFloat / ((nsteps * nsteps) as NativeFloat));
-    //         // calculate distance to candidate centered around tmin from before
-    //         let candidate = match self.eval(tmin + t - t * (nsteps as NativeFloat / 2.0)) {
-    //             Ok(val) => val,
-    //             Err(_) => {
-    //                 // In case of error, return zero
-    //                 // this can never happen as we control the t values passed to eval()
-    //                 return <P::Scalar as NumCast>::from(0.0);
-    //             }
-    //         };
-    //         if (candidate - point).squared_norm() < dmin {
-    //             tmin = t;
-    //             dmin = (candidate - point).squared_norm();
-    //         }
-    //     }
-    //     dmin.sqrt()
-    // }
+    /// Approximate the minimum distance between given `point` and the curve.
+    /// Uses two passes with the same amount of steps in t:
+    /// 1. coarse search over the whole curve
+    /// 2. fine search around the minimum yielded by the coarse search
+    /// `nsteps` is the number of samples per pass.
+    pub fn distance_to_point_approx(
+        &self,
+        point: P,
+        nsteps: usize,
+    ) -> Result<P::Scalar, BSplineError>
+    where
+        P: PointNorm,
+        [(); D + 1]: Sized,
+    {
+        let nsteps = nsteps.max(1);
+        let (kmin, kmax) = self.knot_domain();
+        let span = kmax - kmin;
+        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
+        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+
+        let start = self.eval(kmin)?;
+        let mut tmin = kmin;
+        let mut dmin = (start - point).squared_norm();
+
+        // 1. coarse pass
+        for i in 0..nsteps {
+            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
+            let t = kmin + span * (i_scalar / nsteps_scalar);
+            let candidate = self.eval(t)?;
+            let distance = (candidate - point).squared_norm();
+            if distance < dmin {
+                tmin = t;
+                dmin = distance;
+            }
+        }
+
+        // 2. fine pass
+        let nsteps_half = nsteps_scalar * half;
+        let fine_div = <P::Scalar as NumCast>::from((nsteps * nsteps) as f64).unwrap();
+        for i in 0..nsteps {
+            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
+            let t_offset = span * (i_scalar / fine_div);
+            let mut t = tmin + t_offset - t_offset * nsteps_half;
+            if t < kmin {
+                t = kmin;
+            } else if t > kmax {
+                t = kmax;
+            }
+            let candidate = self.eval(t)?;
+            let distance = (candidate - point).squared_norm();
+            if distance < dmin {
+                tmin = t;
+                dmin = distance;
+            }
+        }
+
+        Ok(dmin.sqrt())
+    }
+
+    /// Approximate the minimum distance between given `point` and the curve using
+    /// a default sampling resolution (64 total samples across two passes).
+    pub fn distance_to_point(&self, point: P) -> Result<P::Scalar, BSplineError>
+    where
+        P: PointNorm,
+        [(); D + 1]: Sized,
+    {
+        self.distance_to_point_approx(point, DEFAULT_DISTANCE_STEPS_PER_PASS)
+    }
 
     /// Iteratively compute de Boor's B-spline algorithm, this computes the recursive
     /// de Boor algorithm tree from the bottom up. At each level we use the results
@@ -613,32 +629,46 @@ where
     }
 
     /// Approximates the arc length of the curve by flattening it with straight line segments.
-    /// This approximation is unfeasable if desired accuracy is greater than ~2 decimal places
-    pub fn arclen(&self, nsteps: usize) -> P::Scalar
+    /// This approximation is unfeasable if desired accuracy is greater than ~2 decimal places.
+    /// Returns an error if evaluation fails inside the knot domain.
+    pub fn arclen(&self, nsteps: usize) -> Result<P::Scalar, BSplineError>
     where
         P: PointNorm,
         [(); D + 1]: Sized,
     {
+        let nsteps = nsteps.max(1);
         let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let stepsize = <P::Scalar as NumCast>::from(1.0).unwrap() / nsteps_scalar;
-        let mut arclen: P::Scalar = <P::Scalar as NumCast>::from(0.0).unwrap();
-        // evaluate the curve, t needs to be inside the knot domain!
-        // we need to map [0...1] to kmin..kmax
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let mut arclen: P::Scalar = zero;
         let (kmin, kmax) = self.knot_domain();
-        for t in 0..=nsteps {
-            let t = kmin
-                + (<P::Scalar as NumCast>::from(t as f64).unwrap() / nsteps_scalar) * (kmax - kmin);
-            let p1 = self.eval(t).unwrap_or_else(|_| {
-                // should never happen as we control the t values passed to eval()
-                self.control_points[0]
-            });
-            let p2 = self.eval(t + stepsize).unwrap_or_else(|_| {
-                // should never happen as we control the t values passed to eval()
-                self.control_points[0]
-            });
+        let span = kmax - kmin;
+        let dt = span / nsteps_scalar;
+
+        for i in 0..nsteps {
+            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
+            let mut t0 = kmin + dt * i_scalar;
+            let mut t1 = if i + 1 == nsteps {
+                kmax
+            } else {
+                t0 + dt
+            };
+            if t0 < kmin {
+                t0 = kmin;
+            } else if t0 > kmax {
+                t0 = kmax;
+            }
+            if t1 < kmin {
+                t1 = kmin;
+            } else if t1 > kmax {
+                t1 = kmax;
+            }
+
+            let p1 = self.eval(t0)?;
+            let p2 = self.eval(t1)?;
             arclen = arclen + (p1 - p2).squared_norm().sqrt();
         }
-        arclen
+
+        Ok(arclen)
     }
 
     /// Returns the derivative curve of self which has C-1 control points and K-2 knots.
@@ -867,18 +897,35 @@ mod tests {
 
         // Check that the start and end points have equal distance to the midpoint of the line
         assert!(
-            (points[1] - mid).squared_norm().sqrt() - (points[0] - mid).squared_norm().sqrt()
+            ((points[1] - mid).squared_norm().sqrt()
+                - (points[0] - mid).squared_norm().sqrt())
+                .abs()
                 < EPSILON
         );
+    }
+
+    #[test]
+    fn arclen_line_approx() {
+        let points = [
+            PointN::new([0f64, 0f64]),
+            PointN::new([10f64, 0f64]),
+        ];
+        let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+        let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+
+        let expected = (points[1] - points[0]).squared_norm().sqrt();
+        let length = curve.arclen(32).unwrap();
+        let tolerance = 1e-6;
+        assert!((length - expected).abs() <= tolerance);
     }
 
     #[test]
     fn degree_2_clamped_construct_and_eval_endpoints() {
         // Define the control points for a degree 2 B-Spline
         let points = [
-            PointN::new([0f64, 0f64]),   // Start of the line at origin
-            PointN::new([10f64, 10f64]), // End of the line at (10, 10)
-            PointN::new([20f64, 0f64]),  // End of the line at (20, 0)
+            PointN::new([0f64, 0f64]),   // Start of the curve at origin
+            PointN::new([10f64, 10f64]), // Control point off the baseline
+            PointN::new([20f64, 0f64]),  // End of the curve at (20, 0)
         ];
 
         // Define a uniform clamped knot vector for a degree 2 B-spline
@@ -946,11 +993,13 @@ mod tests {
             Err(e) => panic!("Error evaluating B-Spline: {}", e),
         };
 
-        // Check that the start and end points have equal distance to the midpoint of the line
-        assert!(
-            (points[1] - mid).squared_norm().sqrt() - (points[0] - mid).squared_norm().sqrt()
-                < EPSILON
-        );
+        // Check that the point stays within the control point bounds.
+        let (min_x, max_x) = (points[0][0].min(points[1][0]).min(points[2][0]),
+            points[0][0].max(points[1][0]).max(points[2][0]));
+        let (min_y, max_y) = (points[0][1].min(points[1][1]).min(points[2][1]),
+            points[0][1].max(points[1][1]).max(points[2][1]));
+        assert!(mid[0] >= min_x - EPSILON && mid[0] <= max_x + EPSILON);
+        assert!(mid[1] >= min_y - EPSILON && mid[1] <= max_y + EPSILON);
     }
 
     #[test]
