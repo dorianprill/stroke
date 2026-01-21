@@ -11,7 +11,8 @@ use crate::roots::RootFindingError;
 
 const MAX_ROOT_DEPTH: usize = 32;
 const ROOT_TOLERANCE: f64 = 1e-6;
-const DEFAULT_DISTANCE_STEPS_PER_PASS: usize = 32;
+const DEFAULT_DISTANCE_STEPS: usize = 64;
+const LOCAL_SEARCH_ITERS: usize = 16;
 
 /// General implementation of a Bezier curve of arbitrary degree (`N - 1`).
 ///
@@ -73,7 +74,7 @@ where
         // start with a copy of the original control points array and succesively use it for evaluation
         let mut p: [P; N] = self.control_points;
         // loop up to degree = control_points.len() -1
-        for i in 1..=p.len() {
+        for i in 1..p.len() {
             for j in 0..p.len() - i {
                 p[j] = p[j] * (one - t) + p[j + 1] * t;
             }
@@ -82,53 +83,59 @@ where
     }
 
     /// Approximate the minimum distance between given `point` and the curve.
-    /// Uses two passes with the same amount of steps in t:
-    /// 1. coarse search over the whole curve
-    /// 2. fine search around the minimum yielded by the coarse search
-    /// `nsteps` is the number of samples per pass.
+    /// Uses a coarse sampling pass over the full domain and a local search around
+    /// the best sample. `nsteps` is the number of coarse samples.
     pub fn distance_to_point_approx(&self, point: P, nsteps: usize) -> P::Scalar
     where
         P: PointNorm,
     {
         let nsteps = nsteps.max(1);
-        let mut tmin: P::Scalar = <P::Scalar as NumCast>::from(0.5).unwrap();
-        let mut dmin: P::Scalar = (point - self.control_points[0]).squared_norm();
         let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        // 1. coarse pass
-        for i in 0..nsteps {
-            // calculate next step value
-            let t = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
-            // calculate distance to candidate
-            let candidate = self.eval(t);
-            if (candidate - point).squared_norm() < dmin {
-                tmin = t;
-                dmin = (candidate - point).squared_norm();
-            }
-        }
-        // 2. fine pass
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let half = <P::Scalar as NumCast>::from(0.5).unwrap();
-        let nsteps_half = nsteps_scalar * half;
-        let fine_div = <P::Scalar as NumCast>::from((nsteps * nsteps) as f64).unwrap();
-        for i in 0..nsteps {
-            // calculate next step value ( a 64th of a 64th from first step)
-            let t = <P::Scalar as NumCast>::from(i as f64).unwrap() / fine_div;
-            // calculate distance to candidate centered around tmin from before
-            let candidate: P = self.eval(tmin + t - t * nsteps_half);
-            if (candidate - point).squared_norm() < dmin {
-                tmin = t;
-                dmin = (candidate - point).squared_norm();
+        let three = <P::Scalar as NumCast>::from(3.0).unwrap();
+
+        let mut best_i = 0usize;
+        let mut best_d = (self.eval(zero) - point).squared_norm();
+        for i in 1..=nsteps {
+            let t = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
+            let candidate = self.eval(t);
+            let d = (candidate - point).squared_norm();
+            if d < best_d {
+                best_d = d;
+                best_i = i;
             }
         }
-        dmin.sqrt()
+
+        let left_i = if best_i == 0 { 0 } else { best_i - 1 };
+        let right_i = if best_i == nsteps { nsteps } else { best_i + 1 };
+        let mut left = <P::Scalar as NumCast>::from(left_i as f64).unwrap() / nsteps_scalar;
+        let mut right = <P::Scalar as NumCast>::from(right_i as f64).unwrap() / nsteps_scalar;
+
+        for _ in 0..LOCAL_SEARCH_ITERS {
+            let third = (right - left) / three;
+            let t1 = left + third;
+            let t2 = right - third;
+            let d1 = (self.eval(t1) - point).squared_norm();
+            let d2 = (self.eval(t2) - point).squared_norm();
+            if d1 < d2 {
+                right = t2;
+            } else {
+                left = t1;
+            }
+        }
+
+        let t = (left + right) * half;
+        (self.eval(t) - point).squared_norm().sqrt()
     }
 
     /// Approximate the minimum distance between given `point` and the curve using
-    /// a default sampling resolution (64 total samples across two passes).
+    /// a default sampling resolution.
     pub fn distance_to_point(&self, point: P) -> P::Scalar
     where
         P: PointNorm,
     {
-        self.distance_to_point_approx(point, DEFAULT_DISTANCE_STEPS_PER_PASS)
+        self.distance_to_point_approx(point, DEFAULT_DISTANCE_STEPS)
     }
 
     /// Split the curve at `t` into two sub-curves.
@@ -177,76 +184,6 @@ where
         Bezier::new(new_points)
     }
 
-    // /// Returns the real roots of the Bezier curve along one of its coordinate
-    // /// axes (i.e. the control points' axes) or a specific RootFindingError.
-    // /// There are the same number of roots as the degree of the curve nroots = degree = N_points-1
-    // fn real_roots(&self,
-    //     axis: usize,
-    //     eps: Option<P::Scalar>,
-    //     max_iter: Option<usize>
-    // ) -> Result<ArrayVec<[P::Scalar; N-1]>, RootFindingError>
-    // {
-    //     todo!();
-    //     // Compute the axis-wise polynomial coefficients e.g. quadratic has N coefs a,b,c in at^2 + bt + c
-    //     // to do this generically, we need to find the coefs of the bezier of degree n by binomial expansion
-    //     // B_n(t) = sum_1_to_n ( binom(n,i) * s^(n-i) * t^i * p[i])
-    //     let mut res: ArrayVec<[P::Scalar; N-1]> = ArrayVec::new();
-    //     let mut npascal:    [P::Scalar; N] = [ <P::Scalar as NumCast>::from(0.0); N];
-    //     let poly_coefs:     [P::Scalar; N] = [ <P::Scalar as NumCast>::from(0.0); N];
-
-    //     // 1. calculate the n-th row of pascals triangle on a zero-based index (all values for i in the binom(n,i) part)
-    //     //    1      N = 0 (wouldn't compile due to index out of bounds)
-    //     //  1  (1)   N = 1 (last 1 is always omitted)
-    //     // 1  2  (1) N = 2
-    //     npascal[0] = 1.0.into();
-    //     for i in 1usize..N {
-    //         npascal[i] = npascal[i-1] * (N - i + 1) as NativeFloat / i as NativeFloat;
-    //     }
-    //     // 2. calculate the coefficients to binom(n,i) and p[i] (the s^(n-i) part)
-
-    //     // 3. find candidate points for roots of that curve (compare zero crossings)
-
-    //     // 4. search for roots using newton-raphson algo
-    //     let eps = eps.unwrap_or(1e-3.into());
-    //     let max_iter = max_iter.unwrap_or(128);
-
-    //     let mut x = <P::Scalar as NumCast>::from(0.0);
-
-    //     let mut iter = 0;
-    //     loop {
-    //         let f = f(x);
-    //         let d = d(x);
-    //         if f < eps {
-    //             return Ok(x);
-    //         }
-    //         // if derivative is 0
-    //         if d < EPSILON {
-    //             // either try to choose a better starting point
-    //             if iter == 0 {
-    //                 x = x + 1.0;
-    //                 iter = iter + 1;
-    //                 continue;
-    //             // or fail
-    //             } else {
-    //                 return Err(RootFindingError::ZeroDerivative);
-    //             }
-    //         }
-
-    //         let x1 = x - f / d;
-    //         if (x - x1).abs() < eps {
-    //             return Ok(x1);
-    //         }
-
-    //         x = x1;
-    //         iter = iter + 1;
-
-    //         if iter == max_iter {
-    //             return Err(RootFindingError::FailedToConverge);
-    //         }
-    //     }
-    //     res
-    // }
-
     /// Approximates the arc length of the curve by flattening it with straight line segments.
     /// This works quite well, at ~32 segments it should already provide an error in the decimal places
     /// The accuracy gain falls off with more steps so this approximation is unfeasable if desired accuracy is greater than 1-2 decimal places
@@ -254,13 +191,20 @@ where
     where
         P: PointNorm,
     {
+        let nsteps = nsteps.max(1);
         let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let stepsize = <P::Scalar as NumCast>::from(1.0).unwrap() / nsteps_scalar;
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let stepsize = one / nsteps_scalar;
         let mut arclen: P::Scalar = <P::Scalar as NumCast>::from(0.0).unwrap();
-        for t in 1..nsteps {
-            let t = <P::Scalar as NumCast>::from(t as f64).unwrap() / nsteps_scalar;
-            let p1 = self.eval(t);
-            let p2 = self.eval(t + stepsize);
+        for i in 0..nsteps {
+            let t0 = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
+            let t1 = if i + 1 == nsteps {
+                one
+            } else {
+                t0 + stepsize
+            };
+            let p1 = self.eval(t0);
+            let p2 = self.eval(t1);
 
             arclen = arclen + (p1 - p2).squared_norm().sqrt();
         }

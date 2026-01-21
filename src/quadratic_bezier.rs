@@ -3,6 +3,9 @@
 use num_traits::{Float, NumCast};
 use super::{ArrayVec, LineSegment, Point, PointIndex, PointNorm};
 
+const DEFAULT_DISTANCE_STEPS: usize = 64;
+const LOCAL_SEARCH_ITERS: usize = 16;
+
 /// Quadratic Bezier curve defined by start, control, and end points.
 ///
 /// Methods that need component access or norms add `PointIndex`/`PointNorm`
@@ -105,41 +108,6 @@ where
         self.start[axis] * c0 + self.ctrl[axis] * c1 + self.end[axis] * c2
     }
 
-    // /// Calculates the curvature of the curve at point t
-    // /// The curvature is the inverse of the radius of the tangential circle at t: k=1/r
-    // pub fn curvature(&self, t: P::Scalar) -> F
-    // where
-    // F: P::Scalarloat,
-    // P::Scalar: Sub<F, Output = F>
-    //     + Add<F, Output = F>
-    //     + Mul<F, Output = F>
-    //     + Into
-    //     + From
-    // {
-    //     let d = self.derivative();
-    //     let dd = d.derivative();
-    //     let dx = d.x(t);
-    //     let dy = d.y(t);
-    //     let (ddx, ddy) = dd;
-    //     let numerator = dx * ddy.into() - ddx * dy;
-    //     let denominator = (dx*dx + dy*dy).powf(1.5.into());
-    //     return numerator / denominator
-    // }
-
-    // /// Calculates the radius of the tangential circle at t
-    // /// It is the inverse of the curvature at t: r=1/k
-    // pub fn radius(&self, t: P::Scalar) -> F
-    // where
-    // F: P::Scalarloat,
-    // P::Scalar: Sub<F, Output = F>
-    //     + Add<F, Output = F>
-    //     + Mul<F, Output = F>
-    //     + Into
-    //     + From
-    // {
-    //     return 1.0.into() / self.curvature(t)
-    // }
-
     /// Approximates the arc length of the curve by flattening it with straight line segments.
     /// This works quite well, at ~32 segments it should already provide an error < 0.5
     /// Remember arclen also works by linear approximation, not the integral, so we have to accept error!
@@ -148,13 +116,20 @@ where
     where
         P: PointNorm,
     {
+        let nsteps = nsteps.max(1);
         let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let stepsize = <P::Scalar as NumCast>::from(1.0).unwrap() / nsteps_scalar;
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let stepsize = one / nsteps_scalar;
         let mut arclen: P::Scalar = <P::Scalar as NumCast>::from(0.0).unwrap();
-        for t in 1..nsteps {
-            let t = <P::Scalar as NumCast>::from(t as f64).unwrap() / nsteps_scalar;
-            let p1 = self.eval_casteljau(t);
-            let p2 = self.eval_casteljau(t + stepsize);
+        for i in 0..nsteps {
+            let t0 = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
+            let t1 = if i + 1 == nsteps {
+                one
+            } else {
+                t0 + stepsize
+            };
+            let p1 = self.eval_casteljau(t0);
+            let p2 = self.eval_casteljau(t1);
 
             arclen = arclen + (p1 - p2).squared_norm().sqrt();
         }
@@ -202,44 +177,60 @@ where
     }
 
 
-    /// Calculates the minimum distance between given 'point' and the curve. 
-    /// Uses two passes with the same amount of steps in t: 
-    /// 1. coarse search over the whole curve
-    /// 2. fine search around the minimum yielded by the coarse search
+    /// Approximate the minimum distance between given `point` and the curve.
+    /// Uses a coarse sampling pass over the full domain and a local search around
+    /// the best sample. `nsteps` is the number of coarse samples.
+    pub fn distance_to_point_approx(&self, point: P, nsteps: usize) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        let nsteps = nsteps.max(1);
+        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+        let three = <P::Scalar as NumCast>::from(3.0).unwrap();
+
+        let mut best_i = 0usize;
+        let mut best_d = (self.eval(zero) - point).squared_norm();
+        for i in 1..=nsteps {
+            let t = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
+            let candidate = self.eval(t);
+            let d = (candidate - point).squared_norm();
+            if d < best_d {
+                best_d = d;
+                best_i = i;
+            }
+        }
+
+        let left_i = if best_i == 0 { 0 } else { best_i - 1 };
+        let right_i = if best_i == nsteps { nsteps } else { best_i + 1 };
+        let mut left = <P::Scalar as NumCast>::from(left_i as f64).unwrap() / nsteps_scalar;
+        let mut right = <P::Scalar as NumCast>::from(right_i as f64).unwrap() / nsteps_scalar;
+
+        for _ in 0..LOCAL_SEARCH_ITERS {
+            let third = (right - left) / three;
+            let t1 = left + third;
+            let t2 = right - third;
+            let d1 = (self.eval(t1) - point).squared_norm();
+            let d2 = (self.eval(t2) - point).squared_norm();
+            if d1 < d2 {
+                right = t2;
+            } else {
+                left = t1;
+            }
+        }
+
+        let t = (left + right) * half;
+        (self.eval(t) - point).squared_norm().sqrt()
+    }
+
+    /// Approximate the minimum distance between given `point` and the curve using
+    /// a default sampling resolution.
     pub fn distance_to_point(&self, point: P) -> P::Scalar
     where
         P: PointNorm,
     {
-        let nsteps: usize = 64;
-        let mut tmin: P::Scalar = <P::Scalar as NumCast>::from(0.5).unwrap();
-        let mut dmin: P::Scalar = (point - self.start).squared_norm();
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        // 1. coarse pass
-        for i in 0..nsteps {
-            // calculate next step value
-            let t: P::Scalar = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
-            // calculate distance to candidate
-            let candidate = self.eval(t);
-            if (candidate - point).squared_norm() < dmin {
-                tmin = t;
-                dmin = (candidate - point).squared_norm();
-            }
-        }
-        // 2. fine pass 
-        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
-        let nsteps_half = nsteps_scalar * half;
-        let fine_div = <P::Scalar as NumCast>::from((nsteps * nsteps) as f64).unwrap();
-        for i in 0..nsteps {
-            // calculate next step value ( a 64th of a 64th from first step)
-            let t: P::Scalar = <P::Scalar as NumCast>::from(i as f64).unwrap() / fine_div;
-            // calculate distance to candidate centered around tmin from before
-            let candidate: P = self.eval(tmin + t - t * nsteps_half );
-            if (candidate - point).squared_norm() < dmin {
-                tmin = t;
-                dmin = (candidate - point).squared_norm();
-            }
-        }
-        dmin.sqrt()
+        self.distance_to_point_approx(point, DEFAULT_DISTANCE_STEPS)
     }
 
 
@@ -373,93 +364,29 @@ where
 mod tests {
     use super::*;
     use crate::{PointN, EPSILON};
-    //TODO test needs to be adapted for 8 segments of quadratic order
-    // #[test]
-    // fn circle_approximation_error()
-    // {
-    //     // define closure for unit circle
-    //     let circle = |p: Point2<f64>| -> f64 { ( p.x.pow(2) as f64
-    //                                             + p.y.pow(2) as f64)
-    //                                             .sqrt() - 1f64};
 
-    //     // define control points for 4 bezier segments
-    //     // control points are chosen for minimum radial distance error
-    //     // according to: http://spencermortensen.com/articles/bezier-circle/
-    //     // TODO don't hardcode values
-    //     let c               = 0.551915024494;
-    //     let max_drift_perc  = 0.019608; // radial drift percent
-    //     let max_error       = max_drift_perc * 0.01; // absolute max radial error
+    #[test]
+    fn eval_endpoints() {
+        let bezier = QuadraticBezier::new(
+            PointN::new([0f64, 0f64]),
+            PointN::new([1f64, 1f64]),
+            PointN::new([2f64, 0f64]),
+        );
 
-    //     let bezier_quadrant_1= QuadraticBezier{ start:  Point2{x:0f64,  y:1f64},
-    //                                             ctrl: Point2{x:1f64,  y:c},
-    //                                             end:   Point2{x:1f64,  y:0f64}};
-    //     let bezier_quadrant_2 = QuadraticBezier{ start:  Point2{x:1f64,  y:0f64},
-    //                                             ctrl: Point2{x:c,  y:-1f64},
-    //                                             end:   Point2{x:0f64,  y:-1f64}};
-    //     let bezier_quadrant_3 = QuadraticBezier{ start:  Point2{x:0f64,  y:-1f64},
-    //                                             ctrl: Point2{x:-1f64,  y:-c},
-    //                                             end:   Point2{x:-1f64,  y:0f64}};
-    //     let bezier_quadrant_4 = QuadraticBezier{ start:  Point2{x:-1f64,    y:0f64},
-    //                                             ctrl: Point2{x:-c,     y:1f64},
-    //                                             end:   Point2{x:0f64,   y:1f64}};
-    //     let nsteps =  1000;
-    //     for t in 0..nsteps {
-    //         let t = t as f64 * 1f64/(nsteps as f64);
+        assert_eq!(bezier.eval(0.0), PointN::new([0.0, 0.0]));
+        assert_eq!(bezier.eval(1.0), PointN::new([2.0, 0.0]));
+    }
 
-    //         let point = bezier_quadrant_1.eval(t);
-    //         let contour = circle(point);
-    //         assert!( contour.abs() <= max_error );
-
-    //         let point = bezier_quadrant_2.eval(t);
-    //         let contour = circle(point);
-    //         assert!( contour.abs() <= max_error );
-
-    //         let point = bezier_quadrant_3.eval(t);
-    //         let contour = circle(point);
-    //         assert!( contour.abs() <= max_error );
-
-    //         let point = bezier_quadrant_4.eval(t);
-    //         let contour = circle(point);
-    //         assert!( contour.abs() <= max_error );
-    //     }
-    // }
-
-    //TODO test needs to be adapted for 8 segments of quadratic order
-    // #[test]
-    // fn circle_circumference_approximation()
-    // {
-    //     // define control points for 8 quadratic bezier segments to best approximate a unit circle
-    //     // control points are chosen for minimum radial distance error, see circle_approximation_error() in this file
-    //     // given this, the circumference will also be close to 2*pi
-    //     // (remember arclen also works by linear approximation, not the true integral, so we have to accept error)!
-    //     // This approximation is unfeasable if desired accuracy is greater than 2 decimal places (at 1000 steps)
-    //     // TODO don't hardcode values, solve for them
-    //     let c         = 0.551915024494;
-    //     let max_error = 1e-2;
-    //     let nsteps  = 1e3 as usize;
-    //     let pi        = 3.14159265359;
-    //     let tau       = 2.*pi;
-
-    //     let bezier_quadrant_1= QuadraticBezier{ start:  Point2{x:0f64,  y:1f64},
-    //                                             ctrl: Point2{x:1f64,  y:c},
-    //                                             end:   Point2{x:1f64,  y:0f64}};
-    //     let bezier_quadrant_2 = QuadraticBezier{ start:  Point2{x:1f64,  y:0f64},
-    //                                             ctrl: Point2{x:c,  y:-1f64},
-    //                                             end:   Point2{x:0f64,  y:-1f64}};
-    //     let bezier_quadrant_3 = QuadraticBezier{ start:  Point2{x:0f64,  y:-1f64},
-    //                                             ctrl: Point2{x:-1f64,  y:-c},
-    //                                             end:   Point2{x:-1f64,  y:0f64}};
-    //     let bezier_quadrant_4 = QuadraticBezier{ start:  Point2{x:-1f64,    y:0f64},
-    //                                             ctrl: Point2{x:-c,     y:1f64},
-    //                                             end:   Point2{x:0f64,   y:1f64}};
-    //     let circumference = bezier_quadrant_1.arclen::<P::Scalar>(nsteps) +
-    //                             bezier_quadrant_2.arclen::<P::Scalar>(nsteps) +
-    //                             bezier_quadrant_3.arclen::<P::Scalar>(nsteps) +
-    //                             bezier_quadrant_4.arclen::<P::Scalar>(nsteps);
-    //     //dbg!(circumference);
-    //     //dbg!(tau);
-    //     assert!( ((tau + max_error) > circumference) && ((tau - max_error) < circumference) );
-    // }
+    #[test]
+    fn arclen_line_approx() {
+        let bezier = QuadraticBezier::new(
+            PointN::new([0f64, 0f64]),
+            PointN::new([1f64, 0f64]),
+            PointN::new([2f64, 0f64]),
+        );
+        let length = bezier.arclen(32);
+        assert!((length - 2.0).abs() < 1e-3);
+    }
 
     #[test]
     fn eval_equivalence() {
