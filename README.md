@@ -14,12 +14,15 @@ It comes with a const-generic N-dimensional Point type so you can use the librar
 `PointN<T, N>` uses your chosen scalar `T` (typically `f32`/`f64`) and keeps the dimension at compile time.  
 Should you want to integrate with types provided by another library, implement the small `Point` trait. Optional extension traits (`PointIndex`, `PointDot`, `PointNorm`) unlock component access and geometric helpers when needed.  
 
-### Integration features
+Right now, the generic versions don't implement all methods that the specialized versions do (as the algorithms get a bit more complicated) but should reach parity eventually.
+
+## Integration features
 
 - `nalgebra`: implements `Point` for `nalgebra::SVector<T, D>` (no_std + libm).
   Requires `T: nalgebra::RealField + num_traits::Float` (typically `f32` or `f64`).
 
 Example:
+
 ```rust
 use nalgebra::SVector;
 use stroke::Bezier;
@@ -34,12 +37,11 @@ let mid = curve.eval(0.5);
 ```
 
 Enable with:
-```
+
+```toml
 stroke = { version = "0.2.0", features = ["nalgebra"] }
 nalgebra = { version = "0.32", default-features = false, features = ["libm"] }
 ```
-
-Right now, the generic versions don't implement all methods that the specialized versions do (as the algorithms get a bit more complicated) but should reach parity eventually.
 
 ## Goals
 
