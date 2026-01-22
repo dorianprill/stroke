@@ -284,6 +284,7 @@ where
         let first = self.derivative();
         let v = first.eval(t);
         let a = if N < 3 {
+            // N < 3 has no second derivative; use a typed zero vector.
             v - v
         } else {
             first.derivative().eval(t)
@@ -323,6 +324,7 @@ where
             return None;
         }
         let a = if N < 3 {
+            // N < 3 has no second derivative; use a typed zero vector.
             v - v
         } else {
             first.derivative().eval(t)
