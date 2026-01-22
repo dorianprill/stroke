@@ -28,11 +28,7 @@ fn main() {
 
 fn arrow_from_vec(x: f64, y: f64) -> char {
     if x.abs() >= y.abs() {
-        if x >= 0.0 {
-            '>'
-        } else {
-            '<'
-        }
+        if x >= 0.0 { '>' } else { '<' }
     } else if y >= 0.0 {
         '^'
     } else {
