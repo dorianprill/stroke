@@ -4,11 +4,37 @@ use core::slice;
 
 use num_traits::{Float, NumCast};
 use crate::bezier_segment::BezierSegment;
-use super::{ArrayVec, CubicBezier, LineSegment, Point, PointIndex, QuadraticBezier};
+use super::{ArrayVec, CubicBezier, LineSegment, Point, PointDot, PointIndex, PointNorm, QuadraticBezier};
+
+const DEFAULT_LENGTH_STEPS: usize = 64;
+const MAX_LENGTH_ITERS: usize = 32;
 
 /// A path composed of mixed Bezier segments (line/quadratic/cubic).
 ///
 /// Component-aware helpers (e.g. bounding boxes) require `PointIndex`.
+///
+/// # Examples
+/// ```rust
+/// use stroke::{BezierPath, LineSegment, PointN};
+///
+/// let mut path: BezierPath<PointN<f64, 2>, 2> = BezierPath::new();
+/// path.push_line(LineSegment::new(
+///     PointN::new([0.0, 0.0]),
+///     PointN::new([1.0, 0.0]),
+/// ));
+/// path.push_line(LineSegment::new(
+///     PointN::new([1.0, 0.0]),
+///     PointN::new([2.0, 0.0]),
+/// ));
+///
+/// assert_eq!(path.start().unwrap(), PointN::new([0.0, 0.0]));
+/// assert_eq!(path.end().unwrap(), PointN::new([2.0, 0.0]));
+///
+/// let t = path.t_at_length(1.0).unwrap();
+/// let p = path.point_at_length(1.0).unwrap();
+/// let tangent = path.tangent(0.25).unwrap();
+/// # let _ = (t, p, tangent);
+/// ```
 pub struct BezierPath<P, const N: usize>
 where
     P: Point,
@@ -75,6 +101,111 @@ where
         Some(self.segments[index].eval(local_t))
     }
 
+    /// Return the start point of the path.
+    pub fn start(&self) -> Option<P> {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        self.eval(zero)
+    }
+
+    /// Return the end point of the path.
+    pub fn end(&self) -> Option<P> {
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        self.eval(one)
+    }
+
+    /// Return a path with reversed direction.
+    pub fn reverse(&self) -> Self {
+        let mut reversed = BezierPath::new();
+        for segment in self.segments.iter().rev() {
+            let _ = reversed.push(segment.reverse());
+        }
+        reversed
+    }
+
+    /// Return the unit tangent direction at `t`.
+    pub fn tangent(&self, t: P::Scalar) -> Option<P>
+    where
+        P: PointNorm,
+    {
+        let (index, local_t) = self.segment_parameter(t)?;
+        Some(self.segments[index].tangent(local_t))
+    }
+
+    /// Return the curvature magnitude at `t`.
+    pub fn curvature(&self, t: P::Scalar) -> Option<P::Scalar>
+    where
+        P: PointNorm + PointDot,
+    {
+        let (index, local_t) = self.segment_parameter(t)?;
+        Some(self.segments[index].curvature(local_t))
+    }
+
+    /// Return the principal normal direction at `t`.
+    ///
+    /// Returns `None` if the path is empty or curvature is undefined.
+    pub fn normal(&self, t: P::Scalar) -> Option<P>
+    where
+        P: PointNorm + PointDot,
+    {
+        let (index, local_t) = self.segment_parameter(t)?;
+        self.segments[index].normal(local_t)
+    }
+
+    /// Approximate parameter `t` at arc length `s`.
+    pub fn t_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> Option<P::Scalar>
+    where
+        P: PointNorm,
+    {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+
+        let total = self.arclen_partial(one, nsteps)?;
+        if total <= P::Scalar::epsilon() {
+            return Some(zero);
+        }
+        let target = s.clamp(zero, total);
+
+        let mut lo = zero;
+        let mut hi = one;
+        for _ in 0..MAX_LENGTH_ITERS {
+            let mid = (lo + hi) * half;
+            let len = self.arclen_partial(mid, nsteps)?;
+            if len < target {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+
+        Some((lo + hi) * half)
+    }
+
+    /// Approximate parameter `t` at arc length `s` using a default resolution.
+    pub fn t_at_length(&self, s: P::Scalar) -> Option<P::Scalar>
+    where
+        P: PointNorm,
+    {
+        self.t_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+    }
+
+    /// Evaluate the point at arc length `s`.
+    pub fn point_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> Option<P>
+    where
+        P: PointNorm,
+    {
+        let t = self.t_at_length_approx(s, nsteps)?;
+        self.eval(t)
+    }
+
+    /// Evaluate the point at arc length `s` using a default resolution.
+    pub fn point_at_length(&self, s: P::Scalar) -> Option<P>
+    where
+        P: PointNorm,
+    {
+        self.point_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+    }
+
     /// Return the bounding box across all segments. Returns None for empty paths.
     pub fn bounding_box(&self) -> Option<[(P::Scalar, P::Scalar); P::DIM]>
     where
@@ -126,6 +257,34 @@ where
         let index_scalar = <P::Scalar as NumCast>::from(index as f64).unwrap();
         let local = scaled - index_scalar;
         Some((index, local))
+    }
+
+    fn arclen_partial(&self, t: P::Scalar, nsteps: usize) -> Option<P::Scalar>
+    where
+        P: PointNorm,
+    {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let t = t.clamp(zero, one);
+        if t <= zero {
+            return Some(zero);
+        }
+
+        let nsteps = nsteps.max(1);
+        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
+        let dt = t / nsteps_scalar;
+        let mut arclen = zero;
+        let mut prev = self.eval(zero)?;
+
+        for i in 1..=nsteps {
+            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
+            let ti = if i == nsteps { t } else { dt * i_scalar };
+            let p = self.eval(ti)?;
+            arclen = arclen + (p - prev).squared_norm().sqrt();
+            prev = p;
+        }
+
+        Some(arclen)
     }
 }
 
@@ -217,6 +376,41 @@ mod tests {
         assert!(first);
         assert!(!second);
         assert_eq!(path.len(), 1);
+    }
+
+    #[test]
+    fn bezier_path_api_parity() {
+        let mut path: BezierPath<PointN<f64, 2>, 2> = BezierPath::new();
+        path.push_line(LineSegment::new(
+            PointN::new([0.0, 0.0]),
+            PointN::new([1.0, 0.0]),
+        ));
+        path.push_line(LineSegment::new(
+            PointN::new([1.0, 0.0]),
+            PointN::new([2.0, 0.0]),
+        ));
+
+        assert_eq!(path.start().unwrap(), PointN::new([0.0, 0.0]));
+        assert_eq!(path.end().unwrap(), PointN::new([2.0, 0.0]));
+
+        let reversed = path.reverse();
+        let p0 = path.eval(0.25).unwrap();
+        let p1 = reversed.eval(0.75).unwrap();
+        assert!((p0 - p1).squared_norm() < EPSILON);
+
+        let tangent = path.tangent(0.25).unwrap();
+        assert!((tangent[0] - 1.0).abs() < EPSILON);
+        assert!(tangent[1].abs() < EPSILON);
+
+        let curvature = path.curvature(0.25).unwrap();
+        assert!(curvature.abs() < EPSILON);
+        assert!(path.normal(0.25).is_none());
+
+        let t = path.t_at_length(1.0).unwrap();
+        assert!((t - 0.5).abs() < 1e-6);
+
+        let p = path.point_at_length(1.0).unwrap();
+        assert!((p - PointN::new([1.0, 0.0])).squared_norm() < EPSILON);
     }
 
 }

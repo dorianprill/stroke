@@ -2,14 +2,16 @@
 
 use core::slice::*;
 
-use num_traits::{Float, NumCast};
-use super::{Point, PointIndex, PointNorm};
+use super::{Point, PointDot, PointIndex, PointNorm};
 use crate::find_root::FindRoot;
-use crate::roots::{root_newton_raphson, RootFindingError};
+use crate::roots::{RootFindingError, root_newton_raphson};
+use num_traits::{Float, NumCast};
 
 const ROOT_TOLERANCE: f64 = 1e-6;
 const MAX_ROOT_ITER: usize = 64;
 const DEFAULT_DISTANCE_STEPS: usize = 64;
+const DEFAULT_LENGTH_STEPS: usize = 64;
+const MAX_LENGTH_ITERS: usize = 32;
 const LOCAL_SEARCH_ITERS: usize = 16;
 
 /// Errors returned by B-spline construction or evaluation.
@@ -162,6 +164,43 @@ where
         Ok(p)
     }
 
+    /// Return the start point of the curve.
+    pub fn start(&self) -> Result<P, BSplineError>
+    where
+        [(); D + 1]: Sized,
+    {
+        let (kmin, _) = self.knot_domain();
+        self.eval(kmin)
+    }
+
+    /// Return the end point of the curve.
+    pub fn end(&self) -> Result<P, BSplineError>
+    where
+        [(); D + 1]: Sized,
+    {
+        let (_, kmax) = self.knot_domain();
+        self.eval(kmax)
+    }
+
+    /// Return a curve with reversed direction.
+    pub fn reverse(&self) -> Self {
+        let control_points = core::array::from_fn(|i| self.control_points[C - 1 - i]);
+        let knot_min = self.knots[0];
+        let knot_max = self.knots[K - 1];
+        let knots = core::array::from_fn(|i| knot_min + knot_max - self.knots[K - 1 - i]);
+        let knot_kind = match self.knot_kind {
+            KnotVectorKind::ClampedStart => KnotVectorKind::ClampedEnd,
+            KnotVectorKind::ClampedEnd => KnotVectorKind::ClampedStart,
+            other => other,
+        };
+
+        BSpline {
+            knots,
+            knot_kind,
+            control_points,
+        }
+    }
+
     /// Returns an iterator over the control points.
     pub fn control_points(&self) -> Iter<'_, P> {
         self.control_points.iter()
@@ -184,6 +223,244 @@ where
             KnotVectorKind::ClampedEnd => self.knot_domain_clamped_end(),
             KnotVectorKind::Unclamped => self.knot_domain_unclamped(),
         }
+    }
+
+    /// Return true if `t` lies within the inclusive knot domain.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use stroke::{BSpline, PointN};
+    ///
+    /// let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+    /// let points = [PointN::new([0.0]), PointN::new([2.0])];
+    /// let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+    ///
+    /// assert!(curve.domain_contains(0.5));
+    /// assert!(!curve.domain_contains(-0.1));
+    /// ```
+    pub fn domain_contains(&self, t: P::Scalar) -> bool {
+        let (kmin, kmax) = self.knot_domain();
+        t >= kmin && t <= kmax
+    }
+
+    /// Return the knot span index for `t`.
+    ///
+    /// The span index `i` satisfies `knots[i] <= t < knots[i + 1]`, with the
+    /// conventional special-case that `t == domain_max` maps to the last span.
+    /// Use this value when evaluating basis functions for `t`.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use stroke::{BSpline, PointN};
+    ///
+    /// let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+    /// let points = [PointN::new([0.0]), PointN::new([2.0])];
+    /// let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+    ///
+    /// let span = curve.knot_span(0.25).unwrap();
+    /// assert_eq!(span, 1);
+    /// ```
+    pub fn knot_span(&self, t: P::Scalar) -> Result<usize, BSplineError> {
+        if !self.domain_contains(t) {
+            return Err(BSplineError::KnotDomainViolation);
+        }
+        self.knot_span_start_for_t(t)
+            .ok_or(BSplineError::KnotDomainViolation)
+    }
+
+    /// Evaluate the non-zero basis functions for a given `span` and `t`.
+    ///
+    /// Returns the `D + 1` basis values `N_{i,p}(t)` for the active span,
+    /// ordered from `i = span - D` through `i = span`.
+    /// The caller should pass a `span` obtained from `knot_span(t)`.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use stroke::{BSpline, PointN};
+    ///
+    /// let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+    /// let points = [PointN::new([0.0]), PointN::new([2.0])];
+    /// let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+    ///
+    /// let t = 0.25;
+    /// let span = curve.knot_span(t).unwrap();
+    /// let basis = curve.basis_functions(span, t).unwrap();
+    /// assert!((basis[0] - 0.75).abs() < 1e-6);
+    /// assert!((basis[1] - 0.25).abs() < 1e-6);
+    /// ```
+    pub fn basis_functions(
+        &self,
+        span: usize,
+        t: P::Scalar,
+    ) -> Result<[P::Scalar; D + 1], BSplineError>
+    where
+        [(); D + 1]: Sized,
+    {
+        if !self.domain_contains(t) {
+            return Err(BSplineError::KnotDomainViolation);
+        }
+        if span < D || span + D >= K {
+            return Err(BSplineError::KnotDomainViolation);
+        }
+
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let mut left = [zero; D + 1];
+        let mut right = [zero; D + 1];
+        let mut basis = [zero; D + 1];
+        basis[0] = one;
+
+        for j in 1..=D {
+            left[j] = t - self.knots[span + 1 - j];
+            right[j] = self.knots[span + j] - t;
+            let mut saved = zero;
+            for r in 0..j {
+                let denom = right[r + 1] + left[j - r];
+                let temp = if denom.abs() <= P::Scalar::epsilon() {
+                    zero
+                } else {
+                    basis[r] / denom
+                };
+                basis[r] = saved + right[r + 1] * temp;
+                saved = left[j - r] * temp;
+            }
+            basis[j] = saved;
+        }
+
+        Ok(basis)
+    }
+
+    /// Evaluate the basis functions and their derivatives up to order `R`.
+    ///
+    /// Returns a `(R + 1) x (D + 1)` table `ders[k][j]` where `k` is the
+    /// derivative order and `j` indexes the basis functions for the active span
+    /// (`j = 0` corresponds to `i = span - D`). The zeroth row `ders[0]` matches
+    /// `basis_functions(span, t)`. Requires `R <= D`.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use stroke::{BSpline, PointN};
+    ///
+    /// let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+    /// let points = [PointN::new([0.0]), PointN::new([2.0])];
+    /// let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+    ///
+    /// let t = 0.25;
+    /// let span = curve.knot_span(t).unwrap();
+    /// let ders = curve.basis_functions_with_derivatives::<1>(span, t).unwrap();
+    /// assert!((ders[0][0] - 0.75).abs() < 1e-6);
+    /// assert!((ders[0][1] - 0.25).abs() < 1e-6);
+    /// assert!((ders[1][0] + 1.0).abs() < 1e-6);
+    /// assert!((ders[1][1] - 1.0).abs() < 1e-6);
+    /// ```
+    pub fn basis_functions_with_derivatives<const R: usize>(
+        &self,
+        span: usize,
+        t: P::Scalar,
+    ) -> Result<[[P::Scalar; D + 1]; R + 1], BSplineError>
+    where
+        [(); D + 1]: Sized,
+        [(); R + 1]: Sized,
+        [(); D - R]: Sized,
+    {
+        if !self.domain_contains(t) {
+            return Err(BSplineError::KnotDomainViolation);
+        }
+        if span < D || span + D >= K {
+            return Err(BSplineError::KnotDomainViolation);
+        }
+
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let mut left = [zero; D + 1];
+        let mut right = [zero; D + 1];
+        let mut ndu = [[zero; D + 1]; D + 1];
+        ndu[0][0] = one;
+
+        for j in 1..=D {
+            left[j] = t - self.knots[span + 1 - j];
+            right[j] = self.knots[span + j] - t;
+            let mut saved = zero;
+            for r in 0..j {
+                let denom = right[r + 1] + left[j - r];
+                ndu[j][r] = denom;
+                let temp = if denom.abs() <= P::Scalar::epsilon() {
+                    zero
+                } else {
+                    ndu[r][j - 1] / denom
+                };
+                ndu[r][j] = saved + right[r + 1] * temp;
+                saved = left[j - r] * temp;
+            }
+            ndu[j][j] = saved;
+        }
+
+        let mut ders = [[zero; D + 1]; R + 1];
+        for j in 0..=D {
+            ders[0][j] = ndu[j][D];
+        }
+
+        for r in 0..=D {
+            let mut a = [[zero; D + 1]; 2];
+            a[0][0] = one;
+            let mut s1 = 0usize;
+            let mut s2 = 1usize;
+
+            for k in 1..=R {
+                let mut d = zero;
+                let rk = r as isize - k as isize;
+                let pk = D - k;
+
+                if r >= k {
+                    let denom = ndu[pk + 1][rk as usize];
+                    a[s2][0] = if denom.abs() <= P::Scalar::epsilon() {
+                        zero
+                    } else {
+                        a[s1][0] / denom
+                    };
+                    d = a[s2][0] * ndu[rk as usize][pk];
+                }
+
+                let j1 = if rk >= -1 { 1 } else { (-rk) as usize };
+                let j2 = if r <= pk { k - 1 } else { D - r };
+
+                if j1 <= j2 {
+                    for j in j1..=j2 {
+                        let denom = ndu[pk + 1][(rk + j as isize) as usize];
+                        a[s2][j] = if denom.abs() <= P::Scalar::epsilon() {
+                            zero
+                        } else {
+                            (a[s1][j] - a[s1][j - 1]) / denom
+                        };
+                        d = d + a[s2][j] * ndu[(rk + j as isize) as usize][pk];
+                    }
+                }
+
+                if r <= pk {
+                    let denom = ndu[pk + 1][r];
+                    a[s2][k] = if denom.abs() <= P::Scalar::epsilon() {
+                        zero
+                    } else {
+                        -a[s1][k - 1] / denom
+                    };
+                    d = d + a[s2][k] * ndu[r][pk];
+                }
+
+                ders[k][r] = d;
+                core::mem::swap(&mut s1, &mut s2);
+            }
+        }
+
+        let mut factor = one;
+        for k in 1..=R {
+            let mult = <P::Scalar as NumCast>::from((D - k + 1) as f64).unwrap();
+            factor = factor * mult;
+            for j in 0..=D {
+                ders[k][j] = ders[k][j] * factor;
+            }
+        }
+
+        Ok(ders)
     }
 
     fn knot_domain_clamped_start(&self) -> (P::Scalar, P::Scalar) {
@@ -219,7 +496,7 @@ where
         P: PointIndex,
         [(); D + 1]: Sized,
         [(); D - 1]: Sized,
-        [(); (D - 1) + 1]: Sized,
+        [(); (D - 1) + 1]: Sized, // keep (D - 1) + 1; compiler doesn't normalize to D
         [(); C - 1]: Sized,
         [(); K - 2]: Sized,
     {
@@ -296,7 +573,9 @@ where
                         update(t);
                     }
                     if prev_f * f < zero {
-                        if let Some(root) = self.bisect_axis_root(&derivative, dim, prev_t, t, tolerance, half) {
+                        if let Some(root) =
+                            self.bisect_axis_root(&derivative, dim, prev_t, t, tolerance, half)
+                        {
                             update(root);
                         }
                     }
@@ -323,7 +602,7 @@ where
     where
         P: PointIndex,
         [(); D - 1]: Sized,
-        [(); (D - 1) + 1]: Sized,
+        [(); (D - 1) + 1]: Sized, // keep (D - 1) + 1; compiler doesn't normalize to D
         [(); C - 1]: Sized,
         [(); K - 2]: Sized,
     {
@@ -391,10 +670,10 @@ where
 
         let left_i = if best_i == 0 { 0 } else { best_i - 1 };
         let right_i = if best_i == nsteps { nsteps } else { best_i + 1 };
-        let mut left = kmin
-            + span * (<P::Scalar as NumCast>::from(left_i as f64).unwrap() / nsteps_scalar);
-        let mut right = kmin
-            + span * (<P::Scalar as NumCast>::from(right_i as f64).unwrap() / nsteps_scalar);
+        let mut left =
+            kmin + span * (<P::Scalar as NumCast>::from(left_i as f64).unwrap() / nsteps_scalar);
+        let mut right =
+            kmin + span * (<P::Scalar as NumCast>::from(right_i as f64).unwrap() / nsteps_scalar);
 
         for _ in 0..LOCAL_SEARCH_ITERS {
             let third = (right - left) / three;
@@ -645,11 +924,7 @@ where
         for i in 0..nsteps {
             let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
             let mut t0 = kmin + dt * i_scalar;
-            let mut t1 = if i + 1 == nsteps {
-                kmax
-            } else {
-                t0 + dt
-            };
+            let mut t1 = if i + 1 == nsteps { kmax } else { t0 + dt };
             if t0 < kmin {
                 t0 = kmin;
             } else if t0 > kmax {
@@ -669,6 +944,99 @@ where
         Ok(arclen)
     }
 
+    fn arclen_partial(&self, t: P::Scalar, nsteps: usize) -> Result<P::Scalar, BSplineError>
+    where
+        P: PointNorm,
+        [(); D + 1]: Sized,
+    {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let nsteps = nsteps.max(1);
+        let (kmin, kmax) = self.knot_domain();
+        let t = t.clamp(kmin, kmax);
+        if t <= kmin {
+            return Ok(zero);
+        }
+
+        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
+        let span = t - kmin;
+        let dt = span / nsteps_scalar;
+        let mut arclen: P::Scalar = zero;
+        let mut prev = self.eval(kmin)?;
+
+        for i in 1..=nsteps {
+            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
+            let ti = if i == nsteps { t } else { kmin + dt * i_scalar };
+            let p = self.eval(ti)?;
+            arclen = arclen + (p - prev).squared_norm().sqrt();
+            prev = p;
+        }
+
+        Ok(arclen)
+    }
+
+    /// Approximate parameter `t` at arc length `s`.
+    pub fn t_at_length_approx(
+        &self,
+        s: P::Scalar,
+        nsteps: usize,
+    ) -> Result<P::Scalar, BSplineError>
+    where
+        P: PointNorm,
+        [(); D + 1]: Sized,
+    {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+        let (kmin, kmax) = self.knot_domain();
+
+        let total = self.arclen(nsteps)?;
+        if total <= P::Scalar::epsilon() {
+            return Ok(kmin);
+        }
+        let target = s.clamp(zero, total);
+
+        let mut lo = kmin;
+        let mut hi = kmax;
+        for _ in 0..MAX_LENGTH_ITERS {
+            let mid = (lo + hi) * half;
+            let len = self.arclen_partial(mid, nsteps)?;
+            if len < target {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+
+        Ok((lo + hi) * half)
+    }
+
+    /// Approximate parameter `t` at arc length `s` using a default resolution.
+    pub fn t_at_length(&self, s: P::Scalar) -> Result<P::Scalar, BSplineError>
+    where
+        P: PointNorm,
+        [(); D + 1]: Sized,
+    {
+        self.t_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+    }
+
+    /// Evaluate the point at arc length `s`.
+    pub fn point_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> Result<P, BSplineError>
+    where
+        P: PointNorm,
+        [(); D + 1]: Sized,
+    {
+        let t = self.t_at_length_approx(s, nsteps)?;
+        self.eval(t)
+    }
+
+    /// Evaluate the point at arc length `s` using a default resolution.
+    pub fn point_at_length(&self, s: P::Scalar) -> Result<P, BSplineError>
+    where
+        P: PointNorm,
+        [(); D + 1]: Sized,
+    {
+        self.point_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+    }
+
     /// Returns the derivative curve of self which has C-1 control points and K-2 knots.
     /// The derivative of an nth degree B-Spline curve is an (n-1)th degree (d) B-Spline curve,
     /// with the same knot vector, and new control points Q0...Qn-1 derived from the
@@ -683,8 +1051,7 @@ where
         [(); C - 1]: Sized,
         [(); K - 2]: Sized,
     {
-        let derivative_knots: [P::Scalar; K - 2] =
-            core::array::from_fn(|i| self.knots[i + 1]);
+        let derivative_knots: [P::Scalar; K - 2] = core::array::from_fn(|i| self.knots[i + 1]);
         let derivative_points: [P; C - 1] = core::array::from_fn(|i| {
             let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
             let denom = self.knots[i + D + 1] - self.knots[i + 1];
@@ -702,7 +1069,9 @@ where
             .all(|&knot| (knot - derivative_knots[0]).abs() < P::Scalar::epsilon());
         let is_clamped_back = derivative_knots[derivative_knots.len() - degree - 1..]
             .iter()
-            .all(|&knot| (knot - derivative_knots[derivative_knots.len() - 1]).abs() < P::Scalar::epsilon());
+            .all(|&knot| {
+                (knot - derivative_knots[derivative_knots.len() - 1]).abs() < P::Scalar::epsilon()
+            });
 
         let knot_kind = match (is_clamped_front, is_clamped_back) {
             (false, false) => KnotVectorKind::Unclamped,
@@ -716,6 +1085,102 @@ where
             knot_kind,
             control_points: derivative_points,
         }
+    }
+
+    /// Return the unit tangent direction at `t`.
+    pub fn tangent(&self, t: P::Scalar) -> Result<P, BSplineError>
+    where
+        P: PointNorm,
+        [(); D - 1]: Sized,
+        [(); C - 1]: Sized,
+        [(); K - 2]: Sized,
+        [(); D]: Sized,
+        [(); D + 1]: Sized,
+        [(); (D - 1) + 1]: Sized, // keep (D - 1) + 1; compiler doesn't normalize to D
+    {
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let dir = self.derivative().eval(t)?;
+        let len = dir.squared_norm().sqrt();
+        if len <= P::Scalar::epsilon() {
+            Ok(dir)
+        } else {
+            Ok(dir * (one / len))
+        }
+    }
+
+    /// Return the curvature magnitude at `t`.
+    ///
+    /// Requires `D >= 2` so that the second derivative exists.
+    pub fn curvature(&self, t: P::Scalar) -> Result<P::Scalar, BSplineError>
+    where
+        P: PointNorm + PointDot,
+        [(); D + 1]: Sized,
+        [(); D - 2]: Sized,
+    {
+        let span = self.knot_span(t)?;
+        let ders = self.basis_functions_with_derivatives::<2>(span, t)?;
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let mut v = self.control_points[0] * zero;
+        let mut a = v;
+        let start = span - D;
+        for j in 0..=D {
+            let cp = self.control_points[start + j];
+            v = v + cp * ders[1][j];
+            a = a + cp * ders[2][j];
+        }
+
+        let v2 = v.squared_norm();
+        if v2 <= P::Scalar::epsilon() {
+            return Ok(zero);
+        }
+        let a2 = a.squared_norm();
+        let dot = PointDot::dot(&v, &a);
+        let mut num = v2 * a2 - dot * dot;
+        if num < zero {
+            num = zero;
+        }
+        let denom = v2 * v2.sqrt();
+        if denom <= P::Scalar::epsilon() {
+            Ok(zero)
+        } else {
+            Ok(num.sqrt() / denom)
+        }
+    }
+
+    /// Return the principal normal direction at `t`.
+    ///
+    /// Requires `D >= 2` so that the second derivative exists. Returns `None`
+    /// if the velocity is zero or curvature is undefined.
+    pub fn normal(&self, t: P::Scalar) -> Result<Option<P>, BSplineError>
+    where
+        P: PointNorm + PointDot,
+        [(); D + 1]: Sized,
+        [(); D - 2]: Sized,
+    {
+        let span = self.knot_span(t)?;
+        let ders = self.basis_functions_with_derivatives::<2>(span, t)?;
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let mut v = self.control_points[0] * zero;
+        let mut a = v;
+        let start = span - D;
+        for j in 0..=D {
+            let cp = self.control_points[start + j];
+            v = v + cp * ders[1][j];
+            a = a + cp * ders[2][j];
+        }
+
+        let v2 = v.squared_norm();
+        if v2 <= P::Scalar::epsilon() {
+            return Ok(None);
+        }
+        let dot = PointDot::dot(&v, &a);
+        let a_perp = a - v * (dot / v2);
+        let n2 = a_perp.squared_norm();
+        if n2 <= P::Scalar::epsilon() {
+            return Ok(None);
+        }
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        Ok(Some(a_perp * (one / n2.sqrt())))
     }
 
     fn derivative_curve(
@@ -743,7 +1208,7 @@ where
         [(); D - 1]: Sized,
         [(); D]: Sized,
         [(); C - 1]: Sized,
-        [(); (D - 1) + 1]: Sized,
+        [(); (D - 1) + 1]: Sized, // keep (D - 1) + 1; compiler doesn't normalize to D
         [(); K - 2]: Sized,
         P: PointIndex,
     {
@@ -758,7 +1223,7 @@ where
     [(); D - 1]: Sized,
     [(); D]: Sized,
     [(); C - 1]: Sized,
-    [(); (D - 1) + 1]: Sized,
+    [(); (D - 1) + 1]: Sized, // keep (D - 1) + 1; compiler doesn't normalize to D
     [(); K - 2]: Sized,
 {
     fn parameter_domain(&self) -> (P::Scalar, P::Scalar) {
@@ -824,7 +1289,7 @@ mod tests {
     //use std;
     use super::*;
     //use crate::num_traits::{Pow};
-    use crate::{PointN, EPSILON};
+    use crate::{EPSILON, PointN};
 
     #[test]
     fn degree_1_clamped_construct_and_eval_endpoints() {
@@ -902,10 +1367,7 @@ mod tests {
 
     #[test]
     fn arclen_line_approx() {
-        let points = [
-            PointN::new([0f64, 0f64]),
-            PointN::new([10f64, 0f64]),
-        ];
+        let points = [PointN::new([0f64, 0f64]), PointN::new([10f64, 0f64])];
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
         let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
@@ -1199,6 +1661,70 @@ mod tests {
     }
 
     #[test]
+    fn bspline_api_parity() {
+        let points = [PointN::new([0f64, 0f64]), PointN::new([2f64, 0f64])];
+        let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+        let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+
+        let (kmin, kmax) = curve.knot_domain();
+        assert_eq!(curve.start().unwrap(), curve.eval(kmin).unwrap());
+        assert_eq!(curve.end().unwrap(), curve.eval(kmax).unwrap());
+
+        let reversed = curve.reverse();
+        let t = kmin + (kmax - kmin) * 0.25;
+        let p0 = curve.eval(t).unwrap();
+        let p1 = reversed.eval(kmin + kmax - t).unwrap();
+        assert!((p0 - p1).squared_norm() < EPSILON);
+
+        let tangent = curve.tangent(kmin + (kmax - kmin) * 0.5).unwrap();
+        assert!((tangent[0] - 1.0).abs() < EPSILON);
+        assert!(tangent[1].abs() < EPSILON);
+
+        let expected_len = (points[1] - points[0]).squared_norm().sqrt();
+        let t_mid = curve.t_at_length(expected_len * 0.5).unwrap();
+        assert!((t_mid - (kmin + kmax) * 0.5).abs() < 1e-3);
+
+        let p_mid = curve.point_at_length(expected_len * 0.5).unwrap();
+        assert!((p_mid - PointN::new([1.0, 0.0])).squared_norm() < EPSILON);
+    }
+
+    #[test]
+    fn basis_functions_linear() {
+        let points = [PointN::new([0f64]), PointN::new([2f64])];
+        let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+        let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+
+        let t = 0.25;
+        let span = curve.knot_span(t).unwrap();
+        let basis = curve.basis_functions(span, t).unwrap();
+        assert!((basis[0] - 0.75).abs() < 1e-6);
+        assert!((basis[1] - 0.25).abs() < 1e-6);
+
+        let ders = curve.basis_functions_with_derivatives::<1>(span, t).unwrap();
+        assert!((ders[0][0] - 0.75).abs() < 1e-6);
+        assert!((ders[0][1] - 0.25).abs() < 1e-6);
+        assert!((ders[1][0] + 1.0).abs() < 1e-6);
+        assert!((ders[1][1] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn bspline_curvature_nonzero() {
+        let knots: [f64; 6] = [0.0, 0.0, 0.0, 1.0, 1.0, 1.0];
+        let points = [
+            PointN::new([0.0, 0.0]),
+            PointN::new([1.0, 1.0]),
+            PointN::new([2.0, 0.0]),
+        ];
+        let curve: BSpline<PointN<f64, 2>, 6, 3, 2> = BSpline::new(knots, points).unwrap();
+
+        let curvature = curve.curvature(0.5).unwrap();
+        assert!(curvature > 0.0);
+
+        let normal = curve.normal(0.5).unwrap().unwrap();
+        assert!((normal.squared_norm() - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
     fn root_newton_axis_linear() {
         let points = [PointN::new([0f64]), PointN::new([2f64])];
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
@@ -1252,5 +1778,18 @@ mod tests {
             assert!(p[0] >= bounds[0].0 - EPSILON && p[0] <= bounds[0].1 + EPSILON);
             assert!(p[1] >= bounds[1].0 - EPSILON && p[1] <= bounds[1].1 + EPSILON);
         }
+    }
+
+    #[test]
+    fn domain_contains_matches_knot_domain() {
+        let points = [PointN::new([0f64, 0f64]), PointN::new([2f64, 0f64])];
+        let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+        let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+
+        let (kmin, kmax) = curve.knot_domain();
+        assert!(curve.domain_contains(kmin));
+        assert!(curve.domain_contains(kmax));
+        assert!(!curve.domain_contains(kmin - 0.1));
+        assert!(!curve.domain_contains(kmax + 0.1));
     }
 }

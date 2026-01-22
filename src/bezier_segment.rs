@@ -1,7 +1,9 @@
 //! Sum type for specialized Bezier segments.
 
 use num_traits::{Float, NumCast};
-use super::{CubicBezier, LineSegment, Point, PointIndex, PointNorm, QuadraticBezier};
+use super::{CubicBezier, LineSegment, Point, PointDot, PointIndex, PointNorm, QuadraticBezier};
+
+const DEFAULT_LENGTH_STEPS: usize = 64;
 
 /// Sum type for line/quadratic/cubic Bezier segments.
 ///
@@ -43,6 +45,15 @@ where
             BezierSegment::Linear(segment) => segment.end,
             BezierSegment::Quadratic(segment) => segment.end,
             BezierSegment::Cubic(segment) => segment.end,
+        }
+    }
+
+    /// Return a segment with reversed direction.
+    pub fn reverse(&self) -> Self {
+        match self {
+            BezierSegment::Linear(segment) => BezierSegment::Linear(segment.reverse()),
+            BezierSegment::Quadratic(segment) => BezierSegment::Quadratic(segment.reverse()),
+            BezierSegment::Cubic(segment) => BezierSegment::Cubic(segment.reverse()),
         }
     }
 
@@ -109,6 +120,80 @@ where
             }
         }
     }
+
+    /// Return the unit tangent direction at `t`.
+    pub fn tangent(&self, t: P::Scalar) -> P
+    where
+        P: PointNorm,
+    {
+        match self {
+            BezierSegment::Linear(segment) => segment.tangent(t),
+            BezierSegment::Quadratic(segment) => segment.tangent(t),
+            BezierSegment::Cubic(segment) => segment.tangent(t),
+        }
+    }
+
+    /// Return the curvature magnitude at `t`.
+    pub fn curvature(&self, t: P::Scalar) -> P::Scalar
+    where
+        P: PointNorm + PointDot,
+    {
+        match self {
+            BezierSegment::Linear(segment) => segment.curvature(t),
+            BezierSegment::Quadratic(segment) => segment.curvature(t),
+            BezierSegment::Cubic(segment) => segment.curvature(t),
+        }
+    }
+
+    /// Return the principal normal direction at `t`.
+    ///
+    /// Returns `None` if the velocity is zero or curvature is undefined.
+    pub fn normal(&self, t: P::Scalar) -> Option<P>
+    where
+        P: PointNorm + PointDot,
+    {
+        match self {
+            BezierSegment::Linear(segment) => segment.normal(t),
+            BezierSegment::Quadratic(segment) => segment.normal(t),
+            BezierSegment::Cubic(segment) => segment.normal(t),
+        }
+    }
+
+    /// Approximate parameter `t` at arc length `s`.
+    pub fn t_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        match self {
+            BezierSegment::Linear(segment) => segment.t_at_length_approx(s, nsteps),
+            BezierSegment::Quadratic(segment) => segment.t_at_length_approx(s, nsteps),
+            BezierSegment::Cubic(segment) => segment.t_at_length_approx(s, nsteps),
+        }
+    }
+
+    /// Approximate parameter `t` at arc length `s` using a default resolution.
+    pub fn t_at_length(&self, s: P::Scalar) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        self.t_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+    }
+
+    /// Evaluate the point at arc length `s`.
+    pub fn point_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> P
+    where
+        P: PointNorm,
+    {
+        self.eval(self.t_at_length_approx(s, nsteps))
+    }
+
+    /// Evaluate the point at arc length `s` using a default resolution.
+    pub fn point_at_length(&self, s: P::Scalar) -> P
+    where
+        P: PointNorm,
+    {
+        self.point_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+    }
 }
 
 impl<P> From<LineSegment<P>> for BezierSegment<P>
@@ -144,5 +229,39 @@ where
 {
     fn default() -> Self {
         BezierSegment::Linear(LineSegment::new(P::default(), P::default()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{PointN, PointNorm, EPSILON};
+
+    #[test]
+    fn bezier_segment_api_parity() {
+        let line = LineSegment::new(PointN::new([0f64, 0f64]), PointN::new([2f64, 0f64]));
+        let segment = BezierSegment::from(line);
+
+        assert_eq!(segment.start(), segment.eval(0.0));
+        assert_eq!(segment.end(), segment.eval(1.0));
+
+        let reversed = segment.reverse();
+        let p0 = segment.eval(0.25);
+        let p1 = reversed.eval(0.75);
+        assert!((p0 - p1).squared_norm() < EPSILON);
+
+        let tangent = segment.tangent(0.3);
+        assert!((tangent[0] - 1.0).abs() < EPSILON);
+        assert!(tangent[1].abs() < EPSILON);
+
+        let curvature = segment.curvature(0.3);
+        assert!(curvature.abs() < EPSILON);
+        assert!(segment.normal(0.3).is_none());
+
+        let t = segment.t_at_length(1.0);
+        assert!((t - 0.5).abs() < EPSILON);
+
+        let p = segment.point_at_length(1.0);
+        assert!((p - PointN::new([1.0, 0.0])).squared_norm() < EPSILON);
     }
 }

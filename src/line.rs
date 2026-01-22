@@ -3,6 +3,8 @@
 use num_traits::{Float, NumCast};
 use super::{ArrayVec, Point, PointDot, PointIndex, PointNorm};
 
+const DEFAULT_LENGTH_STEPS: usize = 64;
+
 /// LineSegment defined by a start and an endpoint, evaluable anywhere inbetween using interpolation parameter t: [0,1] in eval().
 ///
 /// A LineSegment is equal to a linear Bezier curve, which is why there is no
@@ -23,6 +25,26 @@ where
     /// Create a new line segment from `start` to `end`.
     pub fn new(start: P, end: P) -> Self {
         LineSegment { start, end }
+    }
+
+    /// Return the start point of the segment.
+    pub fn start(&self) -> P {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        self.eval(zero)
+    }
+
+    /// Return the end point of the segment.
+    pub fn end(&self) -> P {
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        self.eval(one)
+    }
+
+    /// Return a segment with reversed direction.
+    pub fn reverse(&self) -> Self {
+        LineSegment {
+            start: self.end,
+            end: self.start,
+        }
     }
 
     /// Evaluate a point along the segment for `t` in `[0, 1]`.
@@ -78,6 +100,80 @@ where
     /// Return the derivative vector of the segment.
     pub fn derivative(&self) -> P {
         self.end - self.start
+    }
+
+    /// Return the unit tangent direction at `t`.
+    pub fn tangent(&self, _t: P::Scalar) -> P
+    where
+        P: PointNorm,
+    {
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let dir = self.derivative();
+        let len = dir.squared_norm().sqrt();
+        if len <= P::Scalar::epsilon() {
+            dir
+        } else {
+            dir * (one / len)
+        }
+    }
+
+    /// Return the curvature magnitude at `t`.
+    ///
+    /// Lines have zero curvature, so this always returns `0`.
+    pub fn curvature(&self, _t: P::Scalar) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        <P::Scalar as NumCast>::from(0.0).unwrap()
+    }
+
+    /// Return the principal normal direction at `t`.
+    ///
+    /// Lines have zero curvature, so this always returns `None`.
+    pub fn normal(&self, _t: P::Scalar) -> Option<P>
+    where
+        P: PointNorm,
+    {
+        None
+    }
+
+    /// Approximate parameter `t` at arc length `s`.
+    pub fn t_at_length_approx(&self, s: P::Scalar, _nsteps: usize) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let length = (self.end - self.start).squared_norm().sqrt();
+        if length <= P::Scalar::epsilon() {
+            zero
+        } else {
+            (s / length).clamp(zero, one)
+        }
+    }
+
+    /// Approximate parameter `t` at arc length `s` using a default resolution.
+    pub fn t_at_length(&self, s: P::Scalar) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        self.t_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+    }
+
+    /// Evaluate the point at arc length `s`.
+    pub fn point_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> P
+    where
+        P: PointNorm,
+    {
+        self.eval(self.t_at_length_approx(s, nsteps))
+    }
+
+    /// Evaluate the point at arc length `s` using a default resolution.
+    pub fn point_at_length(&self, s: P::Scalar) -> P
+    where
+        P: PointNorm,
+    {
+        self.point_at_length_approx(s, DEFAULT_LENGTH_STEPS)
     }
 
     pub(crate) fn root(&self, a: P::Scalar, b: P::Scalar) -> ArrayVec<[P::Scalar; 1]>
@@ -171,5 +267,31 @@ mod tests {
         };
         let p = PointN::new([2f64, 0f64]);
         assert!((line.distance_to_point(p) - 1.0).abs() < EPSILON);
+    }
+
+    #[test]
+    fn line_segment_api_parity() {
+        let line = LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([2.0, 0.0]));
+
+        assert_eq!(line.start(), line.eval(0.0));
+        assert_eq!(line.end(), line.eval(1.0));
+
+        let reversed = line.reverse();
+        assert_eq!(reversed.start(), line.end());
+        assert_eq!(reversed.end(), line.start());
+
+        let tangent = line.tangent(0.3);
+        assert!((tangent[0] - 1.0).abs() < EPSILON);
+        assert!(tangent[1].abs() < EPSILON);
+
+        let curvature = line.curvature(0.3);
+        assert!(curvature.abs() < EPSILON);
+        assert!(line.normal(0.3).is_none());
+
+        let t = line.t_at_length(1.0);
+        assert!((t - 0.5).abs() < EPSILON);
+
+        let p = line.point_at_length(1.0);
+        assert!((p - PointN::new([1.0, 0.0])).squared_norm() < EPSILON);
     }
 }

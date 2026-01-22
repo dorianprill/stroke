@@ -1,9 +1,11 @@
 //! Quadratic Bezier curve specialization.
 
 use num_traits::{Float, NumCast};
-use super::{ArrayVec, LineSegment, Point, PointIndex, PointNorm};
+use super::{ArrayVec, LineSegment, Point, PointDot, PointIndex, PointNorm};
 
 const DEFAULT_DISTANCE_STEPS: usize = 64;
+const DEFAULT_LENGTH_STEPS: usize = 64;
+const MAX_LENGTH_ITERS: usize = 32;
 const LOCAL_SEARCH_ITERS: usize = 16;
 
 /// Quadratic Bezier curve defined by start, control, and end points.
@@ -51,6 +53,27 @@ where
         [self.start, self.ctrl, self.end]
     }
 
+    /// Return the start point of the curve.
+    pub fn start(&self) -> P {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        self.eval(zero)
+    }
+
+    /// Return the end point of the curve.
+    pub fn end(&self) -> P {
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        self.eval(one)
+    }
+
+    /// Return a curve with reversed direction.
+    pub fn reverse(&self) -> Self {
+        QuadraticBezier {
+            start: self.end,
+            ctrl: self.ctrl,
+            end: self.start,
+        }
+    }
+
     /// Split the curve at `t` into two sub-curves.
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
         // unrolled de casteljau algorithm
@@ -84,6 +107,70 @@ where
             start: (self.ctrl - self.start) * two,
             end: (self.end - self.ctrl) * two,
         }
+    }
+
+    /// Return the unit tangent direction at `t`.
+    pub fn tangent(&self, t: P::Scalar) -> P
+    where
+        P: PointNorm,
+    {
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let dir = self.derivative().eval(t);
+        let len = dir.squared_norm().sqrt();
+        if len <= P::Scalar::epsilon() {
+            dir
+        } else {
+            dir * (one / len)
+        }
+    }
+
+    /// Return the curvature magnitude at `t`.
+    pub fn curvature(&self, t: P::Scalar) -> P::Scalar
+    where
+        P: PointNorm + PointDot,
+    {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let v = self.derivative().eval(t);
+        let a = self.derivative().derivative();
+        let v2 = v.squared_norm();
+        if v2 <= P::Scalar::epsilon() {
+            return zero;
+        }
+        let a2 = a.squared_norm();
+        let dot = PointDot::dot(&v, &a);
+        let mut num = v2 * a2 - dot * dot;
+        if num < zero {
+            num = zero;
+        }
+        let denom = v2 * v2.sqrt();
+        if denom <= P::Scalar::epsilon() {
+            zero
+        } else {
+            num.sqrt() / denom
+        }
+    }
+
+    /// Return the principal normal direction at `t`.
+    ///
+    /// Returns `None` if the velocity is zero or curvature is undefined.
+    pub fn normal(&self, t: P::Scalar) -> Option<P>
+    where
+        P: PointNorm + PointDot,
+    {
+        let v = self.derivative().eval(t);
+        let v2 = v.squared_norm();
+        if v2 <= P::Scalar::epsilon() {
+            return None;
+        }
+        let a = self.derivative().derivative();
+        let dot = PointDot::dot(&v, &a);
+        let a_perp = a - v * (dot / v2);
+        let n2 = a_perp.squared_norm();
+        if n2 <= P::Scalar::epsilon() {
+            return None;
+        }
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        Some(a_perp * (one / n2.sqrt()))
     }
 
     /// Direct Derivative - Sample the axis coordinate at 'axis' of the curve's derivative at t
@@ -133,6 +220,34 @@ where
 
             arclen = arclen + (p1 - p2).squared_norm().sqrt();
         }
+        arclen
+    }
+
+    fn arclen_partial(&self, t: P::Scalar, nsteps: usize) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let t = t.clamp(zero, one);
+        if t <= zero {
+            return zero;
+        }
+
+        let nsteps = nsteps.max(1);
+        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
+        let dt = t / nsteps_scalar;
+        let mut arclen = zero;
+        let mut prev = self.eval_casteljau(zero);
+
+        for i in 1..=nsteps {
+            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
+            let ti = if i == nsteps { t } else { dt * i_scalar };
+            let p = self.eval_casteljau(ti);
+            arclen = arclen + (p - prev).squared_norm().sqrt();
+            prev = p;
+        }
+
         arclen
     }
 
@@ -231,6 +346,60 @@ where
         P: PointNorm,
     {
         self.distance_to_point_approx(point, DEFAULT_DISTANCE_STEPS)
+    }
+
+    /// Approximate parameter `t` at arc length `s`.
+    pub fn t_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+
+        let total = self.arclen(nsteps);
+        if total <= P::Scalar::epsilon() {
+            return zero;
+        }
+        let target = s.clamp(zero, total);
+
+        let mut lo = zero;
+        let mut hi = one;
+        for _ in 0..MAX_LENGTH_ITERS {
+            let mid = (lo + hi) * half;
+            let len = self.arclen_partial(mid, nsteps);
+            if len < target {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+
+        (lo + hi) * half
+    }
+
+    /// Approximate parameter `t` at arc length `s` using a default resolution.
+    pub fn t_at_length(&self, s: P::Scalar) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        self.t_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+    }
+
+    /// Evaluate the point at arc length `s`.
+    pub fn point_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> P
+    where
+        P: PointNorm,
+    {
+        self.eval_casteljau(self.t_at_length_approx(s, nsteps))
+    }
+
+    /// Evaluate the point at arc length `s` using a default resolution.
+    pub fn point_at_length(&self, s: P::Scalar) -> P
+    where
+        P: PointNorm,
+    {
+        self.point_at_length_approx(s, DEFAULT_LENGTH_STEPS)
     }
 
 
@@ -467,5 +636,51 @@ mod tests {
             end: PointN::new([3.2f64, -4f64]),
         };
         assert!(curve.distance_to_point(PointN::new([-5.1, -5.6])) > curve.distance_to_point(PointN::new([5.1, 5.6])));
+    }
+
+    #[test]
+    fn quadratic_api_parity() {
+        let bezier = QuadraticBezier::new(
+            PointN::new([0f64, 0f64]),
+            PointN::new([1f64, 0f64]),
+            PointN::new([2f64, 0f64]),
+        );
+
+        assert_eq!(bezier.start(), bezier.eval(0.0));
+        assert_eq!(bezier.end(), bezier.eval(1.0));
+
+        let reversed = bezier.reverse();
+        let p0 = bezier.eval(0.25);
+        let p1 = reversed.eval(0.75);
+        assert!((p0 - p1).squared_norm() < EPSILON);
+
+        let tangent = bezier.tangent(0.3);
+        assert!((tangent[0] - 1.0).abs() < EPSILON);
+        assert!(tangent[1].abs() < EPSILON);
+
+        let curvature = bezier.curvature(0.3);
+        assert!(curvature.abs() < EPSILON);
+        assert!(bezier.normal(0.3).is_none());
+
+        let t = bezier.t_at_length(1.0);
+        assert!((t - 0.5).abs() < 1e-6);
+
+        let p = bezier.point_at_length(1.0);
+        assert!((p - PointN::new([1.0, 0.0])).squared_norm() < EPSILON);
+    }
+
+    #[test]
+    fn quadratic_curvature_nonzero() {
+        let bezier = QuadraticBezier::new(
+            PointN::new([0f64, 0f64]),
+            PointN::new([1f64, 1f64]),
+            PointN::new([2f64, 0f64]),
+        );
+
+        let curvature = bezier.curvature(0.5);
+        assert!(curvature > 0.0);
+
+        let normal = bezier.normal(0.5).unwrap();
+        assert!((normal.squared_norm() - 1.0).abs() < 1e-6);
     }
 }
