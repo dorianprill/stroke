@@ -61,9 +61,12 @@ These are the main supported features. Some further utility methods are exposed 
 - [x] evaluation (De Casteljau, direct)
 - [x] split
 - [x] derivative
+- [x] tangent (unit)
+- [x] normal (principal)
+- [x] curvature (magnitude)
 - [x] arc length (linear approx.)
 - [ ] arc length (Legendre-Gauss)
-- [ ] curvature/radius (Frenet-Serret Frame)
+- [ ] Frenet-Serret frame / torsion
 - [x] bounding box
 - [ ] tight box
 
@@ -72,9 +75,12 @@ These are the main supported features. Some further utility methods are exposed 
 - [x] evaluation (De Casteljau)
 - [x] split
 - [x] derivative
+- [x] tangent (unit)
+- [x] normal (principal)
+- [x] curvature (magnitude)
 - [x] arc length (linear approx.)
 - [ ] arc length (Legendre-Gauss)
-- [ ] curvature/radius (Frenet-Serret Frame)
+- [ ] Frenet-Serret frame / torsion
 - [x] bounding box
 - [ ] tight box
 
@@ -83,9 +89,13 @@ These are the main supported features. Some further utility methods are exposed 
 - [x] evaluation (De Boor)
 - [x] split
 - [x] derivative
+- [x] basis functions (and derivatives)
+- [x] tangent (unit)
+- [x] normal (principal)
+- [x] curvature (magnitude)
 - [x] arc length (linear approx.; returns Result on eval errors)
 - [ ] arc length (Legendre-Gauss)
-- [ ] curvature/radius (Frenet-Serret Frame)
+- [ ] Frenet-Serret frame / torsion
 - [x] bounding box
 - [ ] tight box
 
