@@ -1,7 +1,7 @@
 //! Quadratic Bezier curve specialization.
 
-use num_traits::{Float, NumCast};
 use super::{ArrayVec, LineSegment, Point, PointDot, PointIndex, PointNorm};
+use num_traits::{Float, NumCast};
 
 const DEFAULT_DISTANCE_STEPS: usize = 64;
 const DEFAULT_LENGTH_STEPS: usize = 64;
@@ -35,7 +35,9 @@ where
         let one_t = one - t;
         let one_t2 = one_t * one_t;
 
-        self.start * one_t2 + self.ctrl * <P::Scalar as NumCast>::from(2.0).unwrap() * one_t * t + self.end * t2
+        self.start * one_t2
+            + self.ctrl * <P::Scalar as NumCast>::from(2.0).unwrap() * one_t * t
+            + self.end * t2
     }
 
     /// Evaluates the quadratic bezier curve at t using the numerically stable De Casteljau algorithm
@@ -174,7 +176,7 @@ where
     }
 
     /// Direct Derivative - Sample the axis coordinate at 'axis' of the curve's derivative at t
-    /// without creating a new curve. This is a convenience function for .derivative().eval(t)[n]  
+    /// without creating a new curve. This is a convenience function for `.derivative().eval(t)[n]`.
     /// Parameters:
     ///   t: the sampling parameter on the curve interval [0..1]
     ///   axis: the index of the coordinate axis [0..N]
@@ -210,11 +212,7 @@ where
         let mut arclen: P::Scalar = <P::Scalar as NumCast>::from(0.0).unwrap();
         for i in 0..nsteps {
             let t0 = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
-            let t1 = if i + 1 == nsteps {
-                one
-            } else {
-                t0 + stepsize
-            };
+            let t1 = if i + 1 == nsteps { one } else { t0 + stepsize };
             let p1 = self.eval_casteljau(t0);
             let p2 = self.eval_casteljau(t1);
 
@@ -290,7 +288,6 @@ where
         }
         result
     }
-
 
     /// Approximate the minimum distance between given `point` and the curve.
     /// Uses a coarse sampling pass over the full domain and a local search around
@@ -402,7 +399,6 @@ where
         self.point_at_length_approx(s, DEFAULT_LENGTH_STEPS)
     }
 
-
     /// Returns the line segment formed by the curve's start and endpoint
     pub fn baseline(&self) -> LineSegment<P> {
         LineSegment {
@@ -468,7 +464,9 @@ where
             return result;
         }
         // these are just the x or y components of the points
-        let a = self.start[axis] + self.ctrl[axis] * <P::Scalar as NumCast>::from(-2.0).unwrap() + self.end[axis];
+        let a = self.start[axis]
+            + self.ctrl[axis] * <P::Scalar as NumCast>::from(-2.0).unwrap()
+            + self.end[axis];
         let b = self.start[axis] * <P::Scalar as NumCast>::from(-2.0).unwrap()
             + self.ctrl[axis] * <P::Scalar as NumCast>::from(2.0).unwrap();
         let c = self.start[axis] - value;
@@ -532,7 +530,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PointN, EPSILON};
+    use crate::{EPSILON, PointN};
 
     #[test]
     fn eval_endpoints() {
@@ -626,16 +624,18 @@ mod tests {
         }
     }
 
-
     #[test]
     fn distance_to_point() {
         // degree 3, 4 control points => 4+3+1=8 knots
-        let curve = QuadraticBezier{
+        let curve = QuadraticBezier {
             start: PointN::new([0f64, 1.77f64]),
             ctrl: PointN::new([4.3f64, 3f64]),
             end: PointN::new([3.2f64, -4f64]),
         };
-        assert!(curve.distance_to_point(PointN::new([-5.1, -5.6])) > curve.distance_to_point(PointN::new([5.1, 5.6])));
+        assert!(
+            curve.distance_to_point(PointN::new([-5.1, -5.6]))
+                > curve.distance_to_point(PointN::new([5.1, 5.6]))
+        );
     }
 
     #[test]

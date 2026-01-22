@@ -1,11 +1,11 @@
 //! Line segment curve type.
 
-use num_traits::{Float, NumCast};
 use super::{ArrayVec, Point, PointDot, PointIndex, PointNorm};
+use num_traits::{Float, NumCast};
 
 const DEFAULT_LENGTH_STEPS: usize = 64;
 
-/// LineSegment defined by a start and an endpoint, evaluable anywhere inbetween using interpolation parameter t: [0,1] in eval().
+/// LineSegment defined by a start and an endpoint, evaluable anywhere inbetween using interpolation parameter t: \[0, 1\] in eval().
 ///
 /// A LineSegment is equal to a linear Bezier curve, which is why there is no
 /// specialized type for that case.
@@ -193,7 +193,10 @@ where
     where
         P: PointIndex,
     {
-        let mut bounds = [(<P::Scalar as NumCast>::from(0.0).unwrap(), <P::Scalar as NumCast>::from(0.0).unwrap()); P::DIM];
+        let mut bounds = [(
+            <P::Scalar as NumCast>::from(0.0).unwrap(),
+            <P::Scalar as NumCast>::from(0.0).unwrap(),
+        ); P::DIM];
 
         // find min/max for each axis
         for i in 0..P::DIM {
@@ -210,8 +213,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{PointN, EPSILON};
     use super::*;
+    use crate::{EPSILON, PointN};
     /// Check whether a line segment interpolation p + t*(q-p) at t=0.5
     /// yields equal distance to the start (p)/end (q) points (up to machine accuracy).
     #[test]
@@ -222,8 +225,7 @@ mod tests {
         };
 
         let mid = line.eval(0.5);
-        let diff =
-            ((mid - line.start).squared_norm() - (mid - line.end).squared_norm()).abs();
+        let diff = ((mid - line.start).squared_norm() - (mid - line.end).squared_norm()).abs();
         assert!(diff < EPSILON * 10.0);
     }
 

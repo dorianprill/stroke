@@ -2,9 +2,11 @@
 
 use core::slice;
 
-use num_traits::{Float, NumCast};
+use super::{
+    ArrayVec, CubicBezier, LineSegment, Point, PointDot, PointIndex, PointNorm, QuadraticBezier,
+};
 use crate::bezier_segment::BezierSegment;
-use super::{ArrayVec, CubicBezier, LineSegment, Point, PointDot, PointIndex, PointNorm, QuadraticBezier};
+use num_traits::{Float, NumCast};
 
 const DEFAULT_LENGTH_STEPS: usize = 64;
 const MAX_LENGTH_ITERS: usize = 32;
@@ -300,8 +302,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{PointN, PointNorm, EPSILON};
     use super::*;
+    use crate::{EPSILON, PointN, PointNorm};
 
     #[test]
     fn bezier_path_eval_segments() {
@@ -412,5 +414,4 @@ mod tests {
         let p = path.point_at_length(1.0).unwrap();
         assert!((p - PointN::new([1.0, 0.0])).squared_norm() < EPSILON);
     }
-
 }

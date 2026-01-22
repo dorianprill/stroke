@@ -3,11 +3,11 @@
 use core::iter::IntoIterator;
 use core::slice;
 
-use num_traits::{Float, NumCast};
 use super::*;
 use crate::find_root::FindRoot;
 use crate::point::{Point, PointIndex, PointNorm};
 use crate::roots::RootFindingError;
+use num_traits::{Float, NumCast};
 
 const MAX_ROOT_DEPTH: usize = 32;
 const ROOT_TOLERANCE: f64 = 1e-6;
@@ -24,7 +24,7 @@ const LOCAL_SEARCH_ITERS: usize = 16;
 /// bounds as required.
 ///
 /// # Parameters
-/// - `P`: point type implementing [`Point`](crate::point::Point).
+/// - `P`: point type implementing [`Point`].
 /// - `N`: number of control points.
 #[derive(Clone, Copy)]
 pub struct Bezier<P, const N: usize>
@@ -86,7 +86,7 @@ where
         Bezier { control_points }
     }
 
-    /// Evaluate a point on the curve at point 't' which should be in the interval [0,1] (unchecked!)
+    /// Evaluate a point on the curve at point 't' which should be in the interval \[0, 1\] (unchecked!)
     /// This is implemented using De Casteljau's algorithm (over a temporary array with const generic sizing)
     pub fn eval(&self, t: P::Scalar) -> P {
         //let t = t.into();
@@ -229,8 +229,7 @@ where
             right[right.len() - i] = casteljau_points[right.len() - i];
             // calculate next level of points (one less point each level until we reach one point, the one at t)
             for j in 0..casteljau_points.len() - i {
-                casteljau_points[j] =
-                    casteljau_points[j] * (one - t) + casteljau_points[j + 1] * t;
+                casteljau_points[j] = casteljau_points[j] * (one - t) + casteljau_points[j + 1] * t;
             }
         }
 
@@ -252,9 +251,8 @@ where
     ///     w0 = 3(w1-w0), w'1 = 3(w2-w1) and w'2 = 3(w3-w2).
     pub fn derivative(&self) -> Bezier<P, { N - 1 }> {
         let scale = <P::Scalar as NumCast>::from((N - 1) as f64).unwrap();
-        let new_points: [P; N - 1] = core::array::from_fn(|i| {
-            (self.control_points[i + 1] - self.control_points[i]) * scale
-        });
+        let new_points: [P; N - 1] =
+            core::array::from_fn(|i| (self.control_points[i + 1] - self.control_points[i]) * scale);
         Bezier::new(new_points)
     }
 
@@ -353,11 +351,7 @@ where
         let mut arclen: P::Scalar = <P::Scalar as NumCast>::from(0.0).unwrap();
         for i in 0..nsteps {
             let t0 = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
-            let t1 = if i + 1 == nsteps {
-                one
-            } else {
-                t0 + stepsize
-            };
+            let t1 = if i + 1 == nsteps { one } else { t0 + stepsize };
             let p1 = self.eval(t0);
             let p2 = self.eval(t1);
 
@@ -401,7 +395,10 @@ where
         [(); N - 1]: Sized,
         [P::Scalar; N - 1]: tinyvec::Array<Item = P::Scalar>,
     {
-        self.derivative_roots_with_tolerance(axis, <P::Scalar as NumCast>::from(ROOT_TOLERANCE).unwrap())
+        self.derivative_roots_with_tolerance(
+            axis,
+            <P::Scalar as NumCast>::from(ROOT_TOLERANCE).unwrap(),
+        )
     }
 
     /// Find parameter values where the derivative crosses zero for a given axis using a tolerance.
@@ -446,7 +443,10 @@ where
         [P::Scalar; N - 1]: tinyvec::Array<Item = P::Scalar>,
     {
         let tolerance = <P::Scalar as NumCast>::from(ROOT_TOLERANCE).unwrap();
-        let mut bounds = [(<P::Scalar as NumCast>::from(0.0).unwrap(), <P::Scalar as NumCast>::from(0.0).unwrap()); P::DIM];
+        let mut bounds = [(
+            <P::Scalar as NumCast>::from(0.0).unwrap(),
+            <P::Scalar as NumCast>::from(0.0).unwrap(),
+        ); P::DIM];
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
 
@@ -552,9 +552,7 @@ where
         Self::find_roots_1d(right, mid, t1, depth + 1, tolerance, results);
     }
 
-    fn subdivide_1d<const M: usize>(
-        control: [P::Scalar; M],
-    ) -> ([P::Scalar; M], [P::Scalar; M]) {
+    fn subdivide_1d<const M: usize>(control: [P::Scalar; M]) -> ([P::Scalar; M], [P::Scalar; M]) {
         let half = <P::Scalar as NumCast>::from(0.5).unwrap();
         let mut left = core::array::from_fn(|_| <P::Scalar as NumCast>::from(0.0).unwrap());
         let mut right = core::array::from_fn(|_| <P::Scalar as NumCast>::from(0.0).unwrap());
@@ -598,7 +596,7 @@ mod tests {
     use super::CubicBezier;
     use super::QuadraticBezier;
     use super::*;
-    use crate::{PointN, EPSILON};
+    use crate::{EPSILON, PointN};
 
     //use crate::num_traits::{Pow};
     #[test]
@@ -643,10 +641,8 @@ mod tests {
 
     #[test]
     fn arclen_line_approx() {
-        let bezier: Bezier<PointN<f64, 2>, 2> = Bezier::new([
-            PointN::new([0.0, 0.0]),
-            PointN::new([10.0, 0.0]),
-        ]);
+        let bezier: Bezier<PointN<f64, 2>, 2> =
+            Bezier::new([PointN::new([0.0, 0.0]), PointN::new([10.0, 0.0])]);
         let expected = (bezier.eval(1.0) - bezier.eval(0.0)).squared_norm().sqrt();
         let length = bezier.arclen(32);
         let tolerance = expected * 0.05;

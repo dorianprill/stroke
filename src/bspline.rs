@@ -31,18 +31,13 @@ pub enum BSplineError {
     EvaluationAlphaIsNaN,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 enum KnotVectorKind {
+    #[default]
     Unclamped,
     ClampedStart,
     ClampedEnd,
     Clamped,
-}
-
-impl Default for KnotVectorKind {
-    fn default() -> Self {
-        KnotVectorKind::Unclamped
-    }
 }
 
 impl core::fmt::Display for BSplineError {
@@ -65,7 +60,7 @@ impl core::fmt::Display for BSplineError {
 /// The scalar type used for the knots and interpolation is `P::Scalar`.
 ///
 /// # Parameters
-/// - `P`: point type implementing [`Point`](crate::point::Point).
+/// - `P`: point type implementing [`Point`].
 /// - `C`: number of control points.
 /// - `K`: number of knots (`K = C + D + 1`).
 /// - `D`: degree (order - 1).
@@ -975,11 +970,7 @@ where
     }
 
     /// Approximate parameter `t` at arc length `s`.
-    pub fn t_at_length_approx(
-        &self,
-        s: P::Scalar,
-        nsteps: usize,
-    ) -> Result<P::Scalar, BSplineError>
+    pub fn t_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> Result<P::Scalar, BSplineError>
     where
         P: PointNorm,
         [(); D + 1]: Sized,
@@ -1042,8 +1033,8 @@ where
     /// with the same knot vector, and new control points Q0...Qn-1 derived from the
     /// original control points Pi as:
     ///                 d
-    /// Qi =    ----------------- (P[i+1]-P[i])
-    ///         k[i+d+1] - k[i+1].
+    /// Qi =    ----------------- (`P[i+1]` - `P[i]`)
+    ///         `k[i + d + 1]` - `k[i + 1]`.
     /// with degree = curve_order - 1
     pub fn derivative(&self) -> BSpline<P, { K - 2 }, { C - 1 }, { D - 1 }>
     where
@@ -1700,7 +1691,9 @@ mod tests {
         assert!((basis[0] - 0.75).abs() < 1e-6);
         assert!((basis[1] - 0.25).abs() < 1e-6);
 
-        let ders = curve.basis_functions_with_derivatives::<1>(span, t).unwrap();
+        let ders = curve
+            .basis_functions_with_derivatives::<1>(span, t)
+            .unwrap();
         assert!((ders[0][0] - 0.75).abs() < 1e-6);
         assert!((ders[0][1] - 0.25).abs() < 1e-6);
         assert!((ders[1][0] + 1.0).abs() < 1e-6);

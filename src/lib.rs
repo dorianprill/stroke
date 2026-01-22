@@ -6,10 +6,9 @@
 
 //! A const-generic, no-std spline library for Bezier and B-spline curves.
 //!
-//! The core abstraction is the [`Point`](crate::point::Point) trait, which models
+//! The core abstraction is the [`Point`] trait, which models
 //! a fixed-dimension vector space element. Optional capability traits such as
-//! [`PointIndex`](crate::point::PointIndex), [`PointDot`](crate::point::PointDot),
-//! and [`PointNorm`](crate::point::PointNorm) enable component access and
+//! [`PointIndex`], [`PointDot`], and [`PointNorm`] enable component access and
 //! geometric helpers when required.
 //!
 //! # Examples
@@ -43,10 +42,10 @@ pub mod bspline;
 pub mod point_generic;
 
 // Traits
-pub mod point;
-pub mod path;
 pub mod bspline_path;
 pub mod find_root;
+pub mod path;
+pub mod point;
 
 mod roots;
 
@@ -56,15 +55,15 @@ mod adapters;
 // export common types at crate root
 pub use bezier::Bezier;
 pub use bspline::BSpline;
+pub use bspline_path::BSplinePath;
 pub use cubic_bezier::CubicBezier;
+pub use find_root::FindRoot;
 pub use line::LineSegment;
+pub use path::BezierPath;
 pub use point::Point;
 pub use point::{PointDot, PointIndex, PointNorm};
 pub use point_generic::PointN;
 pub use quadratic_bezier::QuadraticBezier;
-pub use bspline_path::BSplinePath;
-pub use find_root::FindRoot;
-pub use path::BezierPath;
 
 // Per-architecture epsilon used by tests.
 #[cfg(test)]
