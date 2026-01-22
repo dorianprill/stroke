@@ -16,5 +16,7 @@ fn main() {
 
 #[cfg(not(feature = "nalgebra"))]
 fn main() {
-    eprintln!("Enable the nalgebra feature: cargo run --example nalgebra_basic --features nalgebra");
+    eprintln!(
+        "Enable the nalgebra feature: cargo run --example nalgebra_basic --features nalgebra"
+    );
 }

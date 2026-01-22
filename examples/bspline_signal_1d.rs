@@ -60,15 +60,17 @@ fn main() {
     }
     // Overlay control points as letters.
     for (i, value) in control.iter().copied().enumerate() {
-        let col =
-            ((i as f64) * (width - 1) as f64 / (control.len() - 1) as f64).round() as usize;
+        let col = ((i as f64) * (width - 1) as f64 / (control.len() - 1) as f64).round() as usize;
         let row = value_to_row(value, min, max, height);
         let letter = if i < CONTROL_POINTS / 2 { 'a' } else { 'b' };
         grid[row][col] = letter;
     }
 
     println!("B-spline interpolation of a 1D signal (* = spline, a/b = control points)");
-    println!("domain: [{:.2}, {:.2}], range: [{:.2}, {:.2}]", kmin, kmax, min, max);
+    println!(
+        "domain: [{:.2}, {:.2}], range: [{:.2}, {:.2}]",
+        kmin, kmax, min, max
+    );
     for row in grid {
         let line: String = row.into_iter().collect();
         println!("{}", line);
@@ -120,7 +122,9 @@ fn interpolate_cubic_uniform(samples: &[f64; CONTROL_POINTS]) -> [f64; CONTROL_P
 }
 
 // Solve the dense system in-place with Gauss-Jordan elimination.
-fn gaussian_elimination(matrix: &mut [[f64; CONTROL_POINTS + 1]; CONTROL_POINTS]) -> [f64; CONTROL_POINTS] {
+fn gaussian_elimination(
+    matrix: &mut [[f64; CONTROL_POINTS + 1]; CONTROL_POINTS],
+) -> [f64; CONTROL_POINTS] {
     for i in 0..CONTROL_POINTS {
         let mut pivot = i;
         for r in i + 1..CONTROL_POINTS {

@@ -1,8 +1,8 @@
 //! Root-finding helpers for curve types that support per-axis evaluation.
 
-use num_traits::NumCast;
 use crate::point::PointIndex;
-use crate::roots::{root_newton_raphson, RootFindingError};
+use crate::roots::{RootFindingError, root_newton_raphson};
+use num_traits::NumCast;
 
 /// Helper trait for 1D root finding along a curve axis.
 pub trait FindRoot<P: PointIndex> {

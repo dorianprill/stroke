@@ -2,8 +2,8 @@
 
 use core::slice;
 
-use num_traits::{Float, NumCast};
 use super::{ArrayVec, BSpline, Point, PointDot, PointIndex, PointNorm};
+use num_traits::{Float, NumCast};
 
 const DEFAULT_LENGTH_STEPS: usize = 64;
 const MAX_LENGTH_ITERS: usize = 32;
@@ -53,8 +53,7 @@ where
     segments: ArrayVec<[BSpline<P, K, C, D>; N]>,
 }
 
-impl<P, const K: usize, const C: usize, const D: usize, const N: usize>
-    BSplinePath<P, K, C, D, N>
+impl<P, const K: usize, const C: usize, const D: usize, const N: usize> BSplinePath<P, K, C, D, N>
 where
     P: Point,
     [BSpline<P, K, C, D>; N]: tinyvec::Array<Item = BSpline<P, K, C, D>>,
@@ -339,7 +338,10 @@ where
     let first = *iter
         .next()
         .expect("BSpline must have at least one control point");
-    let mut bounds = [(<P::Scalar as NumCast>::from(0.0).unwrap(), <P::Scalar as NumCast>::from(0.0).unwrap()); P::DIM];
+    let mut bounds = [(
+        <P::Scalar as NumCast>::from(0.0).unwrap(),
+        <P::Scalar as NumCast>::from(0.0).unwrap(),
+    ); P::DIM];
     for dim in 0..P::DIM {
         let value = first[dim];
         bounds[dim] = (value, value);
@@ -362,28 +364,16 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{PointN, PointNorm, EPSILON};
     use super::*;
+    use crate::{EPSILON, PointN, PointNorm};
 
     #[test]
     fn bspline_path_eval_segments() {
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let s1: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(
-            knots,
-            [
-                PointN::new([0.0, 0.0]),
-                PointN::new([1.0, 0.0]),
-            ],
-        )
-        .unwrap();
-        let s2: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(
-            knots,
-            [
-                PointN::new([1.0, 0.0]),
-                PointN::new([1.0, 1.0]),
-            ],
-        )
-        .unwrap();
+        let s1: BSpline<PointN<f64, 2>, 4, 2, 1> =
+            BSpline::new(knots, [PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])]).unwrap();
+        let s2: BSpline<PointN<f64, 2>, 4, 2, 1> =
+            BSpline::new(knots, [PointN::new([1.0, 0.0]), PointN::new([1.0, 1.0])]).unwrap();
 
         let mut path: BSplinePath<PointN<f64, 2>, 4, 2, 1, 4> = BSplinePath::new();
         path.push(s1);
@@ -399,22 +389,10 @@ mod tests {
     #[test]
     fn bspline_path_clamps_out_of_range() {
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let s1: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(
-            knots,
-            [
-                PointN::new([0.0, 0.0]),
-                PointN::new([1.0, 0.0]),
-            ],
-        )
-        .unwrap();
-        let s2: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(
-            knots,
-            [
-                PointN::new([1.0, 0.0]),
-                PointN::new([1.0, 1.0]),
-            ],
-        )
-        .unwrap();
+        let s1: BSpline<PointN<f64, 2>, 4, 2, 1> =
+            BSpline::new(knots, [PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])]).unwrap();
+        let s2: BSpline<PointN<f64, 2>, 4, 2, 1> =
+            BSpline::new(knots, [PointN::new([1.0, 0.0]), PointN::new([1.0, 1.0])]).unwrap();
 
         let mut path: BSplinePath<PointN<f64, 2>, 4, 2, 1, 4> = BSplinePath::new();
         path.push(s1);
@@ -430,22 +408,10 @@ mod tests {
     #[test]
     fn bspline_path_bounds_control_points() {
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let s1: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(
-            knots,
-            [
-                PointN::new([0.0, 2.0]),
-                PointN::new([1.0, -1.0]),
-            ],
-        )
-        .unwrap();
-        let s2: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(
-            knots,
-            [
-                PointN::new([-1.0, 0.5]),
-                PointN::new([2.0, -2.0]),
-            ],
-        )
-        .unwrap();
+        let s1: BSpline<PointN<f64, 2>, 4, 2, 1> =
+            BSpline::new(knots, [PointN::new([0.0, 2.0]), PointN::new([1.0, -1.0])]).unwrap();
+        let s2: BSpline<PointN<f64, 2>, 4, 2, 1> =
+            BSpline::new(knots, [PointN::new([-1.0, 0.5]), PointN::new([2.0, -2.0])]).unwrap();
 
         let mut path: BSplinePath<PointN<f64, 2>, 4, 2, 1, 4> = BSplinePath::new();
         path.push(s1);
@@ -459,22 +425,10 @@ mod tests {
     #[test]
     fn bspline_path_api_parity() {
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let s1: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(
-            knots,
-            [
-                PointN::new([0.0, 0.0]),
-                PointN::new([1.0, 0.0]),
-            ],
-        )
-        .unwrap();
-        let s2: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(
-            knots,
-            [
-                PointN::new([1.0, 0.0]),
-                PointN::new([2.0, 0.0]),
-            ],
-        )
-        .unwrap();
+        let s1: BSpline<PointN<f64, 2>, 4, 2, 1> =
+            BSpline::new(knots, [PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])]).unwrap();
+        let s2: BSpline<PointN<f64, 2>, 4, 2, 1> =
+            BSpline::new(knots, [PointN::new([1.0, 0.0]), PointN::new([2.0, 0.0])]).unwrap();
 
         let mut path: BSplinePath<PointN<f64, 2>, 4, 2, 1, 2> = BSplinePath::new();
         path.push(s1);

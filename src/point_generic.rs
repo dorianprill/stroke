@@ -4,14 +4,14 @@ use core::iter::IntoIterator;
 use core::ops::{Add, Index, IndexMut, Mul, Sub};
 use core::slice;
 
-use num_traits::Float;
 use super::Point;
+use num_traits::Float;
 
 /// Point with dimensions of constant generic size N and of generic type T
 ///
 /// (Implemented as Newtype Pattern on an array
-/// see book or https://www.worthe-it.co.za/blog/2020-10-31-newtype-pattern-in-rust.html)
-/// This type implements [`Point`](crate::point::Point) and `Index<usize>` so it
+/// see book or <https://www.worthe-it.co.za/blog/2020-10-31-newtype-pattern-in-rust.html>)
+/// This type implements [`Point`] and `Index<usize>` so it
 /// can be used with component-aware helpers like bounding boxes.
 #[derive(Debug, Copy, Clone)]
 pub struct PointN<T, const N: usize>([T; N]);

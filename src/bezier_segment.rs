@@ -1,7 +1,7 @@
 //! Sum type for specialized Bezier segments.
 
-use num_traits::{Float, NumCast};
 use super::{CubicBezier, LineSegment, Point, PointDot, PointIndex, PointNorm, QuadraticBezier};
+use num_traits::{Float, NumCast};
 
 const DEFAULT_LENGTH_STEPS: usize = 64;
 
@@ -235,7 +235,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PointN, PointNorm, EPSILON};
+    use crate::{EPSILON, PointN, PointNorm};
 
     #[test]
     fn bezier_segment_api_parity() {

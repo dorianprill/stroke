@@ -1,7 +1,7 @@
 //! Cubic Bezier curve specialization.
 
-use num_traits::{Float, NumCast};
 use super::{ArrayVec, LineSegment, Point, PointDot, PointIndex, PointNorm, QuadraticBezier};
+use num_traits::{Float, NumCast};
 
 const DEFAULT_DISTANCE_STEPS: usize = 64;
 const DEFAULT_LENGTH_STEPS: usize = 64;
@@ -113,11 +113,7 @@ where
         let mut arclen = <P::Scalar as NumCast>::from(0.0).unwrap();
         for i in 0..nsteps {
             let t0 = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
-            let t1 = if i + 1 == nsteps {
-                one
-            } else {
-                t0 + stepsize
-            };
+            let t1 = if i + 1 == nsteps { one } else { t0 + stepsize };
             let p1 = self.eval_casteljau(t0);
             let p2 = self.eval_casteljau(t1);
 
@@ -260,7 +256,7 @@ where
     }
 
     /// Direct Derivative - Sample the axis coordinate at 'axis' of the curve's derivative at t
-    /// without creating a new curve. This is a convenience function for .derivative().eval(t)[n]  
+    /// without creating a new curve. This is a convenience function for `.derivative().eval(t)[n]`.
     /// Parameters:
     ///   t: the sampling parameter on the curve interval [0..1]
     ///   axis: the index of the coordinate axis [0..N]
@@ -282,10 +278,7 @@ where
         let c2 = t2 * -nine + t * six;
         let c3 = t2 * three;
 
-        self.start[axis] * c0
-            + self.ctrl1[axis] * c1
-            + self.ctrl2[axis] * c2
-            + self.end[axis] * c3
+        self.start[axis] * c0 + self.ctrl1[axis] * c1 + self.ctrl2[axis] * c2 + self.end[axis] * c3
     }
 
     /// Approximate the minimum distance between given `point` and the curve.
@@ -629,8 +622,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{EPSILON, PointN};
     use core::f64::consts::PI;
-    use crate::{PointN, EPSILON};
     #[test]
     fn circle_approximation_error() {
         // define closure for unit circle
