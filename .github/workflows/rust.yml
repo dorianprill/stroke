@@ -17,6 +17,8 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -y pkg-config libfontconfig1-dev
     - name: UpdateNightly
       run: rustup default nightly
+    - name: Install rustfmt
+      run: rustup component add rustfmt
     - name: Format
       run: cargo fmt -- --check
     - name: Build
