@@ -10,6 +10,7 @@ made with [plotters.rs](https://github.com/38/plotters)
 A zero-allocation library providing const-generic implementations of Bézier curves, B-Spline curves and specialized implementations of up to cubic Bézier curves in N-dimensional euclidean space. It is intended for general/embedded/wasm use supporting #![no_std] environments written in 100% safe Rust with minimal dependencies.  
 
 The library makes heavy use of const-generics and `generic_const_exprs`, so the nightly compiler is required.  
+This repo uses `nightly` via `rust-toolchain`.  
 It comes with a const-generic N-dimensional Point type so you can use the library without any other dependencies.  
 `PointN<T, N>` uses your chosen scalar `T` (typically `f32`/`f64`) and keeps the dimension at compile time.  
 Should you want to integrate with types provided by another library, implement the small `Point` trait. Optional extension traits (`PointIndex`, `PointDot`, `PointNorm`) unlock component access and geometric helpers when needed.  
@@ -39,7 +40,7 @@ let mid = curve.eval(0.5);
 Enable with:
 
 ```toml
-stroke = { version = "0.2.0", features = ["nalgebra"] }
+stroke = { version = "0.3.0", features = ["nalgebra"] }
 nalgebra = { version = "0.32", default-features = false, features = ["libm"] }
 ```
 
@@ -111,6 +112,9 @@ These are the main supported features. Some further utility methods are exposed 
 - `bezier_path`: mixed Bezier path segments; run `cargo run --example bezier_path`.
 - `bspline_path`: basic B-spline path evaluation; run `cargo run --example bspline_path`.
 - `bspline_signal_1d`: 1D signal interpolation with a cubic B-spline; run `cargo run --example bspline_signal_1d`.
+- `bezier_quarter_circle`: cubic Bezier quarter-circle approximation; run `cargo run --example bezier_quarter_circle`.
+- `arc_length_sampling`: equal-arc-length sampling along a Bezier curve; run `cargo run --example arc_length_sampling`.
+- `tangent_normal_curvature`: sample tangent/normal/curvature; run `cargo run --example tangent_normal_curvature`.
 - `plotters_cubic_bezier`: render a cubic Bezier with plotters; run `cargo run --example plotters_cubic_bezier`.
 - `nalgebra_basic`: Bezier with nalgebra SVector; run `cargo run --example nalgebra_basic --features nalgebra`.
   

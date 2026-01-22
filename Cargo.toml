@@ -1,39 +1,38 @@
 [package]
 name = "stroke"
-version = "0.2.0"
-description = """A zero-allocation library providing const-generic 
-                implementations of Bézier curves, B-Spline curves 
-                and specialized implementations of up to cubic Bézier 
-                curves in N-dimensional euclidean space. It is intended 
-                for general/embedded/wasm use supporting #![no_std] 
-                environments written in 100% safe Rust."""
+version = "0.3.0"
+description = """Zero-allocation, const-generic implementations of Bézier and B-Spline curves in N-dimensional euclidean space."""
 authors = ["Dorian Prill"]
 repository = "https://github.com/dorianprill/stroke"
 readme = "README.md"
-keywords = ["point", "bezier", "spline", "graphics", "path" ]
-categories = ["no-std", "science", "graphics", "mathematics", "data-structures" ]
+keywords = ["point", "bezier", "spline", "graphics", "path"]
+categories = ["no-std", "science", "graphics", "mathematics", "data-structures"]
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 license = "MIT"
 
 
-exclude = [
-    "*.png",
-    "examples/*",
-    ".github/*",
-    ".gitignore",
-    ".vscode/*",
+include = [
+    "Cargo.toml",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE",
+    "rust-toolchain",
+    "src/**",
+    "examples/**/*.rs",
 ]
 
 [dependencies]
-tinyvec = { version = "^1.8"} #{, features = ["rustc_1_55"] }
-nalgebra = { version = "^0.32", default-features = false, features = ["libm"], optional = true }
+tinyvec = { version = "^1.10.0" } #{, features = ["rustc_1_55"] }
+nalgebra = { version = "^0.34.1", default-features = false, features = [
+    "libm",
+], optional = true }
 
 
 [dependencies.num-traits]
 version = "^0.2"
 default-features = false
-features = ["libm"]    # use `Float` and `Real` without `std`
+features = ["libm"]      # use `Float` and `Real` without `std`
 
 [features]
 nalgebra = ["dep:nalgebra"]
