@@ -3,11 +3,11 @@
 ![Rust](https://github.com/dorianprill/stroke/actions/workflows/rust.yml/badge.svg)
 ![crates.io](https://img.shields.io/crates/v/stroke.svg)
 
-![A Cubic Bézier Curve with Bounding Box and Convex Hull rendered by plotters.rs](https://raw.githubusercontent.com/dorianprill/stroke-rs/main/cubic_bezier_bounding_box.png)  
+A zero-allocation library providing const-generic implementations of Bézier curves, B-Spline curves and specialized implementations of up to cubic Bézier curves in N-dimensional euclidean space. It is intended for general/embedded/wasm use supporting #![no_std] environments written in 100% safe Rust with minimal dependencies.
 
-made with [plotters.rs](https://github.com/38/plotters)  
+![Generic Bézier and B-spline curves with bounding boxes and labeled control points](curves.svg)
 
-A zero-allocation library providing const-generic implementations of Bézier curves, B-Spline curves and specialized implementations of up to cubic Bézier curves in N-dimensional euclidean space. It is intended for general/embedded/wasm use supporting #![no_std] environments written in 100% safe Rust with minimal dependencies.  
+Made with [Kuva](https://github.com/Psy-Fer/kuva). Regenerate with `cargo run --example kuva_curves`.
 
 The library makes heavy use of const-generics and `generic_const_exprs`, so the nightly compiler is required.  
 This repo uses `nightly` via `rust-toolchain`.  
@@ -115,7 +115,7 @@ These are the main supported features. Some further utility methods are exposed 
 - `bezier_quarter_circle`: cubic Bezier quarter-circle approximation; run `cargo run --example bezier_quarter_circle`.
 - `arc_length_sampling`: equal-arc-length sampling along a Bezier curve; run `cargo run --example arc_length_sampling`.
 - `tangent_normal_curvature`: sample tangent/normal/curvature; run `cargo run --example tangent_normal_curvature`.
-- `plotters_cubic_bezier`: render a cubic Bezier with plotters; run `cargo run --example plotters_cubic_bezier`.
+- `kuva_curves`: render a 2×2 SVG figure with generic quadratic and cubic `Bezier` curves, a clamped quintic `BSpline`, and an unclamped cubic `BSpline`, with curve bounding boxes, control polygons, named control points, knot-vector legends, and marked interior knots and unclamped endpoints; run `cargo run --example kuva_curves` to write `curves.svg`. Uses Kuva's SVG backend with optional features disabled; no system font library or font installation is required.
 - `nalgebra_basic`: Bezier with nalgebra SVector; run `cargo run --example nalgebra_basic --features nalgebra`.
   
 ## Related  

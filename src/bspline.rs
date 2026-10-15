@@ -447,11 +447,11 @@ where
         }
 
         let mut factor = one;
-        for k in 1..=R {
+        for (k, row) in ders.iter_mut().enumerate().skip(1) {
             let mult = <P::Scalar as NumCast>::from((D - k + 1) as f64).unwrap();
             factor = factor * mult;
-            for j in 0..=D {
-                ders[k][j] = ders[k][j] * factor;
+            for value in row {
+                *value = *value * factor;
             }
         }
 
@@ -567,12 +567,11 @@ where
                     if f.abs() <= tolerance {
                         update(t);
                     }
-                    if prev_f * f < zero {
-                        if let Some(root) =
+                    if prev_f * f < zero
+                        && let Some(root) =
                             self.bisect_axis_root(&derivative, dim, prev_t, t, tolerance, half)
-                        {
-                            update(root);
-                        }
+                    {
+                        update(root);
                     }
                     prev_t = t;
                     prev_f = f;
@@ -706,11 +705,8 @@ where
     where
         [(); D + 1]: Sized,
     {
-        // Special case when t equals the last knot value
-        if t == self.knots[self.control_points.len()] {
-            return Ok(self.control_points[self.control_points.len() - 1]);
-        }
-
+        // The span lookup includes the right endpoint. Evaluate it normally:
+        // only end-clamped splines necessarily interpolate the last control.
         let k = self.knot_span_start_for_t(t);
 
         let k = match k {
@@ -747,18 +743,17 @@ where
                 let denominator = self.knots[j + 1 + k - r] - self.knots[j + k - D];
                 let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
                 let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-                let alpha: P::Scalar;
-                if numerator < P::Scalar::epsilon() {
+                let alpha = if numerator < P::Scalar::epsilon() {
                     // we are at the start of a knot span (interpolation d[j-1] -> d[j])
-                    alpha = zero;
+                    zero
                 } else if denominator.abs() < P::Scalar::epsilon() {
                     // we are at then end of a knot span (interpolation d[j-1] -> d[j])
                     // this will lead to d[j] simply being copied to d[j]
-                    alpha = one;
+                    one
                 } else {
                     // inside a knot span (interpolation d[j-1] -> d[j])
-                    alpha = numerator / denominator;
-                }
+                    numerator / denominator
+                };
                 if alpha.is_nan() {
                     return Err(BSplineError::EvaluationAlphaIsNaN);
                 }
@@ -1357,6 +1352,30 @@ mod tests {
     }
 
     #[test]
+    fn unclamped_cubic_endpoint_matches_polynomial_segment() {
+        // On [3, 4], these uniform knots and control values define (t - 3)^3.
+        // In particular, the final value is 1, rather than the last control's 6.
+        let curve = BSpline::<PointN<f64, 1>, 8, 4, 3>::new(
+            [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
+            [
+                PointN::new([0.0]),
+                PointN::new([0.0]),
+                PointN::new([0.0]),
+                PointN::new([6.0]),
+            ],
+        )
+        .unwrap();
+        assert_eq!(curve.knot_domain(), (3.0, 4.0));
+        for t in [3.0, 3.5, 4.0 - 1e-8, 4.0] {
+            let u = t - 3.0;
+            assert!((curve.eval(t).unwrap()[0] - u * u * u).abs() < 1e-12);
+        }
+        assert!((curve.end().unwrap()[0] - 1.0).abs() < 1e-12);
+        assert!((curve.reverse().start().unwrap()[0] - 1.0).abs() < 1e-12);
+        assert_eq!(curve.bounding_box(), [(0.0, 1.0)]);
+    }
+
+    #[test]
     fn arclen_line_approx() {
         let points = [PointN::new([0f64, 0f64]), PointN::new([10f64, 0f64])];
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
@@ -1547,6 +1566,33 @@ mod tests {
         // since the curve is unclampend, the curves endpoints are not necessarily on the control points
         assert!(curve.eval(kmin).is_ok());
         assert!(curve.eval(kmax).is_ok());
+    }
+
+    #[test]
+    fn clamped_quintic_matches_bezier() {
+        let points = [
+            PointN::new([0.0, 0.0]),
+            PointN::new([0.5, 4.0]),
+            PointN::new([2.0, -3.0]),
+            PointN::new([3.0, 4.0]),
+            PointN::new([4.5, -2.0]),
+            PointN::new([5.0, 1.0]),
+        ];
+        let spline = BSpline::<PointN<f64, 2>, 12, 6, 5>::new(
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            points,
+        )
+        .unwrap();
+        let bezier = crate::Bezier::new(points);
+
+        assert_eq!(spline.knot_kind, KnotVectorKind::Clamped);
+        assert_eq!(spline.knot_domain(), (0.0, 1.0));
+        assert_eq!(spline.start().unwrap(), points[0]);
+        assert_eq!(spline.end().unwrap(), points[5]);
+        for i in 0..=1000 {
+            let t = i as f64 / 1000.0;
+            assert!((spline.eval(t).unwrap() - bezier.eval(t)).squared_norm() < 1e-24);
+        }
     }
 
     #[test]

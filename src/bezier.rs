@@ -285,7 +285,7 @@ where
         let v = first.eval(t);
         let a = if N < 3 {
             // N < 3 has no second derivative; use a typed zero vector.
-            v - v
+            v * zero
         } else {
             first.derivative().eval(t)
         };
@@ -325,7 +325,8 @@ where
         }
         let a = if N < 3 {
             // N < 3 has no second derivative; use a typed zero vector.
-            v - v
+            let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+            v * zero
         } else {
             first.derivative().eval(t)
         };

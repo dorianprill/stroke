@@ -218,10 +218,7 @@ where
         [P::Scalar; 4]: tinyvec::Array<Item = P::Scalar>,
     {
         let mut iter = self.segments.iter();
-        let first = match iter.next() {
-            Some(segment) => segment.bounding_box(),
-            None => return None,
-        };
+        let first = iter.next()?.bounding_box();
 
         let mut bounds = first;
         for segment in iter {
