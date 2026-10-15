@@ -136,7 +136,7 @@ fn with_knot_legend(
         .with_legend_width(360.0)
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn core::error::Error>> {
     // All Bezier degrees use Bezier<P, N>, including the quadratic and cubic.
     let quadratic = Bezier::new([
         Point::new([0.0, 0.0]),

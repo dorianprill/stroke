@@ -142,7 +142,7 @@ where
 
     /// Compute a point on the curve at `t` using iterative de boor algorithm.
     /// The parameter **must** be in the inclusive range of values returned
-    /// by `knot_domain()`. If `t` is out of bounds a KnotDomainViolation error is returned.
+    /// by `knot_domain()`. If `t` is out of bounds a `KnotDomainViolation` error is returned.
     pub fn eval(&self, t: P::Scalar) -> Result<P, BSplineError>
     where
         [(); D + 1]: Sized,
@@ -805,7 +805,7 @@ where
 
     /// Return the index of the start of the knot span for given `t` for a clamped B-Spline.
     /// This is the index of the first element that satisfies:
-    ///     knots[i] <= t < knots[i+1] where i >= degree and i < knots.len() - degree - 1
+    /// `knots[i] <= t < knots[i+1]` where `i >= degree` and `i < knots.len() - degree - 1`.
     /// Because the knot vector is non-decreasing, this function uses binary search.
     /// If no element greater than the value passed is found, the function returns None.
     fn knot_span_start_for_t_clamped(&self, t: P::Scalar) -> Option<usize> {
@@ -1030,7 +1030,7 @@ where
     ///                 d
     /// Qi =    ----------------- (`P[i+1]` - `P[i]`)
     ///         `k[i + d + 1]` - `k[i + 1]`.
-    /// with degree = curve_order - 1
+    /// with `degree = curve_order - 1`
     pub fn derivative(&self) -> BSpline<P, { K - 2 }, { C - 1 }, { D - 1 }>
     where
         [(); D - 1]: Sized,

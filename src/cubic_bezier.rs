@@ -42,7 +42,7 @@ where
         }
     }
 
-    /// Evaluate a CubicBezier curve at t by direct evaluation of the polynomial (not numerically stable)
+    /// Evaluate a `CubicBezier` curve at t by direct evaluation of the polynomial (not numerically stable)
     pub fn eval(&self, t: P::Scalar) -> P {
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         let three = <P::Scalar as NumCast>::from(3.0).unwrap();
@@ -58,7 +58,7 @@ where
             + self.end * t3
     }
 
-    /// Evaluate a CubicBezier curve at t using the numerically stable De Casteljau algorithm
+    /// Evaluate a `CubicBezier` curve at t using the numerically stable De Casteljau algorithm
     pub fn eval_casteljau(&self, t: P::Scalar) -> P {
         // unrolled de casteljau algorithm
         // _1ab is the first iteration from first (a) to second (b) control point and so on
@@ -181,7 +181,7 @@ where
 
     /// Return the derivative curve.
     /// The derivative is also a bezier curve but of degree n-1 (cubic->quadratic)
-    /// Since it returns the derivative function, eval() needs to be called separately
+    /// Since it returns the derivative function, `eval()` needs to be called separately
     pub fn derivative(&self) -> QuadraticBezier<P> {
         let three = <P::Scalar as NumCast>::from(3.0).unwrap();
         QuadraticBezier {
@@ -439,7 +439,7 @@ where
     /// Compute the real roots of the cubic bezier function with
     /// parameters of the form a*t^3 + b*t^2 + c*t + d for each dimension
     /// using cardano's algorithm (code adapted from github.com/nical/lyon)
-    /// returns an ArrayVec of the present roots (max 3)
+    /// returns an `ArrayVec` of the present roots (max 3)
     #[allow(clippy::many_single_char_names)] // this is math, get over it
     pub(crate) fn real_roots(
         &self,

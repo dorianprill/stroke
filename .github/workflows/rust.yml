@@ -11,11 +11,6 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    env:
-      # generic_const_exprs requires the compatible trait solver on nightly.
-      RUSTFLAGS: -Znext-solver=coherence
-      RUSTDOCFLAGS: -Znext-solver=coherence
-
     steps:
     - uses: actions/checkout@v4
     - name: UpdateNightly
@@ -24,8 +19,10 @@ jobs:
       run: rustup component add rustfmt clippy
     - name: Format
       run: cargo fmt -- --check
-    - name: Clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
+    - name: Clippy (no default features)
+      run: cargo lint-default
+    - name: Clippy (all features)
+      run: cargo lint
     - name: Build
       run: cargo build --verbose
     - name: Build examples
