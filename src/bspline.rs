@@ -447,11 +447,11 @@ where
         }
 
         let mut factor = one;
-        for k in 1..=R {
+        for (k, row) in ders.iter_mut().enumerate().skip(1) {
             let mult = <P::Scalar as NumCast>::from((D - k + 1) as f64).unwrap();
             factor = factor * mult;
-            for j in 0..=D {
-                ders[k][j] = ders[k][j] * factor;
+            for value in row {
+                *value = *value * factor;
             }
         }
 
@@ -567,12 +567,11 @@ where
                     if f.abs() <= tolerance {
                         update(t);
                     }
-                    if prev_f * f < zero {
-                        if let Some(root) =
+                    if prev_f * f < zero
+                        && let Some(root) =
                             self.bisect_axis_root(&derivative, dim, prev_t, t, tolerance, half)
-                        {
-                            update(root);
-                        }
+                    {
+                        update(root);
                     }
                     prev_t = t;
                     prev_f = f;
@@ -747,18 +746,17 @@ where
                 let denominator = self.knots[j + 1 + k - r] - self.knots[j + k - D];
                 let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
                 let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-                let alpha: P::Scalar;
-                if numerator < P::Scalar::epsilon() {
+                let alpha = if numerator < P::Scalar::epsilon() {
                     // we are at the start of a knot span (interpolation d[j-1] -> d[j])
-                    alpha = zero;
+                    zero
                 } else if denominator.abs() < P::Scalar::epsilon() {
                     // we are at then end of a knot span (interpolation d[j-1] -> d[j])
                     // this will lead to d[j] simply being copied to d[j]
-                    alpha = one;
+                    one
                 } else {
                     // inside a knot span (interpolation d[j-1] -> d[j])
-                    alpha = numerator / denominator;
-                }
+                    numerator / denominator
+                };
                 if alpha.is_nan() {
                     return Err(BSplineError::EvaluationAlphaIsNaN);
                 }

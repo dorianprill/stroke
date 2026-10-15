@@ -244,10 +244,7 @@ where
         P: PointIndex,
     {
         let mut iter = self.segments.iter();
-        let first = match iter.next() {
-            Some(segment) => segment_control_bounds(segment),
-            None => return None,
-        };
+        let first = segment_control_bounds(iter.next()?);
 
         let mut bounds = first;
         for segment in iter {

@@ -16,6 +16,7 @@ include = [
     "Cargo.toml",
     "CHANGELOG.md",
     "README.md",
+    "curves.svg",
     "LICENSE",
     "rust-toolchain",
     "src/**",
@@ -39,8 +40,4 @@ nalgebra = ["dep:nalgebra"]
 
 # these are just for development (e.g. integration tests and examples)
 [dev-dependencies]
-plotters = "^0.3"
-
-[[example]]
-name = "plotters_cubic_bezier"
-test = false
+kuva = { version = "0.6", default-features = false }

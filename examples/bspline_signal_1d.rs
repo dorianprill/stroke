@@ -140,8 +140,8 @@ fn gaussian_elimination(
             matrix.swap(i, pivot);
         }
         let inv = 1.0 / matrix[i][i];
-        for c in i..=CONTROL_POINTS {
-            matrix[i][c] *= inv;
+        for value in &mut matrix[i][i..] {
+            *value *= inv;
         }
         for r in 0..CONTROL_POINTS {
             if r == i {
