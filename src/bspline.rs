@@ -1569,6 +1569,33 @@ mod tests {
     }
 
     #[test]
+    fn clamped_quintic_matches_bezier() {
+        let points = [
+            PointN::new([0.0, 0.0]),
+            PointN::new([0.5, 4.0]),
+            PointN::new([2.0, -3.0]),
+            PointN::new([3.0, 4.0]),
+            PointN::new([4.5, -2.0]),
+            PointN::new([5.0, 1.0]),
+        ];
+        let spline = BSpline::<PointN<f64, 2>, 12, 6, 5>::new(
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            points,
+        )
+        .unwrap();
+        let bezier = crate::Bezier::new(points);
+
+        assert_eq!(spline.knot_kind, KnotVectorKind::Clamped);
+        assert_eq!(spline.knot_domain(), (0.0, 1.0));
+        assert_eq!(spline.start().unwrap(), points[0]);
+        assert_eq!(spline.end().unwrap(), points[5]);
+        for i in 0..=1000 {
+            let t = i as f64 / 1000.0;
+            assert!((spline.eval(t).unwrap() - bezier.eval(t)).squared_norm() < 1e-24);
+        }
+    }
+
+    #[test]
     fn degree_4_clamped_construct_and_eval() {
         // degree 4, 5 control points => 5+4+1=10 knots
         let points = [

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- Replaced the Plotters example with a Kuva SVG figure showing three generic Bezier curves and an unclamped generic B-spline, their bounding boxes, labeled control points, and marked B-spline endpoints.
+- Replaced the Plotters example with a Kuva SVG figure showing two generic Bezier curves and clamped/unclamped generic B-splines, their bounding boxes, labeled control points, and marked unclamped endpoints.
 - Removed Plotters and the CI fontconfig installation; the plotting example uses Kuva without optional features.
 - Configured CI to use the compatible nightly trait solver for `generic_const_exprs`.
 - Cleaned up existing curve-code Clippy findings and added strict Clippy checks to CI.

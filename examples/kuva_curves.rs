@@ -122,14 +122,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Point::new([4.3, 3.0]),
         Point::new([3.2, -4.0]),
     ]);
-    let quintic = Bezier::new([
-        Point::new([0.0, 0.0]),
-        Point::new([0.5, 4.0]),
-        Point::new([2.0, -3.0]),
-        Point::new([3.0, 4.0]),
-        Point::new([4.5, -2.0]),
-        Point::new([5.0, 1.0]),
-    ]);
+    // A degree-5 spline with six copies of each endpoint knot is exactly the
+    // original quintic Bezier when it uses the same six control points.
+    let clamped = BSpline::<Point, 12, 6, 5>::new(
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        [
+            Point::new([0.0, 0.0]),
+            Point::new([0.5, 4.0]),
+            Point::new([2.0, -3.0]),
+            Point::new([3.0, 4.0]),
+            Point::new([4.5, -2.0]),
+            Point::new([5.0, 1.0]),
+        ],
+    )
+    .map_err(|error| error.to_string())?;
     // Strictly increasing knots make the spline unclamped: the curve need not
     // pass through its first or last control point.
     let spline = BSpline::<Point, 10, 6, 3>::new(
@@ -147,6 +153,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Include both endpoints. B-splines are sampled over their knot domain,
     // which need not be [0, 1]. Propagate any evaluation errors to the caller.
+    let (start, end) = clamped.knot_domain();
+    let clamped_samples = (0..=STEPS)
+        .map(|i| clamped.eval(start + (end - start) * i as f64 / STEPS as f64))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let (clamped_plots, clamped_layout) = panel(
+        "BSpline<PointN<f64, 2>, 12, 6, 5>",
+        5,
+        &clamped.control_points().copied().collect::<Vec<_>>(),
+        clamped_samples,
+        clamped.bounding_box(),
+    );
     let (start, end) = spline.knot_domain();
     let spline_samples = (0..=STEPS)
         .map(|i| spline.eval(start + (end - start) * i as f64 / STEPS as f64))
@@ -194,14 +212,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect(),
             cubic.bounding_box(),
         ),
-        panel(
-            "Bezier<PointN<f64, 2>, 6>",
-            5,
-            &quintic.control_points(),
-            (0..=STEPS)
-                .map(|i| quintic.eval(i as f64 / STEPS as f64))
-                .collect(),
-            quintic.bounding_box(),
+        (
+            clamped_plots,
+            clamped_layout.with_subtitle("Degree 5 · clamped"),
         ),
         (
             spline_plots,
