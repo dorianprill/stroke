@@ -705,11 +705,8 @@ where
     where
         [(); D + 1]: Sized,
     {
-        // Special case when t equals the last knot value
-        if t == self.knots[self.control_points.len()] {
-            return Ok(self.control_points[self.control_points.len() - 1]);
-        }
-
+        // The span lookup includes the right endpoint. Evaluate it normally:
+        // only end-clamped splines necessarily interpolate the last control.
         let k = self.knot_span_start_for_t(t);
 
         let k = match k {
@@ -1352,6 +1349,30 @@ mod tests {
         // Evaluate at the midpoint of the knot domain.
         let mid = curve.eval(1.5).unwrap();
         assert!((mid - PointN::new([5.0, 5.0])).squared_norm() < EPSILON);
+    }
+
+    #[test]
+    fn unclamped_cubic_endpoint_matches_polynomial_segment() {
+        // On [3, 4], these uniform knots and control values define (t - 3)^3.
+        // In particular, the final value is 1, rather than the last control's 6.
+        let curve = BSpline::<PointN<f64, 1>, 8, 4, 3>::new(
+            [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
+            [
+                PointN::new([0.0]),
+                PointN::new([0.0]),
+                PointN::new([0.0]),
+                PointN::new([6.0]),
+            ],
+        )
+        .unwrap();
+        assert_eq!(curve.knot_domain(), (3.0, 4.0));
+        for t in [3.0, 3.5, 4.0 - 1e-8, 4.0] {
+            let u = t - 3.0;
+            assert!((curve.eval(t).unwrap()[0] - u * u * u).abs() < 1e-12);
+        }
+        assert!((curve.end().unwrap()[0] - 1.0).abs() < 1e-12);
+        assert!((curve.reverse().start().unwrap()[0] - 1.0).abs() < 1e-12);
+        assert_eq!(curve.bounding_box(), [(0.0, 1.0)]);
     }
 
     #[test]

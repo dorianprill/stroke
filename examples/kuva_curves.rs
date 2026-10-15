@@ -6,7 +6,7 @@
 //! Run `cargo run --example kuva_curves` to regenerate `curves.svg` in the
 //! current directory. No system font libraries or font installation are needed.
 
-use kuva::prelude::{Figure, Layout, LinePlot, Plot, ScatterPlot, SvgBackend};
+use kuva::prelude::{Figure, Layout, LinePlot, MarkerShape, Plot, ScatterPlot, SvgBackend};
 use stroke::{BSpline, Bezier, PointN};
 
 type Point = PointN<f64, 2>;
@@ -130,8 +130,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Point::new([4.5, -2.0]),
         Point::new([5.0, 1.0]),
     ]);
+    // Strictly increasing knots make the spline unclamped: the curve need not
+    // pass through its first or last control point.
     let spline = BSpline::<Point, 10, 6, 3>::new(
-        [0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0, 3.0],
+        [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
         [
             Point::new([0.0, 0.0]),
             Point::new([1.0, 3.0]),
@@ -150,6 +152,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|i| spline.eval(start + (end - start) * i as f64 / STEPS as f64))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
+    let spline_endpoints = [
+        coordinates(spline_samples[0]),
+        coordinates(spline_samples[STEPS]),
+    ];
+    let (mut spline_plots, spline_layout) = panel(
+        "BSpline<PointN<f64, 2>, 10, 6, 3>",
+        3,
+        &spline.control_points().copied().collect::<Vec<_>>(),
+        spline_samples,
+        spline.bounding_box(),
+    );
+    // Mark the actual endpoints separately from the blue control points.
+    spline_plots.push(
+        ScatterPlot::new()
+            .with_data(spline_endpoints)
+            .with_color(CURVE_COLOR)
+            .with_marker(MarkerShape::Diamond)
+            .with_size(4.5)
+            .with_labels(["Start", "End"])
+            .with_repel_labels()
+            .with_legend("Unclamped endpoints")
+            .into(),
+    );
     let panels = vec![
         panel(
             "Bezier<PointN<f64, 2>, 3>",
@@ -178,12 +203,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect(),
             quintic.bounding_box(),
         ),
-        panel(
-            "BSpline<PointN<f64, 2>, 10, 6, 3>",
-            3,
-            &spline.control_points().copied().collect::<Vec<_>>(),
-            spline_samples,
-            spline.bounding_box(),
+        (
+            spline_plots,
+            spline_layout.with_subtitle("Degree 3 · unclamped"),
         ),
     ];
     let (plots, layouts) = panels.into_iter().unzip();
