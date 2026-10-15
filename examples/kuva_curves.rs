@@ -6,7 +6,10 @@
 //! Run `cargo run --example kuva_curves` to regenerate `curves.svg` in the
 //! current directory. No system font libraries or font installation are needed.
 
-use kuva::prelude::{Figure, Layout, LinePlot, MarkerShape, Plot, ScatterPlot, SvgBackend};
+use kuva::prelude::{
+    Figure, Layout, LegendEntry, LegendPosition, LegendShape, LinePlot, MarkerShape, Plot,
+    ScatterPlot, SvgBackend,
+};
 use stroke::{BSpline, Bezier, PointN};
 
 type Point = PointN<f64, 2>;
@@ -17,6 +20,7 @@ const STEPS: usize = 1000;
 const CURVE_COLOR: &str = "#d44336";
 const CONTROL_COLOR: &str = "#3267b1";
 const BOUNDS_COLOR: &str = "#26945d";
+const KNOT_COLOR: &str = "#bc6b00";
 
 fn coordinates(point: Point) -> (f64, f64) {
     (point[0], point[1])
@@ -91,7 +95,7 @@ fn panel(
         extent
     });
     let padding = 0.2 * (extent[0].1 - extent[0].0).max(extent[1].1 - extent[1].0);
-    let layout = Layout::auto_from_plots(&plots)
+    let mut layout = Layout::auto_from_plots(&plots)
         .with_title(title)
         .with_title_size(18)
         .with_subtitle(format!("Degree {degree}"))
@@ -104,8 +108,32 @@ fn panel(
         .with_y_axis_max(extent[1].1 + padding)
         .with_equal_aspect()
         .with_show_grid(true);
+    // Common series use the figure legend; spline panels add their own knot legends.
+    layout.show_legend = false;
 
     (plots, layout)
+}
+
+fn with_knot_legend(
+    layout: Layout,
+    knots: impl IntoIterator<Item = f64>,
+    domain: (f64, f64),
+) -> Layout {
+    let knots = knots
+        .into_iter()
+        .map(|knot| knot.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    layout
+        .with_legend_title(format!("Knots: [{knots}]"))
+        .with_legend_entries(vec![LegendEntry {
+            label: format!("Parameter domain: [{}, {}]", domain.0, domain.1),
+            color: CURVE_COLOR.into(),
+            shape: LegendShape::Line,
+            dasharray: None,
+        }])
+        .with_legend_position(LegendPosition::OutsideBottomCenter)
+        .with_legend_width(360.0)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -165,6 +193,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         clamped_samples,
         clamped.bounding_box(),
     );
+    let clamped_layout = with_knot_legend(clamped_layout, clamped.knots().copied(), (start, end))
+        .with_subtitle("Degree 5 · clamped");
     let (start, end) = spline.knot_domain();
     let spline_samples = (0..=STEPS)
         .map(|i| spline.eval(start + (end - start) * i as f64 / STEPS as f64))
@@ -193,6 +223,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_legend("Unclamped endpoints")
             .into(),
     );
+    // Knots are parameter values. Only interior knots in the valid domain
+    // get their own markers; domain endpoints are already marked above.
+    let interior_knots: Vec<_> = spline
+        .knots()
+        .copied()
+        .filter(|&knot| knot > start && knot < end)
+        .collect();
+    let knot_points = interior_knots
+        .iter()
+        .map(|&knot| spline.eval(knot).map(coordinates))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    spline_plots.push(
+        ScatterPlot::new()
+            .with_data(knot_points)
+            .with_color(KNOT_COLOR)
+            .with_marker(MarkerShape::Square)
+            .with_size(4.5)
+            .with_labels(interior_knots.iter().map(|knot| format!("t = {knot}")))
+            .with_repel_labels()
+            .with_legend("Interior knots")
+            .into(),
+    );
+    let spline_layout = with_knot_legend(spline_layout, spline.knots().copied(), (start, end))
+        .with_subtitle("Degree 3 · unclamped");
     let panels = vec![
         panel(
             "Bezier<PointN<f64, 2>, 3>",
@@ -212,14 +267,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect(),
             cubic.bounding_box(),
         ),
-        (
-            clamped_plots,
-            clamped_layout.with_subtitle("Degree 5 · clamped"),
-        ),
-        (
-            spline_plots,
-            spline_layout.with_subtitle("Degree 3 · unclamped"),
-        ),
+        (clamped_plots, clamped_layout),
+        (spline_plots, spline_layout),
     ];
     let (plots, layouts) = panels.into_iter().unzip();
     let scene = Figure::new(2, 2)
@@ -231,6 +280,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_padding(24.0)
         .with_labels()
         .with_shared_legend_bottom()
+        .with_keep_panel_legends()
         .render();
 
     std::fs::write(OUTPUT, SvgBackend.render_scene(&scene))?;
