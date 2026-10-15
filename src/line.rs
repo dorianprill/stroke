@@ -5,9 +5,9 @@ use num_traits::{Float, NumCast};
 
 const DEFAULT_LENGTH_STEPS: usize = 64;
 
-/// LineSegment defined by a start and an endpoint, evaluable anywhere inbetween using interpolation parameter t: \[0, 1\] in eval().
+/// `LineSegment` defined by a start and an endpoint, evaluable anywhere inbetween using interpolation parameter t: \[0, 1\] in `eval()`.
 ///
-/// A LineSegment is equal to a linear Bezier curve, which is why there is no
+/// A `LineSegment` is equal to a linear Bezier curve, which is why there is no
 /// specialized type for that case.
 ///
 /// Methods that need component access or norms add `PointIndex`/`PointNorm`
@@ -69,7 +69,7 @@ where
         )
     }
 
-    /// Return the distance from the LineSegment to Point p by calculating the projection
+    /// Return the distance from the `LineSegment` to Point p by calculating the projection
     pub fn distance_to_point(&self, p: P) -> P::Scalar
     where
         P: PointNorm,

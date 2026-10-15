@@ -14,6 +14,7 @@ license = "MIT"
 
 include = [
     "Cargo.toml",
+    "clippy.toml",
     "CHANGELOG.md",
     "README.md",
     "curves.svg",
@@ -41,3 +42,31 @@ nalgebra = ["dep:nalgebra"]
 # these are just for development (e.g. integration tests and examples)
 [dev-dependencies]
 kuva = { version = "0.6", default-features = false }
+
+[lints.rust]
+# Apply the library's existing safety policy to examples and tests as well.
+unsafe_code = "forbid"
+
+[lints.clippy]
+# Keep individual lint overrides more specific than these groups.
+all = { level = "warn", priority = -2 }
+correctness = { level = "deny", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+
+# Catch debug leftovers and unfinished implementations before they ship.
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+exit = "warn"
+
+# Prefer portable core/alloc APIs and avoid unnecessary copies.
+std_instead_of_core = "warn"
+std_instead_of_alloc = "warn"
+alloc_instead_of_core = "warn"
+redundant_clone = "warn"
+doc_markdown = "warn"
+
+# Dependencies may legitimately resolve multiple versions beyond our control.
+multiple_crate_versions = "allow"
+# Do not enable pedantic/restriction wholesale: numerical algorithms deliberately
+# use exact knot comparisons, scalar casts, indexed arrays, and short math names.

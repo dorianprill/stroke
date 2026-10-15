@@ -118,6 +118,37 @@ These are the main supported features. Some further utility methods are exposed 
 - `kuva_curves`: render a 2×2 SVG figure with generic quadratic and cubic `Bezier` curves, a clamped quintic `BSpline`, and an unclamped cubic `BSpline`, with curve bounding boxes, control polygons, named control points, knot-vector legends, and marked interior knots and unclamped endpoints; run `cargo run --example kuva_curves` to write `curves.svg`. Uses Kuva's SVG backend with optional features disabled; no system font library or font installation is required.
 - `nalgebra_basic`: Bezier with nalgebra SVector; run `cargo run --example nalgebra_basic --features nalgebra`.
   
+## Development
+
+Install the nightly tools once with `rustup component add rustfmt clippy`.
+Run `cargo lint` for all targets with all features, or `cargo lint-default`
+for all targets without default features. Both treat warnings as errors;
+CI runs both commands. `.cargo/config.toml` also selects the compatible
+nightly trait solver for local builds, Clippy, and doctests.
+
+Enable automatic checks before each commit in a fresh clone:
+
+```sh
+git config --local core.hooksPath .githooks
+```
+
+The hook checks formatting and runs both lint commands. It requires no extra
+hook manager. To disable it, run `git config --local --unset core.hooksPath`.
+
+Lint levels are in `Cargo.toml`, with lint options in `clippy.toml`.
+The policy keeps Clippy's default checks, adds Cargo metadata checks,
+portable `core`/`alloc` API checks, documentation formatting, redundant-clone
+checks, and checks for debug macros, unfinished code, and process exits.
+Unsafe code is forbidden for every target. Clippy reads the declared MSRV
+from `package.rust-version` and checks test code against it as well.
+
+We enable extra lints individually rather than enabling all of `pedantic`,
+`nursery`, or `restriction`. Exact floating-point knot comparisons, indexed
+arrays, scalar casts, and short mathematical variable names are intentional
+in these algorithms. Unwraps are also intentional for scalar conversions
+and test assertions; they are not banned globally. Any lint exception should
+be scoped to the relevant item and explain why it applies.
+
 ## Related  
 
 If you're looking for a published crate for rendering with gpu support you should check out [Lyon](https://github.com/nical/lyon) from which I draw some inspiration, it's really good. It features lines, quadratic and cubic Béziers, in addition to arcs, triangles, and other geometric objects but no general Bézier curves or B-Splines. It also does seem to support wasm.  

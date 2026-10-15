@@ -1,0 +1,5 @@
+# Lint levels live in Cargo.toml; MSRV is inherited from package.rust-version.
+# Preserve the public generic API when Clippy suggests refactors.
+avoid-breaking-exported-api = true
+# Examples/tests should not silently require APIs newer than the declared MSRV.
+check-incompatible-msrv-in-tests = true

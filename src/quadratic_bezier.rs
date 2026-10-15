@@ -23,7 +23,7 @@ impl<P: Point> QuadraticBezier<P>
 where
     P: Point,
 {
-    /// Creates a new instance of QuadraticBezier from the given control points
+    /// Creates a new instance of `QuadraticBezier` from the given control points
     pub fn new(start: P, ctrl: P, end: P) -> Self {
         QuadraticBezier { start, ctrl, end }
     }
@@ -102,7 +102,7 @@ where
     /// Return the derivative curve.
     /// The derivative is also a bezier curve but of degree n-1.
     /// In the case of a quadratic derivative it is just a line segment
-    /// which also implementes eval(), as it is just a linear bezier curve.
+    /// which also implements `eval()`, as it is just a linear bezier curve.
     pub fn derivative(&self) -> LineSegment<P> {
         let two = <P::Scalar as NumCast>::from(2.0).unwrap();
         LineSegment {
@@ -250,7 +250,7 @@ where
     }
 
     /// Solve for the roots of the polynomial at^2 + bt + c
-    /// Returns an ArrayVec of roots in the order
+    /// Returns an `ArrayVec` of roots in the order
     /// needs to be called for x and y components separately
     pub(crate) fn real_roots(
         &self,
@@ -422,7 +422,7 @@ where
     }
 
     /// Determines if, given some tolerance, all of the control points are colinear
-    /// This private function is wrapped publically by is_linear()
+    /// This private function is wrapped publicly by `is_linear()`
     fn are_points_colinear(&self, tolerance: P::Scalar) -> bool
     where
         P: PointNorm,

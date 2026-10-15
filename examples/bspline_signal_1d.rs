@@ -8,8 +8,8 @@ fn main() {
     // Sample a 1D signal.
     let samples: [f64; CONTROL_POINTS] = core::array::from_fn(|i| {
         let x = i as f64 / (CONTROL_POINTS - 1) as f64;
-        let base = (2.0 * std::f64::consts::PI * x).sin();
-        let ripple = 0.2 * (12.0 * std::f64::consts::PI * x).sin();
+        let base = (2.0 * core::f64::consts::PI * x).sin();
+        let ripple = 0.2 * (12.0 * core::f64::consts::PI * x).sin();
         base + ripple
     });
 
