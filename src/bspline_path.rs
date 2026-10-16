@@ -189,7 +189,7 @@ where
         let half = <P::Scalar as NumCast>::from(0.5).unwrap();
 
         let total = self.arclen_partial(one, nsteps)?;
-        if total <= P::Scalar::epsilon() {
+        if total == zero {
             return Some(zero);
         }
         let target = s.clamp(zero, total);
@@ -485,5 +485,20 @@ mod tests {
 
         let normal = path.normal(0.5).unwrap();
         assert!((normal.squared_norm() - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn small_scale_path_remains_non_degenerate() {
+        let scale = 1e-20_f64;
+        let knots = [0.0, 0.0, 1.0, 1.0];
+        let segment = BSpline::<PointN<f64, 1>, 4, 2, 1>::new(
+            knots,
+            [PointN::new([0.0]), PointN::new([scale])],
+        )
+        .unwrap();
+        let mut path: BSplinePath<PointN<f64, 1>, 4, 2, 1, 1> = BSplinePath::new();
+        assert!(path.push(segment));
+
+        assert_approx_equal(path.t_at_length(scale * 0.5).unwrap(), 0.5, 1e-9, 1e-9);
     }
 }

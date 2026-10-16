@@ -1,6 +1,8 @@
 //! Line segment curve type.
 
 use super::{ArrayVec, Point, PointDot, PointIndex, PointNorm};
+use crate::error::{CurveConstructionError, validate_control_points};
+use crate::numeric::is_negligible;
 use num_traits::{Float, NumCast};
 
 const DEFAULT_LENGTH_STEPS: usize = 64;
@@ -23,8 +25,14 @@ where
     P: Point,
 {
     /// Create a new line segment from `start` to `end`.
-    pub fn new(start: P, end: P) -> Self {
-        LineSegment { start, end }
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CurveConstructionError::NonFiniteControlPoint`] with the index
+    /// of the first control point containing a non-finite coordinate.
+    pub fn new(start: P, end: P) -> Result<Self, CurveConstructionError> {
+        validate_control_points(&[start, end])?;
+        Ok(LineSegment { start, end })
     }
 
     /// Return the start point of the segment.
@@ -75,8 +83,9 @@ where
         P: PointNorm,
     {
         let l2 = (self.end - self.start).squared_norm();
-        // if start and endpoint are approx the same, return the distance to either
-        if l2 < P::Scalar::epsilon() {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        // A nonzero segment remains meaningful regardless of its coordinate scale.
+        if l2 == zero {
             (self.start - p).squared_norm().sqrt()
         } else {
             let v1 = p - self.start;
@@ -108,13 +117,10 @@ where
         P: PointNorm,
     {
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let dir = self.derivative();
         let len = dir.squared_norm().sqrt();
-        if len <= P::Scalar::epsilon() {
-            dir
-        } else {
-            dir * (one / len)
-        }
+        if len == zero { dir } else { dir * (one / len) }
     }
 
     /// Return the curvature magnitude at `t`.
@@ -145,7 +151,7 @@ where
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         let length = (self.end - self.start).squared_norm().sqrt();
-        if length <= P::Scalar::epsilon() {
+        if length == zero {
             zero
         } else {
             (s / length).clamp(zero, one)
@@ -181,7 +187,7 @@ where
         [P::Scalar; 1]: tinyvec::Array<Item = P::Scalar>,
     {
         let mut r = ArrayVec::new();
-        if a.abs() < P::Scalar::epsilon() {
+        if is_negligible(a, a.abs().max(b.abs())) {
             return r;
         }
         r.push(-b / a);
@@ -214,11 +220,25 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CurveConstructionError;
     use crate::PointN;
     use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
 
     const ABSOLUTE_TOLERANCE: f64 = 1e-12;
     const RELATIVE_TOLERANCE: f64 = 1e-12;
+
+    #[test]
+    fn rejects_non_finite_control_points() {
+        let result = LineSegment::new(
+            PointN::new([0.0_f64, 0.0]),
+            PointN::new([f64::INFINITY, 0.0]),
+        );
+
+        assert_eq!(
+            result,
+            Err(CurveConstructionError::NonFiniteControlPoint { index: 1 })
+        );
+    }
 
     /// Check whether a line segment interpolation p + t*(q-p) at t=0.5
     /// yields equal distance to the start (p)/end (q) points (up to machine accuracy).
@@ -306,8 +326,42 @@ mod tests {
     }
 
     #[test]
+    fn small_scale_line_remains_non_degenerate() {
+        let scale = 1e-20_f64;
+        let line = LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([scale, 0.0])).unwrap();
+
+        assert_point_approx_equal(
+            line.tangent(0.5),
+            PointN::new([1.0, 0.0]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
+        assert_approx_equal(
+            line.t_at_length(scale * 0.5),
+            0.5,
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
+        assert_approx_equal(
+            line.distance_to_point(PointN::new([scale * 0.5, scale])),
+            scale,
+            1e-32,
+            1e-12,
+        );
+    }
+
+    #[test]
+    fn line_root_is_scale_invariant() {
+        let line = LineSegment::new(PointN::new([0.0_f64]), PointN::new([1.0])).unwrap();
+        let roots = line.root(1e-30, -5e-31);
+
+        assert_eq!(roots.len(), 1);
+        assert_approx_equal(roots[0], 0.5, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
+    }
+
+    #[test]
     fn line_segment_api_parity() {
-        let line = LineSegment::new(PointN::new([0.0_f64, 0.0]), PointN::new([2.0, 0.0]));
+        let line = LineSegment::new(PointN::new([0.0_f64, 0.0]), PointN::new([2.0, 0.0])).unwrap();
 
         assert_eq!(line.start(), line.eval(0.0));
         assert_eq!(line.end(), line.eval(1.0));

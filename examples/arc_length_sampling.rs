@@ -6,7 +6,8 @@ fn main() {
         PointN::new([1.0, 2.0]),
         PointN::new([3.0, -1.0]),
         PointN::new([4.0, 0.0]),
-    ]);
+    ])
+    .unwrap();
 
     let steps = 6;
     let nsteps = 512;

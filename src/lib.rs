@@ -11,6 +11,9 @@
 //! [`PointIndex`], [`PointDot`], and [`PointNorm`] enable component access and
 //! geometric helpers when required.
 //!
+//! `Point::Scalar` must implement [`num_traits::Float`], so the library currently
+//! targets floating-point numeric representations such as `f32` and `f64`.
+//!
 //! # Examples
 //! ```rust
 //! use stroke::{Bezier, PointN};
@@ -19,7 +22,7 @@
 //!     PointN::new([0.0, 0.0]),
 //!     PointN::new([1.0, 0.0]),
 //!     PointN::new([1.0, 1.0]),
-//! ]);
+//! ]).unwrap();
 //!
 //! let mid = curve.eval(0.5);
 //! # let _ = mid;
@@ -34,6 +37,7 @@ use tinyvec::ArrayVec;
 pub mod bezier_segment;
 // specialized types
 pub mod cubic_bezier;
+pub mod error;
 pub mod line;
 pub mod quadratic_bezier;
 // generic types
@@ -47,6 +51,7 @@ pub mod find_root;
 pub mod path;
 pub mod point;
 
+mod numeric;
 mod roots;
 
 #[cfg(test)]
@@ -60,6 +65,7 @@ pub use bezier::Bezier;
 pub use bspline::BSpline;
 pub use bspline_path::BSplinePath;
 pub use cubic_bezier::CubicBezier;
+pub use error::CurveConstructionError;
 pub use find_root::FindRoot;
 pub use line::LineSegment;
 pub use path::BezierPath;

@@ -1,6 +1,8 @@
 //! Cubic Bezier curve specialization.
 
 use super::{ArrayVec, LineSegment, Point, PointDot, PointIndex, PointNorm, QuadraticBezier};
+use crate::error::{CurveConstructionError, validate_control_points};
+use crate::numeric::is_negligible;
 use num_traits::{Float, NumCast};
 
 const DEFAULT_DISTANCE_STEPS: usize = 64;
@@ -33,13 +35,19 @@ where
     P: Point,
 {
     /// Creates a new cubic Bezier curve from four control points.
-    pub fn new(start: P, ctrl1: P, ctrl2: P, end: P) -> Self {
-        CubicBezier {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CurveConstructionError::NonFiniteControlPoint`] with the index
+    /// of the first control point containing a non-finite coordinate.
+    pub fn new(start: P, ctrl1: P, ctrl2: P, end: P) -> Result<Self, CurveConstructionError> {
+        validate_control_points(&[start, ctrl1, ctrl2, end])?;
+        Ok(CubicBezier {
             start,
             ctrl1,
             ctrl2,
             end,
-        }
+        })
     }
 
     /// Evaluate a `CubicBezier` curve at t by direct evaluation of the polynomial (not numerically stable)
@@ -197,13 +205,10 @@ where
         P: PointNorm,
     {
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let dir = self.derivative().eval(t);
         let len = dir.squared_norm().sqrt();
-        if len <= P::Scalar::epsilon() {
-            dir
-        } else {
-            dir * (one / len)
-        }
+        if len == zero { dir } else { dir * (one / len) }
     }
 
     /// Return the curvature magnitude at `t`.
@@ -215,7 +220,7 @@ where
         let v = self.derivative().eval(t);
         let a = self.derivative().derivative().eval(t);
         let v2 = v.squared_norm();
-        if v2 <= P::Scalar::epsilon() {
+        if v2 == zero {
             return zero;
         }
         let a2 = a.squared_norm();
@@ -225,7 +230,7 @@ where
             num = zero;
         }
         let denom = v2 * v2.sqrt();
-        if denom <= P::Scalar::epsilon() {
+        if denom == zero {
             zero
         } else {
             num.sqrt() / denom
@@ -239,16 +244,17 @@ where
     where
         P: PointNorm + PointDot,
     {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let v = self.derivative().eval(t);
         let v2 = v.squared_norm();
-        if v2 <= P::Scalar::epsilon() {
+        if v2 == zero {
             return None;
         }
         let a = self.derivative().derivative().eval(t);
         let dot = PointDot::dot(&v, &a);
         let a_perp = a - v * (dot / v2);
         let n2 = a_perp.squared_norm();
-        if n2 <= P::Scalar::epsilon() {
+        if n2 == zero {
             return None;
         }
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
@@ -347,7 +353,7 @@ where
         let half = <P::Scalar as NumCast>::from(0.5).unwrap();
 
         let total = self.arclen(nsteps);
-        if total <= P::Scalar::epsilon() {
+        if total == zero {
             return zero;
         }
         let target = s.clamp(zero, total);
@@ -404,8 +410,8 @@ where
     where
         P: PointNorm,
     {
-        // if start and end are (nearly) the same
-        if (self.start - self.end).squared_norm() < P::Scalar::epsilon() {
+        let tolerance = tolerance.abs();
+        if (self.start - self.end).squared_norm() <= tolerance * tolerance {
             return false;
         }
         // else check if ctrl points lie on baseline
@@ -429,6 +435,7 @@ where
     where
         P: PointNorm,
     {
+        let tolerance = tolerance.abs();
         let tolerance_squared = tolerance * tolerance;
         // Use <= so that tolerance can be zero.
         (self.start - self.end).squared_norm() <= tolerance_squared
@@ -460,11 +467,12 @@ where
         let nine = <P::Scalar as NumCast>::from(9.0).unwrap();
         let twenty_seven = <P::Scalar as NumCast>::from(27.0).unwrap();
         let fifty_four = <P::Scalar as NumCast>::from(54.0).unwrap();
+        let coefficient_scale = a.abs().max(b.abs()).max(c.abs()).max(d.abs());
 
         // check if can be handled below cubic order
-        if a.abs() < P::Scalar::epsilon() {
-            if b.abs() < P::Scalar::epsilon() {
-                if c.abs() < P::Scalar::epsilon() {
+        if is_negligible(a, coefficient_scale) {
+            if is_negligible(b, coefficient_scale) {
+                if is_negligible(c, coefficient_scale) {
                     // no solutions
                     return result;
                 }
@@ -473,13 +481,15 @@ where
                 return result;
             }
             // is quadratic equation
-            let delta = c * c - b * d * four;
-            if delta > zero {
+            let c_squared = c * c;
+            let four_bd = b * d * four;
+            let delta = c_squared - four_bd;
+            if is_negligible(delta, c_squared.abs() + four_bd.abs()) {
+                result.push(-c / (b * two));
+            } else if delta > zero {
                 let sqrt_delta = delta.sqrt();
                 result.push((-c - sqrt_delta) / (b * two));
                 result.push((-c + sqrt_delta) / (b * two));
-            } else if delta.abs() < P::Scalar::epsilon() {
-                result.push(-c / (b * two));
             }
             return result;
         }
@@ -506,7 +516,8 @@ where
             result.push(-bn * frac_1_3 + (s + t));
 
             // Don't add the repeated root when s + t == 0.
-            if (s - t).abs() < P::Scalar::epsilon() && (s + t).abs() >= P::Scalar::epsilon() {
+            let root_scale = s.abs().max(t.abs());
+            if is_negligible(s - t, root_scale) && !is_negligible(s + t, root_scale) {
                 result.push(-bn * frac_1_3 - (s + t) / two);
             }
         } else {
@@ -536,9 +547,9 @@ where
     {
         let mut result = ArrayVec::new();
         // check if all points are the same or if the curve is really just a line
-        if self.is_a_point(P::Scalar::epsilon())
-            || (self.are_points_colinear(P::Scalar::epsilon())
-                && (self.start - self.end).squared_norm() < P::Scalar::epsilon())
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        if self.is_a_point(zero)
+            || (self.are_points_colinear(zero) && (self.start - self.end).squared_norm() == zero)
         {
             return result;
         }
@@ -551,7 +562,6 @@ where
         let d = self.start[axis] - value;
 
         let roots = self.real_roots(a, b, c, d);
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         for &root in roots.iter() {
             if root > zero && root < one {
@@ -622,12 +632,28 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CurveConstructionError;
     use crate::PointN;
     use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
     use core::f64::consts::PI;
 
     const ABSOLUTE_TOLERANCE: f64 = 1e-12;
     const RELATIVE_TOLERANCE: f64 = 1e-12;
+
+    #[test]
+    fn rejects_non_finite_control_points() {
+        let result = CubicBezier::new(
+            PointN::new([0.0_f64]),
+            PointN::new([1.0]),
+            PointN::new([f64::NEG_INFINITY]),
+            PointN::new([f64::NAN]),
+        );
+
+        assert_eq!(
+            result,
+            Err(CurveConstructionError::NonFiniteControlPoint { index: 2 })
+        );
+    }
     #[test]
     fn circle_approximation_error() {
         // define closure for unit circle
@@ -744,7 +770,8 @@ mod tests {
             PointN::new([1.1f64, -1f64]),
             PointN::new([4.3f64, 3f64]),
             PointN::new([3.2f64, -4f64]),
-        );
+        )
+        .unwrap();
 
         let nsteps: usize = 1000;
         for t in 0..=nsteps {
@@ -796,7 +823,8 @@ mod tests {
             PointN::new([1f64, 0f64]),
             PointN::new([2f64, 0f64]),
             PointN::new([3f64, 0f64]),
-        );
+        )
+        .unwrap();
 
         assert_eq!(bezier.start(), bezier.eval(0.0));
         assert_eq!(bezier.end(), bezier.eval(1.0));
@@ -845,6 +873,44 @@ mod tests {
             for (idx, axis) in p.into_iter().enumerate() {
                 assert!((axis >= (bounds[idx].0 - max_err)) && (axis <= (bounds[idx].1 + max_err)))
             }
+        }
+    }
+
+    #[test]
+    fn small_scale_cubic_remains_linear_with_unit_tangent() {
+        let scale = 1e-20_f64;
+        let bezier = CubicBezier::new(
+            PointN::new([0.0, 0.0]),
+            PointN::new([scale / 3.0, 0.0]),
+            PointN::new([scale * 2.0 / 3.0, 0.0]),
+            PointN::new([scale, 0.0]),
+        )
+        .unwrap();
+
+        assert!(bezier.is_linear(scale * 1e-6));
+        assert_point_approx_equal(
+            bezier.tangent(0.5),
+            PointN::new([1.0, 0.0]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
+    }
+
+    #[test]
+    fn cubic_roots_are_scale_invariant() {
+        let bezier = CubicBezier::new(
+            PointN::new([0.0_f64]),
+            PointN::new([0.0]),
+            PointN::new([0.0]),
+            PointN::new([0.0]),
+        )
+        .unwrap();
+        let mut roots = bezier.real_roots(1e-30, -6e-30, 11e-30, -6e-30);
+        roots.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+
+        assert_eq!(roots.len(), 3);
+        for (actual, expected) in roots.into_iter().zip([1.0, 2.0, 3.0]) {
+            assert_approx_equal(actual, expected, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
         }
     }
 
