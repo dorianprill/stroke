@@ -214,7 +214,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EPSILON, PointN};
+    use crate::PointN;
+    use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
+
+    const ABSOLUTE_TOLERANCE: f64 = 1e-12;
+    const RELATIVE_TOLERANCE: f64 = 1e-12;
+
     /// Check whether a line segment interpolation p + t*(q-p) at t=0.5
     /// yields equal distance to the start (p)/end (q) points (up to machine accuracy).
     #[test]
@@ -225,8 +230,12 @@ mod tests {
         };
 
         let mid = line.eval(0.5);
-        let diff = ((mid - line.start).squared_norm() - (mid - line.end).squared_norm()).abs();
-        assert!(diff < EPSILON * 10.0);
+        assert_approx_equal(
+            (mid - line.start).squared_norm(),
+            (mid - line.end).squared_norm(),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
     }
 
     /// Check whether classic pythagorean equality holds for sides 3, 4 with hypothenuse 5
@@ -239,12 +248,32 @@ mod tests {
         };
         // dist to start should be 4; dist to end should be 5
         let p1 = PointN::new([0f64, 5f64, 0f64]);
-        assert!((line.distance_to_point(p1) - 4.0).abs() < EPSILON);
-        assert!(((p1 - line.start).squared_norm().sqrt() - 4.0).abs() < EPSILON);
-        assert!(((p1 - line.end).squared_norm().sqrt() - 5.0).abs() < EPSILON);
+        assert_approx_equal(
+            line.distance_to_point(p1),
+            4.0,
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
+        assert_approx_equal(
+            (p1 - line.start).squared_norm().sqrt(),
+            4.0,
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
+        assert_approx_equal(
+            (p1 - line.end).squared_norm().sqrt(),
+            5.0,
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
         // dist to midpoint (t=0.5) should be 1
         let p2 = PointN::new([1.5f64, 2f64, 0f64]);
-        assert!(((p2 - line.eval(0.5)).squared_norm().sqrt() - 1.0).abs() < EPSILON);
+        assert_approx_equal(
+            (p2 - line.eval(0.5)).squared_norm().sqrt(),
+            1.0,
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
     }
 
     #[test]
@@ -268,12 +297,17 @@ mod tests {
             end: PointN::new([1f64, 0f64]),
         };
         let p = PointN::new([2f64, 0f64]);
-        assert!((line.distance_to_point(p) - 1.0).abs() < EPSILON);
+        assert_approx_equal(
+            line.distance_to_point(p),
+            1.0,
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
     }
 
     #[test]
     fn line_segment_api_parity() {
-        let line = LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([2.0, 0.0]));
+        let line = LineSegment::new(PointN::new([0.0_f64, 0.0]), PointN::new([2.0, 0.0]));
 
         assert_eq!(line.start(), line.eval(0.0));
         assert_eq!(line.end(), line.eval(1.0));
@@ -283,17 +317,22 @@ mod tests {
         assert_eq!(reversed.end(), line.start());
 
         let tangent = line.tangent(0.3);
-        assert!((tangent[0] - 1.0).abs() < EPSILON);
-        assert!(tangent[1].abs() < EPSILON);
+        assert_approx_equal(tangent[0], 1.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
+        assert_approx_equal(tangent[1], 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
         let curvature = line.curvature(0.3);
-        assert!(curvature.abs() < EPSILON);
+        assert_approx_equal(curvature, 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
         assert!(line.normal(0.3).is_none());
 
         let t = line.t_at_length(1.0);
-        assert!((t - 0.5).abs() < EPSILON);
+        assert_approx_equal(t, 0.5, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
         let p = line.point_at_length(1.0);
-        assert!((p - PointN::new([1.0, 0.0])).squared_norm() < EPSILON);
+        assert_point_approx_equal(
+            p,
+            PointN::new([1.0, 0.0]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
     }
 }

@@ -1275,7 +1275,11 @@ mod tests {
     //use std;
     use super::*;
     //use crate::num_traits::{Pow};
-    use crate::{EPSILON, PointN};
+    use crate::PointN;
+    use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
+
+    const ABSOLUTE_TOLERANCE: f64 = 1e-12;
+    const RELATIVE_TOLERANCE: f64 = 1e-12;
 
     #[test]
     fn degree_1_clamped_construct_and_eval_endpoints() {
@@ -1314,7 +1318,12 @@ mod tests {
         assert_eq!(end, points[1]);
 
         let mid = curve.eval(0.5).unwrap();
-        assert!((mid - PointN::new([5.0, 5.0])).squared_norm() < EPSILON);
+        assert_point_approx_equal(
+            mid,
+            PointN::new([5.0, 5.0]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
     }
 
     #[test]
@@ -1348,7 +1357,12 @@ mod tests {
 
         // Evaluate at the midpoint of the knot domain.
         let mid = curve.eval(1.5).unwrap();
-        assert!((mid - PointN::new([5.0, 5.0])).squared_norm() < EPSILON);
+        assert_point_approx_equal(
+            mid,
+            PointN::new([5.0, 5.0]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
     }
 
     #[test]
@@ -1426,7 +1440,12 @@ mod tests {
         assert_eq!(end, points[2]);
 
         let mid = curve.eval(0.5).unwrap();
-        assert!((mid - PointN::new([10.0, 5.0])).squared_norm() < EPSILON);
+        assert_point_approx_equal(
+            mid,
+            PointN::new([10.0, 5.0]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
     }
 
     #[test]
@@ -1463,7 +1482,7 @@ mod tests {
         // For uniform unclamped degree-2 with 3 control points, weights are
         // [0.125, 0.75, 0.125] at t=2.5.
         let expected = points[0] * 0.125 + points[1] * 0.75 + points[2] * 0.125;
-        assert!((mid - expected).squared_norm() < EPSILON);
+        assert_point_approx_equal(mid, expected, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
     }
 
     #[test]
@@ -1711,18 +1730,18 @@ mod tests {
         let t = kmin + (kmax - kmin) * 0.25;
         let p0 = curve.eval(t).unwrap();
         let p1 = reversed.eval(kmin + kmax - t).unwrap();
-        assert!((p0 - p1).squared_norm() < EPSILON);
+        assert_point_approx_equal(p0, p1, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
         let tangent = curve.tangent(kmin + (kmax - kmin) * 0.5).unwrap();
-        assert!((tangent[0] - 1.0).abs() < EPSILON);
-        assert!(tangent[1].abs() < EPSILON);
+        assert_approx_equal(tangent[0], 1.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
+        assert_approx_equal(tangent[1], 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
         let expected_len = (points[1] - points[0]).squared_norm().sqrt();
         let t_mid = curve.t_at_length(expected_len * 0.5).unwrap();
         assert!((t_mid - (kmin + kmax) * 0.5).abs() < 1e-3);
 
         let p_mid = curve.point_at_length(expected_len * 0.5).unwrap();
-        assert!((p_mid - PointN::new([1.0, 0.0])).squared_norm() < EPSILON);
+        assert_point_approx_equal(p_mid, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
     }
 
     #[test]
@@ -1814,8 +1833,14 @@ mod tests {
         for i in 0..=steps {
             let t = kmin + (kmax - kmin) * (i as f64 / steps as f64);
             let p = curve.eval(t).unwrap();
-            assert!(p[0] >= bounds[0].0 - EPSILON && p[0] <= bounds[0].1 + EPSILON);
-            assert!(p[1] >= bounds[1].0 - EPSILON && p[1] <= bounds[1].1 + EPSILON);
+            assert!(
+                p[0] >= bounds[0].0 - ABSOLUTE_TOLERANCE
+                    && p[0] <= bounds[0].1 + ABSOLUTE_TOLERANCE
+            );
+            assert!(
+                p[1] >= bounds[1].0 - ABSOLUTE_TOLERANCE
+                    && p[1] <= bounds[1].1 + ABSOLUTE_TOLERANCE
+            );
         }
     }
 

@@ -300,7 +300,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EPSILON, PointN, PointNorm};
+    use crate::PointN;
+    use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
+
+    const ABSOLUTE_TOLERANCE: f64 = 1e-12;
+    const RELATIVE_TOLERANCE: f64 = 1e-12;
 
     #[test]
     fn bezier_path_eval_segments() {
@@ -318,10 +322,20 @@ mod tests {
         assert_eq!(p0, PointN::new([0.0, 0.0]));
 
         let p1 = path.eval(0.25).unwrap();
-        assert!((p1 - PointN::new([0.5, 0.0])).squared_norm() < EPSILON);
+        assert_point_approx_equal(
+            p1,
+            PointN::new([0.5, 0.0]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
 
         let p2 = path.eval(0.75).unwrap();
-        assert!((p2 - PointN::new([1.0, 0.5])).squared_norm() < EPSILON);
+        assert_point_approx_equal(
+            p2,
+            PointN::new([1.0, 0.5]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
     }
 
     #[test]
@@ -395,20 +409,20 @@ mod tests {
         let reversed = path.reverse();
         let p0 = path.eval(0.25).unwrap();
         let p1 = reversed.eval(0.75).unwrap();
-        assert!((p0 - p1).squared_norm() < EPSILON);
+        assert_point_approx_equal(p0, p1, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
         let tangent = path.tangent(0.25).unwrap();
-        assert!((tangent[0] - 1.0).abs() < EPSILON);
-        assert!(tangent[1].abs() < EPSILON);
+        assert_approx_equal(tangent[0], 1.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
+        assert_approx_equal(tangent[1], 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
         let curvature = path.curvature(0.25).unwrap();
-        assert!(curvature.abs() < EPSILON);
+        assert_approx_equal(curvature, 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
         assert!(path.normal(0.25).is_none());
 
         let t = path.t_at_length(1.0).unwrap();
         assert!((t - 0.5).abs() < 1e-6);
 
         let p = path.point_at_length(1.0).unwrap();
-        assert!((p - PointN::new([1.0, 0.0])).squared_norm() < EPSILON);
+        assert_point_approx_equal(p, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
     }
 }

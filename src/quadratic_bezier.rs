@@ -530,7 +530,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EPSILON, PointN};
+    use crate::PointN;
+    use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
+
+    const ABSOLUTE_TOLERANCE: f64 = 1e-12;
+    const RELATIVE_TOLERANCE: f64 = 1e-12;
 
     #[test]
     fn eval_endpoints() {
@@ -570,8 +574,22 @@ mod tests {
             let t = t as f64 * 1f64 / (nsteps as f64);
             let p1 = bezier.eval(t);
             let p2 = bezier.eval_casteljau(t);
-            let err = p2 - p1;
-            assert!(err.squared_norm() < EPSILON);
+            assert_point_approx_equal(p2, p1, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
+        }
+    }
+
+    #[test]
+    fn eval_equivalence_f32() {
+        let bezier = QuadraticBezier::new(
+            PointN::new([0.0_f32, 1.77]),
+            PointN::new([4.3, 3.0]),
+            PointN::new([3.2, -4.0]),
+        );
+
+        let nsteps: usize = 1000;
+        for step in 0..=nsteps {
+            let t = step as f32 / nsteps as f32;
+            assert_point_approx_equal(bezier.eval(t), bezier.eval_casteljau(t), 1e-5, 1e-5);
         }
     }
 
@@ -592,11 +610,19 @@ mod tests {
         for t in 0..=nsteps {
             let t = t as f64 * 1f64 / (nsteps as f64);
             // left
-            let mut err = bezier.eval(t / 2.0) - left.eval(t);
-            assert!(err.squared_norm() < EPSILON);
+            assert_point_approx_equal(
+                bezier.eval(t / 2.0),
+                left.eval(t),
+                ABSOLUTE_TOLERANCE,
+                RELATIVE_TOLERANCE,
+            );
             // right
-            err = bezier.eval((t * 0.5) + 0.5) - right.eval(t);
-            assert!(err.squared_norm() < EPSILON);
+            assert_point_approx_equal(
+                bezier.eval((t * 0.5) + 0.5),
+                right.eval(t),
+                ABSOLUTE_TOLERANCE,
+                RELATIVE_TOLERANCE,
+            );
         }
     }
 
@@ -652,21 +678,21 @@ mod tests {
         let reversed = bezier.reverse();
         let p0 = bezier.eval(0.25);
         let p1 = reversed.eval(0.75);
-        assert!((p0 - p1).squared_norm() < EPSILON);
+        assert_point_approx_equal(p0, p1, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
         let tangent = bezier.tangent(0.3);
-        assert!((tangent[0] - 1.0).abs() < EPSILON);
-        assert!(tangent[1].abs() < EPSILON);
+        assert_approx_equal(tangent[0], 1.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
+        assert_approx_equal(tangent[1], 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
         let curvature = bezier.curvature(0.3);
-        assert!(curvature.abs() < EPSILON);
+        assert_approx_equal(curvature, 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
         assert!(bezier.normal(0.3).is_none());
 
         let t = bezier.t_at_length(1.0);
         assert!((t - 0.5).abs() < 1e-6);
 
         let p = bezier.point_at_length(1.0);
-        assert!((p - PointN::new([1.0, 0.0])).squared_norm() < EPSILON);
+        assert_point_approx_equal(p, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
     }
 
     #[test]
