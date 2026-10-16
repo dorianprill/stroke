@@ -7,7 +7,8 @@ fn main() {
         SVector::<f32, 2>::new(0.0, 0.0),
         SVector::<f32, 2>::new(1.0, 0.0),
         SVector::<f32, 2>::new(1.0, 1.0),
-    ]);
+    ])
+    .unwrap();
 
     let mid = curve.eval(0.5);
     let bounds = curve.bounding_box();

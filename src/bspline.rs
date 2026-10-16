@@ -25,6 +25,13 @@ pub enum BSplineError {
     TooManyKnots,
     /// The knot vector is not non-decreasing.
     DecreasingKnots,
+    /// The knot vector contains NaN or an infinite value.
+    NonFiniteKnot,
+    /// A control point contains NaN or an infinite coordinate.
+    NonFiniteControlPoint {
+        /// Index of the first non-finite control point.
+        index: usize,
+    },
     /// The evaluation parameter is outside the knot domain.
     KnotDomainViolation,
     /// The de Boor evaluation encountered a NaN alpha value.
@@ -40,6 +47,20 @@ enum KnotVectorKind {
     Clamped,
 }
 
+fn classify_knot_vector<T: PartialEq>(knots: &[T], degree: usize) -> KnotVectorKind {
+    let is_clamped_front = knots[..=degree].windows(2).all(|pair| pair[0] == pair[1]);
+    let is_clamped_back = knots[knots.len() - degree - 1..]
+        .windows(2)
+        .all(|pair| pair[0] == pair[1]);
+
+    match (is_clamped_front, is_clamped_back) {
+        (false, false) => KnotVectorKind::Unclamped,
+        (true, false) => KnotVectorKind::ClampedStart,
+        (false, true) => KnotVectorKind::ClampedEnd,
+        (true, true) => KnotVectorKind::Clamped,
+    }
+}
+
 impl core::fmt::Display for BSplineError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -47,6 +68,10 @@ impl core::fmt::Display for BSplineError {
             BSplineError::TooFewKnots => write!(f, "Insufficient number of knots"),
             BSplineError::TooManyKnots => write!(f, "Excess number of knots"),
             BSplineError::DecreasingKnots => write!(f, "Knots must be non-decreasing in value"),
+            BSplineError::NonFiniteKnot => write!(f, "Knots must be finite"),
+            BSplineError::NonFiniteControlPoint { index } => {
+                write!(f, "Control point at index {index} must be finite")
+            }
             BSplineError::KnotDomainViolation => write!(f, "Parameter outside of knot span"),
             BSplineError::EvaluationAlphaIsNaN => {
                 write!(f, "Cox-deBoor evaluation yields alpha NaN value")
@@ -97,7 +122,8 @@ where
 {
     /// Create a new B-spline curve that interpolates
     /// the `control_points` using a piecewise polynomial of `degree` within intervals specified by the `knots`.
-    /// The knots _must_ be sorted in non-decreasing order; the constructor rejects decreasing knots.
+    /// The knots and control points _must_ be finite, and knots must be sorted in
+    /// non-decreasing order.
     /// The degree is defined as `curve_order - 1`.
     /// Desired curve must have a valid number of control points and knots in relation to its degree or the constructor will return an error.
     /// A B-Spline curve requires at least one more control point than the degree (`control_points.len() >
@@ -114,23 +140,18 @@ where
             Err(BSplineError::TooFewKnots)
         } else if knots.len() > control_points.len() + 1 + D {
             Err(BSplineError::TooManyKnots)
+        } else if knots.iter().any(|knot| !knot.is_finite()) {
+            Err(BSplineError::NonFiniteKnot)
+        } else if let Some(index) = control_points
+            .iter()
+            .position(|control_point| !control_point.is_finite())
+        {
+            Err(BSplineError::NonFiniteControlPoint { index })
         // if knots array is not non-decreasing
         } else if knots.windows(2).any(|w| w[0] > w[1]) {
             Err(BSplineError::DecreasingKnots)
         } else {
-            let is_clamped_front = knots[0..=D]
-                .iter()
-                .all(|&knot| (knot - knots[0]).abs() < P::Scalar::epsilon());
-            let is_clamped_back = knots[knots.len() - D - 1..]
-                .iter()
-                .all(|&knot| (knot - knots[knots.len() - 1]).abs() < P::Scalar::epsilon());
-
-            let knot_kind = match (is_clamped_front, is_clamped_back) {
-                (false, false) => KnotVectorKind::Unclamped,
-                (true, false) => KnotVectorKind::ClampedStart,
-                (false, true) => KnotVectorKind::ClampedEnd,
-                (true, true) => KnotVectorKind::Clamped,
-            };
+            let knot_kind = classify_knot_vector(&knots, D);
 
             Ok(BSpline {
                 knots,
@@ -311,7 +332,7 @@ where
             let mut saved = zero;
             for r in 0..j {
                 let denom = right[r + 1] + left[j - r];
-                let temp = if denom.abs() <= P::Scalar::epsilon() {
+                let temp = if denom == zero {
                     zero
                 } else {
                     basis[r] / denom
@@ -379,7 +400,7 @@ where
             for r in 0..j {
                 let denom = right[r + 1] + left[j - r];
                 ndu[j][r] = denom;
-                let temp = if denom.abs() <= P::Scalar::epsilon() {
+                let temp = if denom == zero {
                     zero
                 } else {
                     ndu[r][j - 1] / denom
@@ -408,7 +429,7 @@ where
 
                 if r >= k {
                     let denom = ndu[pk + 1][rk as usize];
-                    a[s2][0] = if denom.abs() <= P::Scalar::epsilon() {
+                    a[s2][0] = if denom == zero {
                         zero
                     } else {
                         a[s1][0] / denom
@@ -422,7 +443,7 @@ where
                 if j1 <= j2 {
                     for j in j1..=j2 {
                         let denom = ndu[pk + 1][(rk + j as isize) as usize];
-                        a[s2][j] = if denom.abs() <= P::Scalar::epsilon() {
+                        a[s2][j] = if denom == zero {
                             zero
                         } else {
                             (a[s1][j] - a[s1][j - 1]) / denom
@@ -433,7 +454,7 @@ where
 
                 if r <= pk {
                     let denom = ndu[pk + 1][r];
-                    a[s2][k] = if denom.abs() <= P::Scalar::epsilon() {
+                    a[s2][k] = if denom == zero {
                         zero
                     } else {
                         -a[s1][k - 1] / denom
@@ -743,10 +764,10 @@ where
                 let denominator = self.knots[j + 1 + k - r] - self.knots[j + k - D];
                 let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
                 let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-                let alpha = if numerator < P::Scalar::epsilon() {
+                let alpha = if numerator == zero {
                     // we are at the start of a knot span (interpolation d[j-1] -> d[j])
                     zero
-                } else if denominator.abs() < P::Scalar::epsilon() {
+                } else if denominator == zero {
                     // we are at then end of a knot span (interpolation d[j-1] -> d[j])
                     // this will lead to d[j] simply being copied to d[j]
                     one
@@ -975,7 +996,7 @@ where
         let (kmin, kmax) = self.knot_domain();
 
         let total = self.arclen(nsteps)?;
-        if total <= P::Scalar::epsilon() {
+        if total == zero {
             return Ok(kmin);
         }
         let target = s.clamp(zero, total);
@@ -1041,7 +1062,7 @@ where
         let derivative_points: [P; C - 1] = core::array::from_fn(|i| {
             let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
             let denom = self.knots[i + D + 1] - self.knots[i + 1];
-            let scale = if denom.abs() < P::Scalar::epsilon() {
+            let scale = if denom == zero {
                 zero
             } else {
                 <P::Scalar as NumCast>::from(D as f64).unwrap() / denom
@@ -1049,22 +1070,7 @@ where
             (self.control_points[i + 1] - self.control_points[i]) * scale
         });
 
-        let degree = D - 1;
-        let is_clamped_front = derivative_knots[0..=degree]
-            .iter()
-            .all(|&knot| (knot - derivative_knots[0]).abs() < P::Scalar::epsilon());
-        let is_clamped_back = derivative_knots[derivative_knots.len() - degree - 1..]
-            .iter()
-            .all(|&knot| {
-                (knot - derivative_knots[derivative_knots.len() - 1]).abs() < P::Scalar::epsilon()
-            });
-
-        let knot_kind = match (is_clamped_front, is_clamped_back) {
-            (false, false) => KnotVectorKind::Unclamped,
-            (true, false) => KnotVectorKind::ClampedStart,
-            (false, true) => KnotVectorKind::ClampedEnd,
-            (true, true) => KnotVectorKind::Clamped,
-        };
+        let knot_kind = classify_knot_vector(&derivative_knots, D - 1);
 
         BSpline {
             knots: derivative_knots,
@@ -1085,9 +1091,10 @@ where
         [(); (D - 1) + 1]: Sized, // keep (D - 1) + 1; compiler doesn't normalize to D
     {
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let dir = self.derivative().eval(t)?;
         let len = dir.squared_norm().sqrt();
-        if len <= P::Scalar::epsilon() {
+        if len == zero {
             Ok(dir)
         } else {
             Ok(dir * (one / len))
@@ -1116,7 +1123,7 @@ where
         }
 
         let v2 = v.squared_norm();
-        if v2 <= P::Scalar::epsilon() {
+        if v2 == zero {
             return Ok(zero);
         }
         let a2 = a.squared_norm();
@@ -1126,7 +1133,7 @@ where
             num = zero;
         }
         let denom = v2 * v2.sqrt();
-        if denom <= P::Scalar::epsilon() {
+        if denom == zero {
             Ok(zero)
         } else {
             Ok(num.sqrt() / denom)
@@ -1156,13 +1163,13 @@ where
         }
 
         let v2 = v.squared_norm();
-        if v2 <= P::Scalar::epsilon() {
+        if v2 == zero {
             return Ok(None);
         }
         let dot = PointDot::dot(&v, &a);
         let a_perp = a - v * (dot / v2);
         let n2 = a_perp.squared_norm();
-        if n2 <= P::Scalar::epsilon() {
+        if n2 == zero {
             return Ok(None);
         }
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
@@ -1280,6 +1287,69 @@ mod tests {
 
     const ABSOLUTE_TOLERANCE: f64 = 1e-12;
     const RELATIVE_TOLERANCE: f64 = 1e-12;
+
+    #[test]
+    fn rejects_non_finite_knots() {
+        let points = [PointN::new([0.0_f64]), PointN::new([1.0])];
+
+        for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let result = BSpline::<PointN<f64, 1>, 4, 2, 1>::new([0.0, invalid, 1.0, 1.0], points);
+            assert_eq!(result.err(), Some(BSplineError::NonFiniteKnot));
+        }
+    }
+
+    #[test]
+    fn rejects_non_finite_control_points_with_index() {
+        let points = [
+            PointN::new([0.0_f64]),
+            PointN::new([f64::NAN]),
+            PointN::new([f64::INFINITY]),
+        ];
+        let result =
+            BSpline::<PointN<f64, 1>, 6, 3, 2>::new([0.0, 0.0, 0.0, 1.0, 1.0, 1.0], points);
+
+        assert_eq!(
+            result.err(),
+            Some(BSplineError::NonFiniteControlPoint { index: 1 })
+        );
+    }
+
+    #[test]
+    fn knot_clamping_is_classified_structurally() {
+        let points = [PointN::new([0.0_f64]), PointN::new([1.0])];
+        let curve =
+            BSpline::<PointN<f64, 1>, 4, 2, 1>::new([0.0, f64::EPSILON / 2.0, 1.0, 1.0], points)
+                .unwrap();
+
+        assert_eq!(curve.knot_kind, KnotVectorKind::ClampedEnd);
+    }
+
+    #[test]
+    fn narrow_knot_span_remains_non_degenerate() {
+        let span = 1e-20_f64;
+        let points = [PointN::new([0.0]), PointN::new([1.0])];
+        let curve =
+            BSpline::<PointN<f64, 1>, 4, 2, 1>::new([0.0, 0.0, span, span], points).unwrap();
+        let t = span * 0.5;
+
+        assert_point_approx_equal(
+            curve.eval(t).unwrap(),
+            PointN::new([0.5]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
+
+        let knot_span = curve.knot_span(t).unwrap();
+        let basis = curve.basis_functions(knot_span, t).unwrap();
+        assert_approx_equal(basis[0], 0.5, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
+        assert_approx_equal(basis[1], 0.5, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
+        assert_point_approx_equal(
+            curve.tangent(t).unwrap(),
+            PointN::new([1.0]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
+    }
 
     #[test]
     fn degree_1_clamped_construct_and_eval_endpoints() {
@@ -1602,7 +1672,7 @@ mod tests {
             points,
         )
         .unwrap();
-        let bezier = crate::Bezier::new(points);
+        let bezier = crate::Bezier::new(points).unwrap();
 
         assert_eq!(spline.knot_kind, KnotVectorKind::Clamped);
         assert_eq!(spline.knot_domain(), (0.0, 1.0));

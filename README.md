@@ -13,6 +13,8 @@ The library makes heavy use of const-generics and `generic_const_exprs`, so the 
 This repo uses `nightly` via `rust-toolchain`.  
 It comes with a const-generic N-dimensional Point type so you can use the library without any other dependencies.  
 `PointN<T, N>` uses your chosen scalar `T` (typically `f32`/`f64`) and keeps the dimension at compile time.  
+Point scalar types must implement `num_traits::Float`; the library therefore currently targets floating-point numeric representations such as `f32` and `f64`.
+
 Should you want to integrate with types provided by another library, implement the small `Point` trait. Optional extension traits (`PointIndex`, `PointDot`, `PointNorm`) unlock component access and geometric helpers when needed.  
 
 Right now, the generic versions don't implement all methods that the specialized versions do (as the algorithms get a bit more complicated) but should reach parity eventually.
@@ -32,7 +34,7 @@ let curve = Bezier::<SVector<f32, 2>, 3>::new([
     SVector::<f32, 2>::new(0.0, 0.0),
     SVector::<f32, 2>::new(1.0, 0.0),
     SVector::<f32, 2>::new(1.0, 1.0),
-]);
+]).unwrap();
 
 let mid = curve.eval(0.5);
 ```

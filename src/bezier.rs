@@ -4,6 +4,7 @@ use core::iter::IntoIterator;
 use core::slice;
 
 use super::*;
+use crate::error::{CurveConstructionError, validate_control_points};
 use crate::find_root::FindRoot;
 use crate::point::{Point, PointIndex, PointNorm};
 use crate::roots::RootFindingError;
@@ -59,8 +60,18 @@ where
 {
     /// Create a new Bezier curve from the provided control points.
     /// The degree is `N - 1`.
-    pub fn new(control_points: [P; N]) -> Bezier<P, { N }> {
-        Bezier { control_points }
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CurveConstructionError::NoControlPoints`] when `N` is zero, or
+    /// [`CurveConstructionError::NonFiniteControlPoint`] with the index of the
+    /// first control point containing a non-finite coordinate.
+    pub fn new(control_points: [P; N]) -> Result<Bezier<P, { N }>, CurveConstructionError> {
+        if control_points.is_empty() {
+            return Err(CurveConstructionError::NoControlPoints);
+        }
+        validate_control_points(&control_points)?;
+        Ok(Bezier { control_points })
     }
 
     /// Return the control points array.
@@ -168,7 +179,7 @@ where
         let half = <P::Scalar as NumCast>::from(0.5).unwrap();
 
         let total = self.arclen(nsteps);
-        if total <= P::Scalar::epsilon() {
+        if total == zero {
             return zero;
         }
         let target = s.clamp(zero, total);
@@ -253,7 +264,9 @@ where
         let scale = <P::Scalar as NumCast>::from((N - 1) as f64).unwrap();
         let new_points: [P; N - 1] =
             core::array::from_fn(|i| (self.control_points[i + 1] - self.control_points[i]) * scale);
-        Bezier::new(new_points)
+        Bezier {
+            control_points: new_points,
+        }
     }
 
     /// Return the unit tangent direction at `t`.
@@ -263,13 +276,10 @@ where
         [(); N - 1]: Sized,
     {
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let dir = self.derivative().eval(t);
         let len = dir.squared_norm().sqrt();
-        if len <= P::Scalar::epsilon() {
-            dir
-        } else {
-            dir * (one / len)
-        }
+        if len == zero { dir } else { dir * (one / len) }
     }
 
     /// Return the curvature magnitude at `t`.
@@ -290,7 +300,7 @@ where
             first.derivative().eval(t)
         };
         let v2 = v.squared_norm();
-        if v2 <= P::Scalar::epsilon() {
+        if v2 == zero {
             return zero;
         }
         let a2 = a.squared_norm();
@@ -300,7 +310,7 @@ where
             num = zero;
         }
         let denom = v2 * v2.sqrt();
-        if denom <= P::Scalar::epsilon() {
+        if denom == zero {
             zero
         } else {
             num.sqrt() / denom
@@ -317,10 +327,11 @@ where
         [(); N - 2]: Sized,
         [(); (N - 1) - 1]: Sized,
     {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let first = self.derivative();
         let v = first.eval(t);
         let v2 = v.squared_norm();
-        if v2 <= P::Scalar::epsilon() {
+        if v2 == zero {
             return None;
         }
         let a = if N < 3 {
@@ -333,7 +344,7 @@ where
         let dot = PointDot::dot(&v, &a);
         let a_perp = a - v * (dot / v2);
         let n2 = a_perp.squared_norm();
-        if n2 <= P::Scalar::epsilon() {
+        if n2 == zero {
             return None;
         }
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
@@ -599,11 +610,31 @@ mod tests {
     use super::CubicBezier;
     use super::QuadraticBezier;
     use super::*;
+    use crate::CurveConstructionError;
     use crate::PointN;
     use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
 
     const ABSOLUTE_TOLERANCE: f64 = 1e-12;
     const RELATIVE_TOLERANCE: f64 = 1e-12;
+
+    #[test]
+    fn rejects_invalid_control_points() {
+        let empty = Bezier::<PointN<f64, 1>, 0>::new([]);
+        assert!(matches!(
+            empty,
+            Err(CurveConstructionError::NoControlPoints)
+        ));
+
+        let non_finite = Bezier::new([
+            PointN::new([0.0_f64]),
+            PointN::new([f64::NAN]),
+            PointN::new([f64::INFINITY]),
+        ]);
+        assert!(matches!(
+            non_finite,
+            Err(CurveConstructionError::NonFiniteControlPoint { index: 1 })
+        ));
+    }
 
     //use crate::num_traits::{Pow};
     #[test]
@@ -617,7 +648,7 @@ mod tests {
             PointN::new([8.9f64, 1.7f64]),
         ];
 
-        let curve: Bezier<PointN<f64, 2>, 6> = Bezier::new(points);
+        let curve: Bezier<PointN<f64, 2>, 6> = Bezier::new(points).unwrap();
 
         // check if start/end points match
         let start = curve.eval(0.0);
@@ -652,7 +683,7 @@ mod tests {
     #[test]
     fn arclen_line_approx() {
         let bezier: Bezier<PointN<f64, 2>, 2> =
-            Bezier::new([PointN::new([0.0, 0.0]), PointN::new([10.0, 0.0])]);
+            Bezier::new([PointN::new([0.0, 0.0]), PointN::new([10.0, 0.0])]).unwrap();
         let expected = (bezier.eval(1.0) - bezier.eval(0.0)).squared_norm().sqrt();
         let length = bezier.arclen(32);
         let tolerance = expected * 0.05;
@@ -704,7 +735,8 @@ mod tests {
             PointN::new([1.1f64, -1f64]),
             PointN::new([4.3f64, 3f64]),
             PointN::new([3.2f64, -4f64]),
-        );
+        )
+        .unwrap();
 
         let generic_bezier = Bezier {
             control_points: [
@@ -735,7 +767,8 @@ mod tests {
             PointN::new([0f64, 1.77f64]),
             PointN::new([1.1f64, -1f64]),
             PointN::new([3.2f64, -4f64]),
-        );
+        )
+        .unwrap();
 
         let generic_bezier = Bezier {
             control_points: [
@@ -869,7 +902,8 @@ mod tests {
             PointN::new([1.1f64, -1f64]),
             PointN::new([4.3f64, 3f64]),
             PointN::new([3.2f64, -4f64]),
-        );
+        )
+        .unwrap();
 
         let generic_bounds = generic_bezier.bounding_box();
         let cubic_bounds = cubic_bezier.bounding_box();
@@ -885,7 +919,8 @@ mod tests {
         let bezier = Bezier::<PointN<f64, 2>, 2>::new([
             PointN::new([0f64, 0f64]),
             PointN::new([2f64, 0f64]),
-        ]);
+        ])
+        .unwrap();
 
         assert_eq!(bezier.start(), bezier.eval(0.0));
         assert_eq!(bezier.end(), bezier.eval(1.0));
@@ -908,5 +943,21 @@ mod tests {
 
         let p = bezier.point_at_length(1.0);
         assert_point_approx_equal(p, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
+    }
+
+    #[test]
+    fn small_scale_bezier_remains_non_degenerate() {
+        let scale = 1e-20_f64;
+        let bezier =
+            Bezier::<PointN<f64, 2>, 2>::new([PointN::new([0.0, 0.0]), PointN::new([scale, 0.0])])
+                .unwrap();
+
+        assert_point_approx_equal(
+            bezier.tangent(0.5),
+            PointN::new([1.0, 0.0]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
+        assert_approx_equal(bezier.t_at_length(scale * 0.5), 0.5, 1e-9, 1e-9);
     }
 }

@@ -6,7 +6,8 @@ fn main() {
         PointN::new([-0.5, 1.5]),
         PointN::new([0.5, -1.5]),
         PointN::new([1.0, 0.0]),
-    ]);
+    ])
+    .unwrap();
 
     println!("t    p(x,y)         tan(x,y)       kappa   normal sketch");
     let samples = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0];

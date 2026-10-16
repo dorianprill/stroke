@@ -8,7 +8,8 @@ fn main() {
         PointN::new([1.0, kappa]),
         PointN::new([kappa, 1.0]),
         PointN::new([0.0, 1.0]),
-    ]);
+    ])
+    .unwrap();
 
     let samples = 100;
     let mut max_err = 0.0;

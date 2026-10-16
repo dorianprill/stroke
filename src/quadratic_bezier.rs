@@ -1,6 +1,8 @@
 //! Quadratic Bezier curve specialization.
 
 use super::{ArrayVec, LineSegment, Point, PointDot, PointIndex, PointNorm};
+use crate::error::{CurveConstructionError, validate_control_points};
+use crate::numeric::is_negligible;
 use num_traits::{Float, NumCast};
 
 const DEFAULT_DISTANCE_STEPS: usize = 64;
@@ -23,9 +25,15 @@ impl<P: Point> QuadraticBezier<P>
 where
     P: Point,
 {
-    /// Creates a new instance of `QuadraticBezier` from the given control points
-    pub fn new(start: P, ctrl: P, end: P) -> Self {
-        QuadraticBezier { start, ctrl, end }
+    /// Creates a new instance of `QuadraticBezier` from the given control points.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CurveConstructionError::NonFiniteControlPoint`] with the index
+    /// of the first control point containing a non-finite coordinate.
+    pub fn new(start: P, ctrl: P, end: P) -> Result<Self, CurveConstructionError> {
+        validate_control_points(&[start, ctrl, end])?;
+        Ok(QuadraticBezier { start, ctrl, end })
     }
 
     /// Evaluates the quadratic bezier curve at 't' using direct evaluation, which may not be numerically stable
@@ -117,13 +125,10 @@ where
         P: PointNorm,
     {
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let dir = self.derivative().eval(t);
         let len = dir.squared_norm().sqrt();
-        if len <= P::Scalar::epsilon() {
-            dir
-        } else {
-            dir * (one / len)
-        }
+        if len == zero { dir } else { dir * (one / len) }
     }
 
     /// Return the curvature magnitude at `t`.
@@ -135,7 +140,7 @@ where
         let v = self.derivative().eval(t);
         let a = self.derivative().derivative();
         let v2 = v.squared_norm();
-        if v2 <= P::Scalar::epsilon() {
+        if v2 == zero {
             return zero;
         }
         let a2 = a.squared_norm();
@@ -145,7 +150,7 @@ where
             num = zero;
         }
         let denom = v2 * v2.sqrt();
-        if denom <= P::Scalar::epsilon() {
+        if denom == zero {
             zero
         } else {
             num.sqrt() / denom
@@ -159,16 +164,17 @@ where
     where
         P: PointNorm + PointDot,
     {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let v = self.derivative().eval(t);
         let v2 = v.squared_norm();
-        if v2 <= P::Scalar::epsilon() {
+        if v2 == zero {
             return None;
         }
         let a = self.derivative().derivative();
         let dot = PointDot::dot(&v, &a);
         let a_perp = a - v * (dot / v2);
         let n2 = a_perp.squared_norm();
-        if n2 <= P::Scalar::epsilon() {
+        if n2 == zero {
             return None;
         }
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
@@ -262,14 +268,14 @@ where
         [P::Scalar; 2]: tinyvec::Array<Item = P::Scalar>,
     {
         let mut result = ArrayVec::new();
-        let eps = P::Scalar::epsilon();
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let two = <P::Scalar as NumCast>::from(2.0).unwrap();
         let four = <P::Scalar as NumCast>::from(4.0).unwrap();
+        let coefficient_scale = a.abs().max(b.abs()).max(c.abs());
 
         // check if can be handled below quadratic order
-        if a.abs() < eps {
-            if b.abs() < eps {
+        if is_negligible(a, coefficient_scale) {
+            if is_negligible(b, coefficient_scale) {
                 // no solutions
                 return result;
             }
@@ -278,13 +284,15 @@ where
             return result;
         }
         // is quadratic equation
-        let delta = b * b - a * c * four;
-        if delta > zero {
+        let b_squared = b * b;
+        let four_ac = a * c * four;
+        let delta = b_squared - four_ac;
+        if is_negligible(delta, b_squared.abs() + four_ac.abs()) {
+            result.push(-b / (a * two));
+        } else if delta > zero {
             let sqrt_delta = delta.sqrt();
             result.push((-b - sqrt_delta) / (a * two));
             result.push((-b + sqrt_delta) / (a * two));
-        } else if delta.abs() < eps {
-            result.push(-b / (a * two));
         }
         result
     }
@@ -355,7 +363,7 @@ where
         let half = <P::Scalar as NumCast>::from(0.5).unwrap();
 
         let total = self.arclen(nsteps);
-        if total <= P::Scalar::epsilon() {
+        if total == zero {
             return zero;
         }
         let target = s.clamp(zero, total);
@@ -412,9 +420,8 @@ where
     where
         P: PointNorm,
     {
-        // if start and end are (nearly) the same
-        // TODO using squared norm vs machine epsilon OK?
-        if (self.start - self.end).squared_norm() < P::Scalar::epsilon() {
+        let tolerance = tolerance.abs();
+        if (self.start - self.end).squared_norm() <= tolerance * tolerance {
             return false;
         }
         // else check if ctrl points lie on baseline i.e. all points are colinear
@@ -437,6 +444,7 @@ where
     where
         P: PointNorm,
     {
+        let tolerance = tolerance.abs();
         let tolerance_squared = tolerance * tolerance;
         // Use <= so that tolerance can be zero.
         (self.start - self.end).squared_norm() <= tolerance_squared
@@ -457,9 +465,9 @@ where
         [P::Scalar; 3]: tinyvec::Array<Item = P::Scalar>,
     {
         let mut result = ArrayVec::new();
-        if self.is_a_point(P::Scalar::epsilon())
-            || (self.are_points_colinear(<P::Scalar as NumCast>::from(0.0).unwrap())
-                && (self.start - self.end).squared_norm() < P::Scalar::epsilon())
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        if self.is_a_point(zero)
+            || (self.are_points_colinear(zero) && (self.start - self.end).squared_norm() == zero)
         {
             return result;
         }
@@ -472,7 +480,6 @@ where
         let c = self.start[axis] - value;
 
         let roots = self.real_roots(a, b, c);
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         for &root in roots.iter() {
             if root > zero && root < one {
@@ -530,6 +537,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CurveConstructionError;
     use crate::PointN;
     use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
 
@@ -537,12 +545,27 @@ mod tests {
     const RELATIVE_TOLERANCE: f64 = 1e-12;
 
     #[test]
+    fn rejects_non_finite_control_points() {
+        let result = QuadraticBezier::new(
+            PointN::new([0.0_f64]),
+            PointN::new([f64::NAN]),
+            PointN::new([f64::INFINITY]),
+        );
+
+        assert_eq!(
+            result,
+            Err(CurveConstructionError::NonFiniteControlPoint { index: 1 })
+        );
+    }
+
+    #[test]
     fn eval_endpoints() {
         let bezier = QuadraticBezier::new(
             PointN::new([0f64, 0f64]),
             PointN::new([1f64, 1f64]),
             PointN::new([2f64, 0f64]),
-        );
+        )
+        .unwrap();
 
         assert_eq!(bezier.eval(0.0), PointN::new([0.0, 0.0]));
         assert_eq!(bezier.eval(1.0), PointN::new([2.0, 0.0]));
@@ -554,7 +577,8 @@ mod tests {
             PointN::new([0f64, 0f64]),
             PointN::new([1f64, 0f64]),
             PointN::new([2f64, 0f64]),
-        );
+        )
+        .unwrap();
         let length = bezier.arclen(32);
         assert!((length - 2.0).abs() < 1e-3);
     }
@@ -567,7 +591,8 @@ mod tests {
             PointN::new([0f64, 1.77f64]),
             PointN::new([4.3f64, 3f64]),
             PointN::new([3.2f64, -4f64]),
-        );
+        )
+        .unwrap();
 
         let nsteps: usize = 1000;
         for t in 0..=nsteps {
@@ -584,7 +609,8 @@ mod tests {
             PointN::new([0.0_f32, 1.77]),
             PointN::new([4.3, 3.0]),
             PointN::new([3.2, -4.0]),
-        );
+        )
+        .unwrap();
 
         let nsteps: usize = 1000;
         for step in 0..=nsteps {
@@ -670,7 +696,8 @@ mod tests {
             PointN::new([0f64, 0f64]),
             PointN::new([1f64, 0f64]),
             PointN::new([2f64, 0f64]),
-        );
+        )
+        .unwrap();
 
         assert_eq!(bezier.start(), bezier.eval(0.0));
         assert_eq!(bezier.end(), bezier.eval(1.0));
@@ -701,12 +728,47 @@ mod tests {
             PointN::new([0f64, 0f64]),
             PointN::new([1f64, 1f64]),
             PointN::new([2f64, 0f64]),
-        );
+        )
+        .unwrap();
 
         let curvature = bezier.curvature(0.5);
         assert!(curvature > 0.0);
 
         let normal = bezier.normal(0.5).unwrap();
         assert!((normal.squared_norm() - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn small_scale_quadratic_remains_linear_with_unit_tangent() {
+        let scale = 1e-20_f64;
+        let bezier = QuadraticBezier::new(
+            PointN::new([0.0, 0.0]),
+            PointN::new([scale * 0.5, 0.0]),
+            PointN::new([scale, 0.0]),
+        )
+        .unwrap();
+
+        assert!(bezier.is_linear(scale * 1e-6));
+        assert_point_approx_equal(
+            bezier.tangent(0.5),
+            PointN::new([1.0, 0.0]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
+    }
+
+    #[test]
+    fn quadratic_roots_are_scale_invariant() {
+        let bezier = QuadraticBezier::new(
+            PointN::new([0.0_f64]),
+            PointN::new([0.0]),
+            PointN::new([0.0]),
+        )
+        .unwrap();
+        let roots = bezier.real_roots(1e-30, -3e-30, 2e-30);
+
+        assert_eq!(roots.len(), 2);
+        assert_approx_equal(roots[0], 1.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
+        assert_approx_equal(roots[1], 2.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
     }
 }

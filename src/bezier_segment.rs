@@ -228,7 +228,10 @@ where
     P: Point + Default,
 {
     fn default() -> Self {
-        BezierSegment::Linear(LineSegment::new(P::default(), P::default()))
+        BezierSegment::Linear(LineSegment {
+            start: P::default(),
+            end: P::default(),
+        })
     }
 }
 
@@ -243,7 +246,7 @@ mod tests {
 
     #[test]
     fn bezier_segment_api_parity() {
-        let line = LineSegment::new(PointN::new([0f64, 0f64]), PointN::new([2f64, 0f64]));
+        let line = LineSegment::new(PointN::new([0f64, 0f64]), PointN::new([2f64, 0f64])).unwrap();
         let segment = BezierSegment::from(line);
 
         assert_eq!(segment.start(), segment.eval(0.0));

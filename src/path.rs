@@ -23,11 +23,11 @@ const MAX_LENGTH_ITERS: usize = 32;
 /// path.push_line(LineSegment::new(
 ///     PointN::new([0.0, 0.0]),
 ///     PointN::new([1.0, 0.0]),
-/// ));
+/// ).unwrap());
 /// path.push_line(LineSegment::new(
 ///     PointN::new([1.0, 0.0]),
 ///     PointN::new([2.0, 0.0]),
-/// ));
+/// ).unwrap());
 ///
 /// assert_eq!(path.start().unwrap(), PointN::new([0.0, 0.0]));
 /// assert_eq!(path.end().unwrap(), PointN::new([2.0, 0.0]));
@@ -163,7 +163,7 @@ where
         let half = <P::Scalar as NumCast>::from(0.5).unwrap();
 
         let total = self.arclen_partial(one, nsteps)?;
-        if total <= P::Scalar::epsilon() {
+        if total == zero {
             return Some(zero);
         }
         let target = s.clamp(zero, total);
@@ -309,14 +309,8 @@ mod tests {
     #[test]
     fn bezier_path_eval_segments() {
         let mut path: BezierPath<PointN<f64, 2>, 4> = BezierPath::new();
-        path.push_line(LineSegment::new(
-            PointN::new([0.0, 0.0]),
-            PointN::new([1.0, 0.0]),
-        ));
-        path.push_line(LineSegment::new(
-            PointN::new([1.0, 0.0]),
-            PointN::new([1.0, 1.0]),
-        ));
+        path.push_line(LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])).unwrap());
+        path.push_line(LineSegment::new(PointN::new([1.0, 0.0]), PointN::new([1.0, 1.0])).unwrap());
 
         let p0 = path.eval(0.0).unwrap();
         assert_eq!(p0, PointN::new([0.0, 0.0]));
@@ -341,14 +335,8 @@ mod tests {
     #[test]
     fn bezier_path_bounds_union() {
         let mut path: BezierPath<PointN<f64, 2>, 4> = BezierPath::new();
-        path.push_line(LineSegment::new(
-            PointN::new([0.0, 0.0]),
-            PointN::new([1.0, 0.0]),
-        ));
-        path.push_line(LineSegment::new(
-            PointN::new([1.0, 0.0]),
-            PointN::new([1.0, 1.0]),
-        ));
+        path.push_line(LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])).unwrap());
+        path.push_line(LineSegment::new(PointN::new([1.0, 0.0]), PointN::new([1.0, 1.0])).unwrap());
 
         let bounds = path.bounding_box().unwrap();
         assert_eq!(bounds[0], (0.0, 1.0));
@@ -358,14 +346,8 @@ mod tests {
     #[test]
     fn bezier_path_clamps_out_of_range() {
         let mut path: BezierPath<PointN<f64, 2>, 2> = BezierPath::new();
-        path.push_line(LineSegment::new(
-            PointN::new([0.0, 0.0]),
-            PointN::new([1.0, 0.0]),
-        ));
-        path.push_line(LineSegment::new(
-            PointN::new([1.0, 0.0]),
-            PointN::new([1.0, 1.0]),
-        ));
+        path.push_line(LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])).unwrap());
+        path.push_line(LineSegment::new(PointN::new([1.0, 0.0]), PointN::new([1.0, 1.0])).unwrap());
 
         let start = path.eval(-1.0).unwrap();
         assert_eq!(start, PointN::new([0.0, 0.0]));
@@ -377,14 +359,10 @@ mod tests {
     #[test]
     fn bezier_path_capacity() {
         let mut path: BezierPath<PointN<f64, 2>, 1> = BezierPath::new();
-        let first = path.push_line(LineSegment::new(
-            PointN::new([0.0, 0.0]),
-            PointN::new([1.0, 0.0]),
-        ));
-        let second = path.push_line(LineSegment::new(
-            PointN::new([1.0, 0.0]),
-            PointN::new([2.0, 0.0]),
-        ));
+        let first = path
+            .push_line(LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])).unwrap());
+        let second = path
+            .push_line(LineSegment::new(PointN::new([1.0, 0.0]), PointN::new([2.0, 0.0])).unwrap());
 
         assert!(first);
         assert!(!second);
@@ -394,14 +372,8 @@ mod tests {
     #[test]
     fn bezier_path_api_parity() {
         let mut path: BezierPath<PointN<f64, 2>, 2> = BezierPath::new();
-        path.push_line(LineSegment::new(
-            PointN::new([0.0, 0.0]),
-            PointN::new([1.0, 0.0]),
-        ));
-        path.push_line(LineSegment::new(
-            PointN::new([1.0, 0.0]),
-            PointN::new([2.0, 0.0]),
-        ));
+        path.push_line(LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])).unwrap());
+        path.push_line(LineSegment::new(PointN::new([1.0, 0.0]), PointN::new([2.0, 0.0])).unwrap());
 
         assert_eq!(path.start().unwrap(), PointN::new([0.0, 0.0]));
         assert_eq!(path.end().unwrap(), PointN::new([2.0, 0.0]));
@@ -424,5 +396,16 @@ mod tests {
 
         let p = path.point_at_length(1.0).unwrap();
         assert_point_approx_equal(p, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
+    }
+
+    #[test]
+    fn small_scale_path_remains_non_degenerate() {
+        let scale = 1e-20_f64;
+        let mut path: BezierPath<PointN<f64, 2>, 1> = BezierPath::new();
+        assert!(path.push_line(
+            LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([scale, 0.0]),).unwrap()
+        ));
+
+        assert_approx_equal(path.t_at_length(scale * 0.5).unwrap(), 0.5, 1e-9, 1e-9);
     }
 }

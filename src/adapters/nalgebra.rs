@@ -13,7 +13,7 @@
 //!     SVector::<f32, 2>::new(0.0, 0.0),
 //!     SVector::<f32, 2>::new(1.0, 0.0),
 //!     SVector::<f32, 2>::new(1.0, 1.0),
-//! ]);
+//! ]).unwrap();
 //!
 //! let mid = curve.eval(0.5);
 //! # let _ = mid;
@@ -33,4 +33,19 @@ where
 {
     type Scalar = T;
     const DIM: usize = D;
+
+    fn is_finite(&self) -> bool {
+        self.iter().all(|value| Float::is_finite(*value))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vector_finiteness_checks_every_coordinate() {
+        assert!(Point::is_finite(&SVector::<f64, 2>::new(0.0, -0.0)));
+        assert!(!Point::is_finite(&SVector::<f64, 2>::new(0.0, f64::NAN)));
+    }
 }

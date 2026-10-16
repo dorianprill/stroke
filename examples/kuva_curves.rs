@@ -142,14 +142,16 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         Point::new([0.0, 0.0]),
         Point::new([2.0, 4.0]),
         Point::new([4.0, 0.0]),
-    ]);
+    ])
+    .map_err(|error| error.to_string())?;
     // Preserve the control points from the original README figure.
     let cubic = Bezier::new([
         Point::new([0.0, 1.77]),
         Point::new([1.1, -1.0]),
         Point::new([4.3, 3.0]),
         Point::new([3.2, -4.0]),
-    ]);
+    ])
+    .map_err(|error| error.to_string())?;
     // A degree-5 spline with six copies of each endpoint knot is exactly the
     // original quintic Bezier when it uses the same six control points.
     let clamped = BSpline::<Point, 12, 6, 5>::new(

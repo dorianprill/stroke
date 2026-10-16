@@ -165,4 +165,20 @@ where
 {
     type Scalar = T;
     const DIM: usize = N;
+
+    fn is_finite(&self) -> bool {
+        self.0.iter().all(|value| value.is_finite())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn point_finiteness_checks_every_coordinate() {
+        assert!(PointN::new([0.0_f64, -0.0, f64::MIN_POSITIVE]).is_finite());
+        assert!(!PointN::new([0.0_f64, f64::NAN]).is_finite());
+        assert!(!PointN::new([f64::NEG_INFINITY, 0.0]).is_finite());
+    }
 }

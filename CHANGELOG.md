@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Breaking changes
+- Added `Point::is_finite`; custom point implementations must report whether all coordinates are finite.
+- Made line and Bezier `new` constructors fallible so they reject non-finite control points; generic Bezier construction also rejects an empty control-point array.
+
 ### Changed
 - Added a project Clippy policy, Cargo lint aliases, and a pre-commit hook; CI checks both feature configurations with warnings treated as errors.
 - Replaced the Plotters example with a Kuva SVG figure showing two generic Bezier curves and clamped/unclamped generic B-splines, their bounding boxes, labeled control points, knot-vector legends, and marked interior knots and unclamped endpoints.
@@ -13,6 +17,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Evaluate unclamped B-splines at the final domain parameter using de Boor's algorithm instead of incorrectly returning the last control point.
+- Reject non-finite B-spline knots and control points, reporting the first invalid control-point index.
+- Treat B-spline knot multiplicity and zero-width spans structurally, while using scale-aware tolerances only for algebraic cancellation.
 
 ## [0.3.0] - 2026-01-22
 

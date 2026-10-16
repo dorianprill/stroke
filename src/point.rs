@@ -15,6 +15,11 @@ pub trait Point:
     type Scalar: Float;
     /// Compile-time dimension of the point.
     const DIM: usize;
+
+    /// Return whether every coordinate is finite.
+    ///
+    /// Numeric representations without NaN or infinity should return `true`.
+    fn is_finite(&self) -> bool;
 }
 
 /// Optional capability trait for component access via indexing.
