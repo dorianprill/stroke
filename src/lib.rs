@@ -49,6 +49,9 @@ pub mod point;
 
 mod roots;
 
+#[cfg(test)]
+mod test_support;
+
 #[cfg(feature = "nalgebra")]
 mod adapters;
 
@@ -64,11 +67,3 @@ pub use point::Point;
 pub use point::{PointDot, PointIndex, PointNorm};
 pub use point_generic::PointN;
 pub use quadratic_bezier::QuadraticBezier;
-
-// Per-architecture epsilon used by tests.
-#[cfg(test)]
-#[cfg(target_pointer_width = "64")]
-pub(crate) const EPSILON: f64 = f64::EPSILON;
-#[cfg(test)]
-#[cfg(not(target_pointer_width = "64"))]
-pub(crate) const EPSILON: f32 = f32::EPSILON;

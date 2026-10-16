@@ -235,7 +235,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EPSILON, PointN, PointNorm};
+    use crate::PointN;
+    use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
+
+    const ABSOLUTE_TOLERANCE: f64 = 1e-12;
+    const RELATIVE_TOLERANCE: f64 = 1e-12;
 
     #[test]
     fn bezier_segment_api_parity() {
@@ -248,20 +252,25 @@ mod tests {
         let reversed = segment.reverse();
         let p0 = segment.eval(0.25);
         let p1 = reversed.eval(0.75);
-        assert!((p0 - p1).squared_norm() < EPSILON);
+        assert_point_approx_equal(p0, p1, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
         let tangent = segment.tangent(0.3);
-        assert!((tangent[0] - 1.0).abs() < EPSILON);
-        assert!(tangent[1].abs() < EPSILON);
+        assert_approx_equal(tangent[0], 1.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
+        assert_approx_equal(tangent[1], 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
         let curvature = segment.curvature(0.3);
-        assert!(curvature.abs() < EPSILON);
+        assert_approx_equal(curvature, 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
         assert!(segment.normal(0.3).is_none());
 
         let t = segment.t_at_length(1.0);
-        assert!((t - 0.5).abs() < EPSILON);
+        assert_approx_equal(t, 0.5, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
         let p = segment.point_at_length(1.0);
-        assert!((p - PointN::new([1.0, 0.0])).squared_norm() < EPSILON);
+        assert_point_approx_equal(
+            p,
+            PointN::new([1.0, 0.0]),
+            ABSOLUTE_TOLERANCE,
+            RELATIVE_TOLERANCE,
+        );
     }
 }
