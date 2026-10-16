@@ -4,17 +4,15 @@ use core::iter::IntoIterator;
 use core::slice;
 
 use super::*;
+use crate::arc_length::integrate;
 use crate::error::{CurveConstructionError, validate_control_points};
 use crate::find_root::FindRoot;
 use crate::point::{Point, PointIndex, PointNorm};
 use crate::roots::RootFindingError;
 use num_traits::{Float, NumCast};
 
-const MAX_ROOT_DEPTH: usize = 32;
-const ROOT_TOLERANCE: f64 = 1e-6;
+const MAX_ROOT_DEPTH: usize = 64;
 const DEFAULT_DISTANCE_STEPS: usize = 64;
-const DEFAULT_LENGTH_STEPS: usize = 64;
-const MAX_LENGTH_ITERS: usize = 32;
 const LOCAL_SEARCH_ITERS: usize = 16;
 
 /// General implementation of a Bezier curve of arbitrary degree (`N - 1`).
@@ -33,7 +31,7 @@ where
     P: Point,
 {
     /// Control points which define the curve and hence its degree
-    control_points: [P; N],
+    pub(crate) control_points: [P; N],
 }
 
 impl<P: Point, const N: usize> IntoIterator for Bezier<P, { N }> {
@@ -169,58 +167,28 @@ where
         self.distance_to_point_approx(point, DEFAULT_DISTANCE_STEPS)
     }
 
-    /// Approximate parameter `t` at arc length `s`.
-    pub fn t_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> P::Scalar
+    /// Return parameter `t` at arc length `s`, clamped to the curve's endpoints.
+    /// `accuracy` is an absolute length tolerance, subject to floating-point roundoff.
+    pub fn t_at_length(
+        &self,
+        s: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<P::Scalar, ArcLengthError>
     where
         P: PointNorm,
     {
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
-
-        let total = self.arclen(nsteps);
-        if total == zero {
-            return zero;
-        }
-        let target = s.clamp(zero, total);
-
-        let mut lo = zero;
-        let mut hi = one;
-        for _ in 0..MAX_LENGTH_ITERS {
-            let mid = (lo + hi) * half;
-            let len = self.arclen_partial(mid, nsteps);
-            if len < target {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-
-        (lo + hi) * half
+        let total = self.arclen(accuracy)?;
+        crate::arc_length::inverse(s, accuracy, total, |a, b, tolerance| {
+            self.arclen_between(a, b, tolerance)
+        })
     }
 
-    /// Approximate parameter `t` at arc length `s` using a default resolution.
-    pub fn t_at_length(&self, s: P::Scalar) -> P::Scalar
+    /// Evaluate the point at arc length `s` using adaptive quadrature.
+    pub fn point_at_length(&self, s: P::Scalar, accuracy: P::Scalar) -> Result<P, ArcLengthError>
     where
         P: PointNorm,
     {
-        self.t_at_length_approx(s, DEFAULT_LENGTH_STEPS)
-    }
-
-    /// Evaluate the point at arc length `s`.
-    pub fn point_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> P
-    where
-        P: PointNorm,
-    {
-        self.eval(self.t_at_length_approx(s, nsteps))
-    }
-
-    /// Evaluate the point at arc length `s` using a default resolution.
-    pub fn point_at_length(&self, s: P::Scalar) -> P
-    where
-        P: PointNorm,
-    {
-        self.point_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+        Ok(self.eval(self.t_at_length(s, accuracy)?))
     }
 
     /// Split the curve at `t` into two sub-curves.
@@ -277,8 +245,8 @@ where
     {
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let dir = self.derivative().eval(t);
-        let len = dir.squared_norm().sqrt();
+        let dir = self.velocity(t);
+        let len = dir.norm();
         if len == zero { dir } else { dir * (one / len) }
     }
 
@@ -351,58 +319,174 @@ where
         Some(a_perp * (one / n2.sqrt()))
     }
 
-    /// Approximates the arc length of the curve by flattening it with straight line segments.
-    /// This works quite well, at ~32 segments it should already provide an error in the decimal places
-    /// The accuracy gain falls off with more steps so this approximation is unfeasable if desired accuracy is greater than 1-2 decimal places
-    pub fn arclen(&self, nsteps: usize) -> P::Scalar
+    /// Approximate the arc length by flattening the curve into `segments` lines.
+    pub fn arclen_polyline(&self, segments: usize) -> P::Scalar
     where
         P: PointNorm,
     {
-        let nsteps = nsteps.max(1);
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
+        let segments = segments.max(1);
+        let count = <P::Scalar as NumCast>::from(segments).unwrap();
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let stepsize = one / nsteps_scalar;
-        let mut arclen: P::Scalar = <P::Scalar as NumCast>::from(0.0).unwrap();
-        for i in 0..nsteps {
-            let t0 = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
-            let t1 = if i + 1 == nsteps { one } else { t0 + stepsize };
-            let p1 = self.eval(t0);
-            let p2 = self.eval(t1);
-
-            arclen = arclen + (p1 - p2).squared_norm().sqrt();
+        let mut length = zero;
+        let mut previous = self.control_points[0];
+        for i in 1..=segments {
+            let t = if i == segments {
+                one
+            } else {
+                <P::Scalar as NumCast>::from(i).unwrap() / count
+            };
+            let point = self.eval(t);
+            length = length + (point - previous).norm();
+            previous = point;
         }
-        arclen
+        length
     }
 
-    fn arclen_partial(&self, t: P::Scalar, nsteps: usize) -> P::Scalar
+    /// Return the arc length using adaptive Gauss-Legendre quadrature.
+    pub fn arclen(&self, accuracy: P::Scalar) -> Result<P::Scalar, ArcLengthError>
     where
         P: PointNorm,
+    {
+        self.arclen_to(<P::Scalar as NumCast>::from(1.0).unwrap(), accuracy)
+    }
+
+    fn arclen_to(&self, t: P::Scalar, accuracy: P::Scalar) -> Result<P::Scalar, ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        self.arclen_between(<P::Scalar as NumCast>::from(0.0).unwrap(), t, accuracy)
+    }
+
+    /// Integrate arc length over `start..end`, where `0 <= start <= end <= 1`.
+    /// The positive finite `accuracy` is an absolute length tolerance.
+    pub fn arclen_between(
+        &self,
+        start: P::Scalar,
+        end: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<P::Scalar, ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        crate::arc_length::validate_accuracy(accuracy)?;
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        if !start.is_finite() || !end.is_finite() || start < zero || end > one || start > end {
+            return Err(ArcLengthError::InvalidParameter);
+        }
+        if N < 2 {
+            return Ok(zero);
+        }
+        if N == 2 {
+            return LineSegment {
+                start: self.control_points[0],
+                end: self.control_points[1],
+            }
+            .arclen_between(start, end, accuracy);
+        }
+        // Every zero-velocity point is also a root of any nonzero velocity
+        // component. Split at one such component's roots to expose cusps.
+        let mut selected = [zero; N];
+        let mut largest = zero;
+        for axis in 0..P::DIM {
+            let control = self.elevated_velocity_axis(axis);
+            if control.iter().any(|value| !value.is_finite()) {
+                return Err(ArcLengthError::NonFiniteComputation);
+            }
+            let scale = control
+                .iter()
+                .fold(zero, |scale, value| scale.max(value.abs()));
+            if scale > largest {
+                largest = scale;
+                selected = control;
+            }
+        }
+        if largest == zero {
+            return Ok(zero);
+        }
+        // Share the accuracy budget across all roots plus the final interval.
+        let pieces = <P::Scalar as NumCast>::from(N + 1).unwrap();
+        let tolerance =
+            (accuracy / pieces).max(P::Scalar::min_positive_value() * P::Scalar::epsilon());
+        let root_tolerance = P::Scalar::epsilon() * <P::Scalar as NumCast>::from(8_u8).unwrap();
+        let mut previous = start;
+        let mut sum = zero;
+        let mut result = Ok(());
+        let add_interval = |a, b| {
+            integrate(a, b, tolerance, |parameter| {
+                let speed = self.velocity(parameter).norm();
+                if speed.is_finite() {
+                    Ok(speed)
+                } else {
+                    Err(ArcLengthError::NonFiniteComputation)
+                }
+            })
+        };
+        crate::numeric::bernstein_roots(selected, root_tolerance, |root| {
+            if root > previous && root < end && result.is_ok() {
+                match add_interval(previous, root) {
+                    Ok(length) => sum = sum + length,
+                    Err(error) => result = Err(error),
+                }
+                previous = root;
+            }
+        });
+        result?;
+        sum = sum + add_interval(previous, end)?;
+        if sum.is_finite() {
+            Ok(sum)
+        } else {
+            Err(ArcLengthError::NonFiniteComputation)
+        }
+    }
+
+    // Degree-elevate the unscaled derivative to N coefficients. Keeping its
+    // size N avoids leaking N-1 const-expression bounds into the length API.
+    fn elevated_velocity_axis(&self, axis: usize) -> [P::Scalar; N]
+    where
+        P: PointIndex,
     {
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let t = t.clamp(zero, one);
-        if t <= zero {
-            return zero;
-        }
-
-        let nsteps = nsteps.max(1);
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let dt = t / nsteps_scalar;
-        let mut arclen = zero;
-        let mut prev = self.eval(zero);
-
-        for i in 1..=nsteps {
-            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
-            let ti = if i == nsteps { t } else { dt * i_scalar };
-            let p = self.eval(ti);
-            arclen = arclen + (p - prev).squared_norm().sqrt();
-            prev = p;
-        }
-
-        arclen
+        let degree = <P::Scalar as NumCast>::from(N - 1).unwrap();
+        core::array::from_fn(|i| {
+            let weight = <P::Scalar as NumCast>::from(i).unwrap() / degree;
+            let left = if i > 0 {
+                self.control_points[i][axis] - self.control_points[i - 1][axis]
+            } else {
+                zero
+            };
+            let right = if i + 1 < N {
+                self.control_points[i + 1][axis] - self.control_points[i][axis]
+            } else {
+                zero
+            };
+            left * weight + right * (one - weight)
+        })
     }
 
-    /// Find parameter values where the derivative crosses zero for a given axis.
+    fn velocity(&self, t: P::Scalar) -> P {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        if N < 2 {
+            return self.control_points[0] * zero;
+        }
+        let degree = <P::Scalar as NumCast>::from(N - 1).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let mut points = self.control_points;
+        for (i, point) in points.iter_mut().enumerate().take(N - 1) {
+            *point = (self.control_points[i + 1] - self.control_points[i]) * degree;
+        }
+        for level in 1..N - 1 {
+            for i in 0..N - 1 - level {
+                points[i] = points[i] * (one - t) + points[i + 1] * t;
+            }
+        }
+        points[0]
+    }
+
+    /// Find isolated derivative zeros in `(0, 1)` for a coordinate axis.
+    /// Tangential roots are included; an identically constant axis returns no roots.
     pub fn derivative_roots(&self, axis: usize) -> ArrayVec<[P::Scalar; N - 1]>
     where
         P: PointIndex,
@@ -411,11 +495,12 @@ where
     {
         self.derivative_roots_with_tolerance(
             axis,
-            <P::Scalar as NumCast>::from(ROOT_TOLERANCE).unwrap(),
+            P::Scalar::epsilon() * <P::Scalar as NumCast>::from(64_u8).unwrap(),
         )
     }
 
-    /// Find parameter values where the derivative crosses zero for a given axis using a tolerance.
+    /// Find isolated derivative zeros using a tolerance in parameter space.
+    /// The absolute tolerance is floored at eight scalar epsilons.
     pub fn derivative_roots_with_tolerance(
         &self,
         axis: usize,
@@ -429,68 +514,107 @@ where
         if N < 2 {
             return ArrayVec::new();
         }
+        let tolerance = tolerance
+            .abs()
+            .max(P::Scalar::epsilon() * <P::Scalar as NumCast>::from(8_u8).unwrap());
         let control = self.derivative_axis_control_points(axis);
         let mut roots = ArrayVec::<[P::Scalar; N - 1]>::new();
         let t0 = <P::Scalar as NumCast>::from(0.0).unwrap();
         let t1 = <P::Scalar as NumCast>::from(1.0).unwrap();
-        Self::find_roots_1d(control, t0, t1, 0, tolerance, &mut roots);
-
-        roots.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-        let mut unique = ArrayVec::<[P::Scalar; N - 1]>::new();
-        for &root in roots.iter() {
-            if unique
-                .last()
-                .map(|v| (root - *v).abs() > tolerance)
-                .unwrap_or(true)
-            {
-                unique.push(root);
+        crate::numeric::bernstein_roots(control, tolerance, |root| {
+            if root > t0 && root < t1 {
+                Self::push_root(root, tolerance, &mut roots);
             }
-        }
-        unique
+        });
+
+        roots
     }
 
-    /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension.
-    pub fn bounding_box(&self) -> [(P::Scalar, P::Scalar); P::DIM]
+    /// Return a tight axis-aligned box of the curve on `[0, 1]`.
+    ///
+    /// Bernstein convex-hull subdivision encloses every coordinate extremum,
+    /// including repeated roots, to floating-point resolution. This does not
+    /// depend on sampled sign changes or an absolute derivative-value threshold.
+    pub fn bounding_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
     where
         P: PointIndex,
-        [(); N - 1]: Sized,
-        [P::Scalar; N - 1]: tinyvec::Array<Item = P::Scalar>,
     {
-        let tolerance = <P::Scalar as NumCast>::from(ROOT_TOLERANCE).unwrap();
-        let mut bounds = [(
-            <P::Scalar as NumCast>::from(0.0).unwrap(),
-            <P::Scalar as NumCast>::from(0.0).unwrap(),
-        ); P::DIM];
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let axes = core::array::from_fn(|axis| {
+            let original: [P::Scalar; N] = core::array::from_fn(|i| self.control_points[i][axis]);
+            let control_min = original.iter().copied().fold(original[0], Float::min);
+            let control_max = original.iter().copied().fold(original[0], Float::max);
+            // Subdivision in a local coordinate system makes the refinement
+            // criterion translation independent. Restore the origin only once,
+            // when the final extrema are rounded to the output coordinates.
+            let mut origin = original[0];
+            let mut control = original.map(|value| value - origin);
+            if control.iter().any(|value| !value.is_finite()) {
+                // Opposite finite extremes can have an unrepresentable range.
+                // Their absolute coordinates remain safe for convex subdivision.
+                origin = <P::Scalar as NumCast>::from(0.0).unwrap();
+                control = original;
+            }
+            let start = control[0];
+            let end = control[N - 1];
+            let mut min = start.min(end);
+            let mut max = start.max(end);
+            let lo = control.iter().copied().fold(control[0], Float::min);
+            let hi = control.iter().copied().fold(control[0], Float::max);
+            let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+            let tolerance = ((hi * half - lo * half)
+                * P::Scalar::epsilon()
+                * <P::Scalar as NumCast>::from(32_u8).unwrap())
+            .max(lo.abs().max(hi.abs()) * P::Scalar::epsilon());
+            Self::bound_axis(control, tolerance, 0, &mut min, &mut max);
+            (
+                (min + origin)
+                    .min(original[0])
+                    .min(original[N - 1])
+                    .max(control_min),
+                (max + origin)
+                    .max(original[0])
+                    .max(original[N - 1])
+                    .min(control_max),
+            )
+        });
+        BoundingBox::from_axes_unchecked(axes)
+    }
 
-        for dim in 0..P::DIM {
-            let mut min = self.control_points[0][dim];
-            let mut max = min;
-            let end = self.control_points[N - 1][dim];
-            if end < min {
-                min = end;
-            }
-            if end > max {
-                max = end;
-            }
-
-            let roots = self.derivative_roots_with_tolerance(dim, tolerance);
-            for &t in roots.iter() {
-                if t > zero && t < one {
-                    let value = self.eval(t)[dim];
-                    if value < min {
-                        min = value;
-                    }
-                    if value > max {
-                        max = value;
-                    }
-                }
-            }
-            bounds[dim] = (min, max);
+    fn bound_axis(
+        control: [P::Scalar; N],
+        tolerance: P::Scalar,
+        depth: usize,
+        min: &mut P::Scalar,
+        max: &mut P::Scalar,
+    ) {
+        let lo = control.iter().copied().fold(control[0], Float::min);
+        let hi = control.iter().copied().fold(control[0], Float::max);
+        if lo >= *min && hi <= *max {
+            return;
         }
+        if depth >= MAX_ROOT_DEPTH || (*min - lo <= tolerance && hi - *max <= tolerance) {
+            *min = min.min(lo);
+            *max = max.max(hi);
+            return;
+        }
+        if control.windows(2).all(|pair| pair[0] <= pair[1])
+            || control.windows(2).all(|pair| pair[0] >= pair[1])
+        {
+            *min = min.min(control[0].min(control[N - 1]));
+            *max = max.max(control[0].max(control[N - 1]));
+            return;
+        }
+        let (left, right) = Self::subdivide_1d(control);
+        Self::bound_axis(left, tolerance, depth + 1, min, max);
+        Self::bound_axis(right, tolerance, depth + 1, min, max);
+    }
 
-        bounds
+    /// Return a conservative box around all control points.
+    pub fn control_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
+    where
+        P: PointIndex,
+    {
+        BoundingBox::from_points(&self.control_points)
     }
 
     /// Find a root for a particular axis using Newton-Raphson on the scalar axis function.
@@ -520,50 +644,26 @@ where
         })
     }
 
-    fn find_roots_1d<const M: usize>(
-        control: [P::Scalar; M],
-        t0: P::Scalar,
-        t1: P::Scalar,
-        depth: usize,
+    fn push_root<const M: usize>(
+        root: P::Scalar,
         tolerance: P::Scalar,
         results: &mut ArrayVec<[P::Scalar; M]>,
     ) where
         [P::Scalar; M]: tinyvec::Array<Item = P::Scalar>,
     {
-        let mut min = control[0];
-        let mut max = control[0];
-        for value in &control[1..] {
-            if *value < min {
-                min = *value;
-            }
-            if *value > max {
-                max = *value;
-            }
-        }
-
-        if min > <P::Scalar as NumCast>::from(0.0).unwrap()
-            || max < <P::Scalar as NumCast>::from(0.0).unwrap()
+        if results
+            .iter()
+            .any(|previous| (root - *previous).abs() <= tolerance)
         {
             return;
         }
-
-        if depth >= MAX_ROOT_DEPTH || (max - min).abs() <= tolerance {
-            let denom = control[M - 1] - control[0];
-            let root = if denom.abs() > tolerance {
-                t0 + (<P::Scalar as NumCast>::from(0.0).unwrap() - control[0]) * (t1 - t0) / denom
-            } else {
-                (t0 + t1) * <P::Scalar as NumCast>::from(0.5).unwrap()
-            };
-            if results.len() < results.capacity() {
-                results.push(root);
-            }
-            return;
+        if results.len() < results.capacity() {
+            let position = results
+                .iter()
+                .position(|previous| root < *previous)
+                .unwrap_or(results.len());
+            results.insert(position, root);
         }
-
-        let (left, right) = Self::subdivide_1d(control);
-        let mid = (t0 + t1) * <P::Scalar as NumCast>::from(0.5).unwrap();
-        Self::find_roots_1d(left, t0, mid, depth + 1, tolerance, results);
-        Self::find_roots_1d(right, mid, t1, depth + 1, tolerance, results);
     }
 
     fn subdivide_1d<const M: usize>(control: [P::Scalar; M]) -> ([P::Scalar; M], [P::Scalar; M]) {
@@ -576,7 +676,7 @@ where
             left[i] = temp[0];
             right[M - 1 - i] = temp[M - 1 - i];
             for j in 0..(M - 1 - i) {
-                temp[j] = (temp[j] + temp[j + 1]) * half;
+                temp[j] = temp[j] * half + temp[j + 1] * half;
             }
         }
 
@@ -685,7 +785,7 @@ mod tests {
         let bezier: Bezier<PointN<f64, 2>, 2> =
             Bezier::new([PointN::new([0.0, 0.0]), PointN::new([10.0, 0.0])]).unwrap();
         let expected = (bezier.eval(1.0) - bezier.eval(0.0)).squared_norm().sqrt();
-        let length = bezier.arclen(32);
+        let length = bezier.arclen_polyline(32);
         let tolerance = expected * 0.05;
         assert!((length - expected).abs() <= tolerance);
     }
@@ -938,10 +1038,10 @@ mod tests {
         assert_approx_equal(curvature, 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
         assert!(bezier.normal(0.3).is_none());
 
-        let t = bezier.t_at_length(1.0);
+        let t = bezier.t_at_length(1.0, 1e-12).unwrap();
         assert!((t - 0.5).abs() < 1e-3);
 
-        let p = bezier.point_at_length(1.0);
+        let p = bezier.point_at_length(1.0, 1e-12).unwrap();
         assert_point_approx_equal(p, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
     }
 
@@ -958,6 +1058,11 @@ mod tests {
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
-        assert_approx_equal(bezier.t_at_length(scale * 0.5), 0.5, 1e-9, 1e-9);
+        assert_approx_equal(
+            bezier.t_at_length(scale * 0.5, 1e-12).unwrap(),
+            0.5,
+            1e-9,
+            1e-9,
+        );
     }
 }

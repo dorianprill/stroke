@@ -2,16 +2,13 @@
 
 use core::slice::*;
 
-use super::{Point, PointDot, PointIndex, PointNorm};
+use super::{ArcLengthError, Bezier, BoundingBox, Point, PointDot, PointIndex, PointNorm};
+use crate::arc_length::validate_accuracy;
 use crate::find_root::FindRoot;
 use crate::roots::{RootFindingError, root_newton_raphson};
 use num_traits::{Float, NumCast};
 
-const ROOT_TOLERANCE: f64 = 1e-6;
-const MAX_ROOT_ITER: usize = 64;
 const DEFAULT_DISTANCE_STEPS: usize = 64;
-const DEFAULT_LENGTH_STEPS: usize = 64;
-const MAX_LENGTH_ITERS: usize = 32;
 const LOCAL_SEARCH_ITERS: usize = 16;
 
 /// Errors returned by B-spline construction or evaluation.
@@ -32,6 +29,10 @@ pub enum BSplineError {
         /// Index of the first non-finite control point.
         index: usize,
     },
+    /// The active knot domain has zero width.
+    EmptyKnotDomain,
+    /// A knot occurs more than degree + 1 times.
+    ExcessKnotMultiplicity,
     /// The evaluation parameter is outside the knot domain.
     KnotDomainViolation,
     /// The de Boor evaluation encountered a NaN alpha value.
@@ -72,6 +73,12 @@ impl core::fmt::Display for BSplineError {
             BSplineError::NonFiniteControlPoint { index } => {
                 write!(f, "Control point at index {index} must be finite")
             }
+            BSplineError::EmptyKnotDomain => {
+                write!(f, "The active knot domain must have positive width")
+            }
+            BSplineError::ExcessKnotMultiplicity => {
+                write!(f, "Knot multiplicity exceeds degree + 1")
+            }
             BSplineError::KnotDomainViolation => write!(f, "Parameter outside of knot span"),
             BSplineError::EvaluationAlphaIsNaN => {
                 write!(f, "Cox-deBoor evaluation yields alpha NaN value")
@@ -108,11 +115,20 @@ where
     P::Scalar: Default,
 {
     fn default() -> Self {
-        BSpline {
-            knots: core::array::from_fn(|_| P::Scalar::default()),
-            knot_kind: KnotVectorKind::default(),
-            control_points: core::array::from_fn(|_| P::default()),
-        }
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let knots = core::array::from_fn(|i| {
+            if i <= D {
+                zero
+            } else if i >= C {
+                one
+            } else {
+                <P::Scalar as NumCast>::from(i - D).unwrap()
+                    / <P::Scalar as NumCast>::from(C - D).unwrap()
+            }
+        });
+        Self::new(knots, core::array::from_fn(|_| P::default()))
+            .expect("default B-splines require a valid layout and finite default point")
     }
 }
 
@@ -120,8 +136,8 @@ impl<P, const K: usize, const C: usize, const D: usize> BSpline<P, { K }, { C },
 where
     P: Point,
 {
-    /// Create a new B-spline curve that interpolates
-    /// the `control_points` using a piecewise polynomial of `degree` within intervals specified by the `knots`.
+    /// Create a B-spline defined by the control points and polynomial knot spans.
+    /// The curve generally approximates its control polygon rather than interpolating every point.
     /// The knots and control points _must_ be finite, and knots must be sorted in
     /// non-decreasing order.
     /// The degree is defined as `curve_order - 1`.
@@ -150,6 +166,13 @@ where
         // if knots array is not non-decreasing
         } else if knots.windows(2).any(|w| w[0] > w[1]) {
             Err(BSplineError::DecreasingKnots)
+        } else if knots[D] >= knots[C] {
+            Err(BSplineError::EmptyKnotDomain)
+        } else if knots
+            .windows(D + 2)
+            .any(|window| window[0] == window[D + 1])
+        {
+            Err(BSplineError::ExcessKnotMultiplicity)
         } else {
             let knot_kind = classify_knot_vector(&knots, D);
 
@@ -171,7 +194,7 @@ where
         let (knot_start, knot_end) = self.knot_domain();
 
         // Ensure t is within the knot domain
-        if t < knot_start || t > knot_end {
+        if !t.is_finite() || t < knot_start || t > knot_end {
             return Err(BSplineError::KnotDomainViolation);
         }
 
@@ -203,7 +226,15 @@ where
         let control_points = core::array::from_fn(|i| self.control_points[C - 1 - i]);
         let knot_min = self.knots[0];
         let knot_max = self.knots[K - 1];
-        let knots = core::array::from_fn(|i| knot_min + knot_max - self.knots[K - 1 - i]);
+        let knots = core::array::from_fn(|i| {
+            let knot = self.knots[K - 1 - i];
+            let offset = knot - knot_min;
+            if offset.is_finite() {
+                knot_max - offset
+            } else {
+                knot_min + (knot_max - knot)
+            }
+        });
         let knot_kind = match self.knot_kind {
             KnotVectorKind::ClampedStart => KnotVectorKind::ClampedEnd,
             KnotVectorKind::ClampedEnd => KnotVectorKind::ClampedStart,
@@ -229,16 +260,10 @@ where
 
     /// Returns the knot domain of the B-Spline.
     /// The knot domain is the range of values over which the B-Spline is defined.
-    /// The knot domain is defined as the minimum and maximum knot values.
-    /// For a clamped B-Spline the first and last knot has multiplicity D+1.
-    /// For an unclamped B-Spline the first and last knot has multiplicity 1.
+    /// The standard active domain is always `[knots[D], knots[C]]`,
+    /// independent of endpoint clamping. Knots outside it provide basis support.
     pub fn knot_domain(&self) -> (P::Scalar, P::Scalar) {
-        match self.knot_kind {
-            KnotVectorKind::Clamped => self.knot_domain_clamped(),
-            KnotVectorKind::ClampedStart => self.knot_domain_clamped_start(),
-            KnotVectorKind::ClampedEnd => self.knot_domain_clamped_end(),
-            KnotVectorKind::Unclamped => self.knot_domain_unclamped(),
-        }
+        (self.knots[D], self.knots[C])
     }
 
     /// Return true if `t` lies within the inclusive knot domain.
@@ -479,176 +504,65 @@ where
         Ok(ders)
     }
 
-    fn knot_domain_clamped_start(&self) -> (P::Scalar, P::Scalar) {
-        // Start from knots[D], end at knots[knots.len() - 1]
-        (self.knots[D], self.knots[self.knots.len() - 1])
+    /// Iterate over the nonzero polynomial spans as Bézier curves.
+    ///
+    /// Each item contains its original knot-parameter range and a curve
+    /// parameterized over `[0, 1]`. At a discontinuous knot, adjacent pieces
+    /// expose their respective one-sided endpoints. Extraction uses the
+    /// B-spline blossom (polar de Boor algorithm), without allocation.
+    pub fn bezier_spans(
+        &self,
+    ) -> impl Iterator<Item = (core::ops::Range<P::Scalar>, Bezier<P, { D + 1 }>)> + '_
+    where
+        [(); D + 1]: Sized,
+    {
+        (D..C).filter_map(move |span| {
+            let a = self.knots[span];
+            let b = self.knots[span + 1];
+            if a >= b {
+                return None;
+            }
+            let control_points = core::array::from_fn(|j| {
+                let mut points: [P; D + 1] =
+                    core::array::from_fn(|i| self.control_points[span - D + i]);
+                for r in 1..=D {
+                    let parameter = if r <= D - j { a } else { b };
+                    for i in (r..=D).rev() {
+                        let index = span - D + i;
+                        let lower = self.knots[index];
+                        let upper = self.knots[index + D - r + 1];
+                        // Every denominator covers this nonzero span.
+                        let alpha = crate::numeric::unit_parameter(parameter, lower, upper);
+                        points[i] = crate::numeric::lerp(points[i - 1], points[i], alpha);
+                    }
+                }
+                points[D]
+            });
+            Some((a..b, Bezier { control_points }))
+        })
     }
 
-    fn knot_domain_clamped_end(&self) -> (P::Scalar, P::Scalar) {
-        // Start from knots[0], end at knots[knots.len() - 1 - D] (C = K - D - 1)
-        (self.knots[0], self.knots[self.knots.len() - 1 - D])
-    }
-
-    // Returns the knot domain for a clamped B-Spline
-    // where the first and last knot has multiplicity D+1
-    fn knot_domain_clamped(&self) -> (P::Scalar, P::Scalar) {
-        // The valid domain is from knots[D] to knots[C] (C = K - D - 1)
-        (self.knots[D], self.knots[self.knots.len() - 1 - D])
-    }
-
-    // Returns the knot domain for an unclamped B-Spline
-    // where the first and last knot has multiplicity 1
-    // fn knot_domain_unclamped(&self) -> (P::Scalar, P::Scalar) {
-    //     (self.knots[0], self.knots[self.knots.len() - 1])
-    // }
-    fn knot_domain_unclamped(&self) -> (P::Scalar, P::Scalar) {
-        // The valid domain is from knots[D] to knots[C] (C = K - D - 1)
-        (self.knots[D], self.knots[C])
-    }
-
-    /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension.
-    pub fn bounding_box(&self) -> [(P::Scalar, P::Scalar); P::DIM]
+    /// Return the tight axis-aligned box of all nonzero polynomial spans.
+    pub fn bounding_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
     where
         P: PointIndex,
         [(); D + 1]: Sized,
-        [(); D - 1]: Sized,
-        [(); (D - 1) + 1]: Sized, // keep (D - 1) + 1; compiler doesn't normalize to D
-        [(); C - 1]: Sized,
-        [(); K - 2]: Sized,
     {
-        let (kmin, kmax) = self.knot_domain();
-        let tolerance = <P::Scalar as NumCast>::from(ROOT_TOLERANCE).unwrap();
-        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-
-        let start = self.eval(kmin).unwrap_or(self.control_points[0]);
-        let end = self.eval(kmax).unwrap_or(self.control_points[C - 1]);
-
-        let derivative = self.derivative();
-        let mut bounds = [(zero, zero); P::DIM];
-
-        for dim in 0..P::DIM {
-            let mut min = start[dim];
-            let mut max = min;
-            let end_value = end[dim];
-            if end_value < min {
-                min = end_value;
-            }
-            if end_value > max {
-                max = end_value;
-            }
-
-            let mut update = |t: P::Scalar| {
-                if let Ok(p) = self.eval(t) {
-                    let value = p[dim];
-                    if value < min {
-                        min = value;
-                    }
-                    if value > max {
-                        max = value;
-                    }
-                }
-            };
-
-            for i in 0..K - 1 {
-                let mut t0 = self.knots[i];
-                let mut t1 = self.knots[i + 1];
-                if t1 <= t0 {
-                    continue;
-                }
-                if t1 < kmin || t0 > kmax {
-                    continue;
-                }
-                if t0 < kmin {
-                    t0 = kmin;
-                }
-                if t1 > kmax {
-                    t1 = kmax;
-                }
-
-                let steps = (D + 1) * 2;
-                let steps_scalar = <P::Scalar as NumCast>::from(steps as f64).unwrap();
-                let span = t1 - t0;
-                let mut prev_t = t0;
-                let mut prev_f = match derivative.eval(prev_t) {
-                    Ok(p) => p[dim],
-                    Err(_) => continue,
-                };
-                if prev_f.abs() <= tolerance {
-                    update(prev_t);
-                }
-
-                for j in 1..=steps {
-                    let alpha = <P::Scalar as NumCast>::from(j as f64).unwrap() / steps_scalar;
-                    let t = t0 + span * alpha;
-                    let f = match derivative.eval(t) {
-                        Ok(p) => p[dim],
-                        Err(_) => break,
-                    };
-                    if f.abs() <= tolerance {
-                        update(t);
-                    }
-                    if prev_f * f < zero
-                        && let Some(root) =
-                            self.bisect_axis_root(&derivative, dim, prev_t, t, tolerance, half)
-                    {
-                        update(root);
-                    }
-                    prev_t = t;
-                    prev_f = f;
-                }
-            }
-
-            bounds[dim] = (min, max);
+        let mut spans = self.bezier_spans();
+        let (_, first) = spans.next().expect("a valid B-spline has a nonzero span");
+        let mut bounds = first.bounding_box();
+        for (_, curve) in spans {
+            bounds = bounds.union(&curve.bounding_box());
         }
-
         bounds
     }
 
-    fn bisect_axis_root(
-        &self,
-        derivative: &BSpline<P, { K - 2 }, { C - 1 }, { D - 1 }>,
-        axis: usize,
-        mut a: P::Scalar,
-        mut b: P::Scalar,
-        tolerance: P::Scalar,
-        half: P::Scalar,
-    ) -> Option<P::Scalar>
+    /// Return a conservative axis-aligned box around all control points.
+    pub fn control_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
     where
         P: PointIndex,
-        [(); D - 1]: Sized,
-        [(); (D - 1) + 1]: Sized, // keep (D - 1) + 1; compiler doesn't normalize to D
-        [(); C - 1]: Sized,
-        [(); K - 2]: Sized,
     {
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let mut fa = derivative.eval(a).ok().map(|p| p[axis])?;
-        let fb = derivative.eval(b).ok().map(|p| p[axis])?;
-        if fa.abs() <= tolerance {
-            return Some(a);
-        }
-        if fb.abs() <= tolerance {
-            return Some(b);
-        }
-        if fa * fb > zero {
-            return None;
-        }
-
-        for _ in 0..MAX_ROOT_ITER {
-            let mid = (a + b) * half;
-            let fm = derivative.eval(mid).ok().map(|p| p[axis])?;
-            if fm.abs() <= tolerance || (b - a).abs() <= tolerance {
-                return Some(mid);
-            }
-            if fa * fm <= zero {
-                b = mid;
-            } else {
-                a = mid;
-                fa = fm;
-            }
-        }
-
-        Some((a + b) * half)
+        BoundingBox::from_points(&self.control_points)
     }
 
     /// Approximate the minimum distance between given `point` and the curve.
@@ -773,275 +687,155 @@ where
                     one
                 } else {
                     // inside a knot span (interpolation d[j-1] -> d[j])
-                    numerator / denominator
+                    crate::numeric::unit_parameter(
+                        t,
+                        self.knots[j + k - D],
+                        self.knots[j + 1 + k - r],
+                    )
                 };
                 if alpha.is_nan() {
                     return Err(BSplineError::EvaluationAlphaIsNaN);
                 }
                 // The right of two points is overwritten by the result
                 // to be used in the next iteration
-                d[j] = d[j - 1] * (one - alpha) + d[j] * alpha;
+                d[j] = crate::numeric::lerp(d[j - 1], d[j], alpha);
             }
         }
         Ok(d[D])
     }
 
     fn knot_span_start_for_t(&self, t: P::Scalar) -> Option<usize> {
-        match self.knot_kind {
-            KnotVectorKind::Unclamped => self.knot_span_start_for_t_unclamped(t),
-            KnotVectorKind::ClampedStart => self.knot_span_start_for_t_clamped_start(t),
-            KnotVectorKind::Clamped => self.knot_span_start_for_t_clamped(t),
-            KnotVectorKind::ClampedEnd => self.knot_span_start_for_t_clamped_end(t),
+        if !self.domain_contains(t) {
+            return None;
         }
-    }
-
-    /// Return the index of the start of the knot span for given `t` for an unclamped B-Spline.
-    /// This is the index of the first element that satisfies:
-    ///     knots[i] <= t < knots[i+1]
-    /// Because the knot vector is non-decreasing, this function uses binary search.
-    /// If no element greater than the value passed is found, the function returns None.
-    fn knot_span_start_for_t_unclamped(&self, t: P::Scalar) -> Option<usize> {
         if t == self.knots[C] {
-            return Some(C - 1);
+            return (D..C).rev().find(|&i| self.knots[i] < self.knots[i + 1]);
         }
-
-        let mut low = D;
-        let mut high = C - 1;
-        while low <= high {
-            let mid = (low + high) / 2;
-            if t >= self.knots[mid] && t < self.knots[mid + 1] {
-                return Some(mid);
-            }
+        let mut lo = D;
+        let mut hi = C;
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
             if t < self.knots[mid] {
-                if mid == 0 {
-                    return None;
-                }
-                high = mid - 1;
+                hi = mid;
+            } else if t >= self.knots[mid + 1] {
+                lo = mid + 1;
             } else {
-                low = mid + 1;
+                return Some(mid);
             }
         }
         None
     }
 
-    /// Return the index of the start of the knot span for given `t` for a clamped B-Spline.
-    /// This is the index of the first element that satisfies:
-    /// `knots[i] <= t < knots[i+1]` where `i >= degree` and `i < knots.len() - degree - 1`.
-    /// Because the knot vector is non-decreasing, this function uses binary search.
-    /// If no element greater than the value passed is found, the function returns None.
-    fn knot_span_start_for_t_clamped(&self, t: P::Scalar) -> Option<usize> {
-        let n = self.control_points.len() - 1; // n = number of control points - 1
-        let p = D; // degree
-        if t == self.knots[n + 1] {
-            return Some(n);
-        }
-        let mut low = p;
-        let mut high = n;
-        while low <= high {
-            let mid = (low + high) / 2;
-            if t >= self.knots[mid] && t < self.knots[mid + 1] {
-                return Some(mid);
-            } else if t < self.knots[mid] {
-                high = mid - 1;
-            } else {
-                low = mid + 1;
-            }
-        }
-        None
-    }
-
-    fn knot_span_start_for_t_clamped_start(&self, t: P::Scalar) -> Option<usize> {
-        let n = self.control_points.len() - 1; // n = number of control points - 1
-        let p = D; // Degree of the spline
-        let m = self.knots.len() - 1; // Last index of the knot vector
-
-        // Special case when t equals the last knot value
-        if t == self.knots[m] {
-            return Some(n);
-        }
-
-        // Valid parameter domain is from knots[p] to knots[m]
-        if t < self.knots[p] || t > self.knots[m] {
-            return None;
-        }
-
-        // Initialize binary search indices
-        let mut low = p;
-        let mut high = m - 1; // Since we compare t with knots[mid + 1], high should be m - 1
-
-        // Binary search to find the knot span
-        while low <= high {
-            let mid = (low + high) / 2;
-            if t >= self.knots[mid] && t < self.knots[mid + 1] {
-                return Some(mid);
-            } else if t < self.knots[mid] {
-                high = mid - 1;
-            } else {
-                low = mid + 1;
-            }
-        }
-
-        None // t is not within any knot span
-    }
-
-    fn knot_span_start_for_t_clamped_end(&self, t: P::Scalar) -> Option<usize> {
-        let n = self.control_points.len() - 1; // n = number of control points - 1
-
-        // Special case when t equals knots[n + 1]
-        if t == self.knots[n + 1] {
-            return Some(n);
-        }
-
-        // Valid parameter domain is from knots[0] to knots[n + 1]
-        if t < self.knots[0] || t > self.knots[n + 1] {
-            return None;
-        }
-
-        // Initialize binary search indices
-        let mut low = 0;
-        let mut high = n; // Since we compare t with knots[mid + 1], high should be n
-
-        // Binary search to find the knot span
-        while low <= high {
-            let mid = (low + high) / 2;
-            if t >= self.knots[mid] && t < self.knots[mid + 1] {
-                return Some(mid);
-            } else if t < self.knots[mid] {
-                high = mid - 1;
-            } else {
-                low = mid + 1;
-            }
-        }
-
-        None // t is not within any knot span
-    }
-
-    /// Approximates the arc length of the curve by flattening it with straight line segments.
-    /// This approximation is unfeasable if desired accuracy is greater than ~2 decimal places.
-    /// Returns an error if evaluation fails inside the knot domain.
-    pub fn arclen(&self, nsteps: usize) -> Result<P::Scalar, BSplineError>
+    /// Approximate length with `segments` lines per nonzero knot span.
+    /// Jumps at discontinuous knots do not contribute connecting lines.
+    pub fn arclen_polyline(&self, segments: usize) -> P::Scalar
     where
         P: PointNorm,
         [(); D + 1]: Sized,
     {
-        let nsteps = nsteps.max(1);
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let mut arclen: P::Scalar = zero;
-        let (kmin, kmax) = self.knot_domain();
-        let span = kmax - kmin;
-        let dt = span / nsteps_scalar;
-
-        for i in 0..nsteps {
-            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
-            let mut t0 = kmin + dt * i_scalar;
-            let mut t1 = if i + 1 == nsteps { kmax } else { t0 + dt };
-            if t0 < kmin {
-                t0 = kmin;
-            } else if t0 > kmax {
-                t0 = kmax;
-            }
-            if t1 < kmin {
-                t1 = kmin;
-            } else if t1 > kmax {
-                t1 = kmax;
-            }
-
-            let p1 = self.eval(t0)?;
-            let p2 = self.eval(t1)?;
-            arclen = arclen + (p1 - p2).squared_norm().sqrt();
-        }
-
-        Ok(arclen)
+        self.bezier_spans().fold(
+            <P::Scalar as NumCast>::from(0.0).unwrap(),
+            |sum, (_, curve)| sum + curve.arclen_polyline(segments),
+        )
     }
 
-    fn arclen_partial(&self, t: P::Scalar, nsteps: usize) -> Result<P::Scalar, BSplineError>
+    /// Integrate length over the knot domain using adaptive Gauss-Legendre quadrature.
+    /// `accuracy` is a positive finite absolute length tolerance.
+    /// Discontinuous spans contribute their individual lengths, without jumps.
+    pub fn arclen(&self, accuracy: P::Scalar) -> Result<P::Scalar, ArcLengthError>
     where
         P: PointNorm,
         [(); D + 1]: Sized,
     {
+        let (start, end) = self.knot_domain();
+        self.arclen_between(start, end, accuracy)
+    }
+
+    /// Integrate length over an ordered parameter interval inside the knot domain.
+    pub fn arclen_between(
+        &self,
+        start: P::Scalar,
+        end: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<P::Scalar, ArcLengthError>
+    where
+        P: PointNorm,
+        [(); D + 1]: Sized,
+    {
+        validate_accuracy(accuracy)?;
+        if !self.domain_contains(start) || !self.domain_contains(end) || start > end {
+            return Err(ArcLengthError::InvalidParameter);
+        }
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let nsteps = nsteps.max(1);
-        let (kmin, kmax) = self.knot_domain();
-        let t = t.clamp(kmin, kmax);
-        if t <= kmin {
+        if start == end {
             return Ok(zero);
         }
-
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let span = t - kmin;
-        let dt = span / nsteps_scalar;
-        let mut arclen: P::Scalar = zero;
-        let mut prev = self.eval(kmin)?;
-
-        for i in 1..=nsteps {
-            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
-            let ti = if i == nsteps { t } else { kmin + dt * i_scalar };
-            let p = self.eval(ti)?;
-            arclen = arclen + (p - prev).squared_norm().sqrt();
-            prev = p;
-        }
-
-        Ok(arclen)
-    }
-
-    /// Approximate parameter `t` at arc length `s`.
-    pub fn t_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> Result<P::Scalar, BSplineError>
-    where
-        P: PointNorm,
-        [(); D + 1]: Sized,
-    {
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
-        let (kmin, kmax) = self.knot_domain();
-
-        let total = self.arclen(nsteps)?;
-        if total == zero {
-            return Ok(kmin);
-        }
-        let target = s.clamp(zero, total);
-
-        let mut lo = kmin;
-        let mut hi = kmax;
-        for _ in 0..MAX_LENGTH_ITERS {
-            let mid = (lo + hi) * half;
-            let len = self.arclen_partial(mid, nsteps)?;
-            if len < target {
-                lo = mid;
-            } else {
-                hi = mid;
+        let count = self.knots[D..=C].windows(2).filter(|w| w[0] < w[1]).count();
+        let tolerance = (accuracy / <P::Scalar as NumCast>::from(count).unwrap())
+            .max(P::Scalar::min_positive_value() * P::Scalar::epsilon());
+        let mut total = zero;
+        for (range, curve) in self.bezier_spans() {
+            let a = start.max(range.start);
+            let b = end.min(range.end);
+            if a < b {
+                let a = crate::numeric::unit_parameter(a, range.start, range.end);
+                let b = crate::numeric::unit_parameter(b, range.start, range.end);
+                total = total + curve.arclen_between(a, b, tolerance)?;
             }
         }
-
-        Ok((lo + hi) * half)
+        if total.is_finite() {
+            Ok(total)
+        } else {
+            Err(ArcLengthError::NonFiniteComputation)
+        }
     }
 
-    /// Approximate parameter `t` at arc length `s` using a default resolution.
-    pub fn t_at_length(&self, s: P::Scalar) -> Result<P::Scalar, BSplineError>
+    /// Return a knot parameter at length `s`, clamping to the domain endpoints.
+    /// Zero-length pieces are skipped for positive distances.
+    pub fn t_at_length(
+        &self,
+        s: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<P::Scalar, ArcLengthError>
     where
         P: PointNorm,
         [(); D + 1]: Sized,
     {
-        self.t_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+        validate_accuracy(accuracy)?;
+        if !s.is_finite() {
+            return Err(ArcLengthError::InvalidParameter);
+        }
+        let (start, end) = self.knot_domain();
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        if s <= zero {
+            return Ok(start);
+        }
+        let count = self.knots[D..=C].windows(2).filter(|w| w[0] < w[1]).count();
+        let tolerance = (accuracy / <P::Scalar as NumCast>::from(count + 1).unwrap())
+            .max(P::Scalar::min_positive_value() * P::Scalar::epsilon());
+        let mut remaining = s;
+        let mut any_length = false;
+        for (range, curve) in self.bezier_spans() {
+            let length = curve.arclen(tolerance)?;
+            any_length |= length > zero;
+            if length > zero && remaining < length {
+                let local = curve.t_at_length(remaining, tolerance)?;
+                let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+                return Ok(range.start * (one - local) + range.end * local);
+            }
+            remaining = remaining - length;
+        }
+        Ok(if any_length { end } else { start })
     }
 
-    /// Evaluate the point at arc length `s`.
-    pub fn point_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> Result<P, BSplineError>
+    /// Evaluate a point at length `s` using adaptive Gauss-Legendre quadrature.
+    pub fn point_at_length(&self, s: P::Scalar, accuracy: P::Scalar) -> Result<P, ArcLengthError>
     where
         P: PointNorm,
         [(); D + 1]: Sized,
     {
-        let t = self.t_at_length_approx(s, nsteps)?;
-        self.eval(t)
-    }
-
-    /// Evaluate the point at arc length `s` using a default resolution.
-    pub fn point_at_length(&self, s: P::Scalar) -> Result<P, BSplineError>
-    where
-        P: PointNorm,
-        [(); D + 1]: Sized,
-    {
-        self.point_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+        self.eval(self.t_at_length(s, accuracy)?)
+            .map_err(|_| ArcLengthError::CurveEvaluationFailed)
     }
 
     /// Returns the derivative curve of self which has C-1 control points and K-2 knots.
@@ -1093,7 +887,7 @@ where
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let dir = self.derivative().eval(t)?;
-        let len = dir.squared_norm().sqrt();
+        let len = dir.norm();
         if len == zero {
             Ok(dir)
         } else {
@@ -1456,7 +1250,7 @@ mod tests {
         }
         assert!((curve.end().unwrap()[0] - 1.0).abs() < 1e-12);
         assert!((curve.reverse().start().unwrap()[0] - 1.0).abs() < 1e-12);
-        assert_eq!(curve.bounding_box(), [(0.0, 1.0)]);
+        assert_eq!(curve.bounding_box().into_axes(), [(0.0, 1.0)]);
     }
 
     #[test]
@@ -1466,7 +1260,7 @@ mod tests {
         let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
         let expected = (points[1] - points[0]).squared_norm().sqrt();
-        let length = curve.arclen(32).unwrap();
+        let length = curve.arclen_polyline(32);
         let tolerance = 1e-6;
         assert!((length - expected).abs() <= tolerance);
     }
@@ -1807,10 +1601,10 @@ mod tests {
         assert_approx_equal(tangent[1], 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
         let expected_len = (points[1] - points[0]).squared_norm().sqrt();
-        let t_mid = curve.t_at_length(expected_len * 0.5).unwrap();
+        let t_mid = curve.t_at_length(expected_len * 0.5, 1e-12).unwrap();
         assert!((t_mid - (kmin + kmax) * 0.5).abs() < 1e-3);
 
-        let p_mid = curve.point_at_length(expected_len * 0.5).unwrap();
+        let p_mid = curve.point_at_length(expected_len * 0.5, 1e-12).unwrap();
         assert_point_approx_equal(p_mid, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
     }
 

@@ -1,12 +1,11 @@
 //! B-spline path utilities.
 
+use crate::arc_length::validate_accuracy;
+use crate::{ArcLengthError, BoundingBox};
 use core::slice;
 
 use super::{ArrayVec, BSpline, Point, PointDot, PointIndex, PointNorm};
 use num_traits::{Float, NumCast};
-
-const DEFAULT_LENGTH_STEPS: usize = 64;
-const MAX_LENGTH_ITERS: usize = 32;
 
 /// A path composed of multiple B-spline segments of the same degree/knots layout.
 ///
@@ -41,8 +40,8 @@ const MAX_LENGTH_ITERS: usize = 32;
 /// assert_eq!(path.start().unwrap(), PointN::new([0.0, 0.0]));
 /// assert_eq!(path.end().unwrap(), PointN::new([2.0, 0.0]));
 ///
-/// let t = path.t_at_length(1.0).unwrap();
-/// let p = path.point_at_length(1.0).unwrap();
+/// let t = path.t_at_length(1.0, 1e-12).unwrap().unwrap();
+/// let p = path.point_at_length(1.0, 1e-12).unwrap().unwrap();
 /// let tangent = path.tangent(0.25).unwrap();
 /// # let _ = (t, p, tangent);
 /// ```
@@ -99,7 +98,8 @@ where
         let (index, local_t) = self.segment_parameter(t)?;
         let segment = &self.segments[index];
         let (kmin, kmax) = segment.knot_domain();
-        let t_mapped = kmin + (kmax - kmin) * local_t;
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let t_mapped = kmin * (one - local_t) + kmax * local_t;
         segment.eval(t_mapped).ok()
     }
 
@@ -144,7 +144,8 @@ where
         let (index, local_t) = self.segment_parameter(t)?;
         let segment = &self.segments[index];
         let (kmin, kmax) = segment.knot_domain();
-        let t_mapped = kmin + (kmax - kmin) * local_t;
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let t_mapped = kmin * (one - local_t) + kmax * local_t;
         segment.tangent(t_mapped).ok()
     }
 
@@ -158,7 +159,8 @@ where
         let (index, local_t) = self.segment_parameter(t)?;
         let segment = &self.segments[index];
         let (kmin, kmax) = segment.knot_domain();
-        let t_mapped = kmin + (kmax - kmin) * local_t;
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let t_mapped = kmin * (one - local_t) + kmax * local_t;
         segment.curvature(t_mapped).ok()
     }
 
@@ -174,143 +176,194 @@ where
         let (index, local_t) = self.segment_parameter(t)?;
         let segment = &self.segments[index];
         let (kmin, kmax) = segment.knot_domain();
-        let t_mapped = kmin + (kmax - kmin) * local_t;
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let t_mapped = kmin * (one - local_t) + kmax * local_t;
         segment.normal(t_mapped).ok().flatten()
     }
 
-    /// Approximate parameter `t` at arc length `s`.
-    pub fn t_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> Option<P::Scalar>
+    /// Return the sum of segment lengths using adaptive Gauss-Legendre quadrature.
+    ///
+    /// Empty paths have length zero. Gaps between segments do not add length.
+    /// The positive finite `accuracy` is an absolute tolerance shared across segments.
+    pub fn arclen(&self, accuracy: P::Scalar) -> Result<P::Scalar, ArcLengthError>
     where
         P: PointNorm,
         [(); D + 1]: Sized,
     {
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+        self.arclen_between(zero, one, accuracy)
+    }
 
-        let total = self.arclen_partial(one, nsteps)?;
-        if total == zero {
-            return Some(zero);
+    /// Integrate length over `start..end` in the normalized path domain `[0, 1]`.
+    /// Gaps do not contribute length; an empty path returns zero.
+    pub fn arclen_between(
+        &self,
+        start: P::Scalar,
+        end: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<P::Scalar, ArcLengthError>
+    where
+        P: PointNorm,
+        [(); D + 1]: Sized,
+    {
+        validate_accuracy(accuracy)?;
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        if !start.is_finite() || !end.is_finite() || start < zero || end > one || start > end {
+            return Err(ArcLengthError::InvalidParameter);
         }
-        let target = s.clamp(zero, total);
-
-        let mut lo = zero;
-        let mut hi = one;
-        for _ in 0..MAX_LENGTH_ITERS {
-            let mid = (lo + hi) * half;
-            let len = self.arclen_partial(mid, nsteps)?;
-            if len < target {
-                lo = mid;
-            } else {
-                hi = mid;
+        if self.is_empty() || start == end {
+            return Ok(zero);
+        }
+        let count = <P::Scalar as NumCast>::from(self.len()).unwrap();
+        let tolerance =
+            (accuracy / count).max(P::Scalar::min_positive_value() * P::Scalar::epsilon());
+        let mut total = zero;
+        for (i, segment) in self.segments.iter().enumerate() {
+            if let Some((a, b)) = crate::path_parameter::local_range(start, end, i, self.len()) {
+                let (kmin, kmax) = segment.knot_domain();
+                let a = kmin * (one - a) + kmax * a;
+                let b = kmin * (one - b) + kmax * b;
+                total = total + segment.arclen_between(a, b, tolerance)?;
             }
         }
-
-        Some((lo + hi) * half)
+        if total.is_finite() {
+            Ok(total)
+        } else {
+            Err(ArcLengthError::NonFiniteComputation)
+        }
     }
 
-    /// Approximate parameter `t` at arc length `s` using a default resolution.
-    pub fn t_at_length(&self, s: P::Scalar) -> Option<P::Scalar>
+    /// Approximate length using `segments` lines per curve (per knot span for B-splines).
+    /// Disconnected pieces contribute only their own lengths.
+    pub fn arclen_polyline(&self, segments: usize) -> P::Scalar
     where
         P: PointNorm,
         [(); D + 1]: Sized,
     {
-        self.t_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+        self.segments.iter().fold(
+            <P::Scalar as NumCast>::from(0.0).unwrap(),
+            |sum, segment| sum + segment.arclen_polyline(segments),
+        )
     }
 
-    /// Evaluate the point at arc length `s`.
-    pub fn point_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> Option<P>
+    /// Return a path parameter at length `s`, clamped to the endpoints.
+    /// Returns `Ok(None)` for an empty path. At a discontinuity the returned
+    /// representable parameter retains the selected segment's ownership.
+    pub fn t_at_length(
+        &self,
+        s: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<Option<P::Scalar>, ArcLengthError>
     where
         P: PointNorm,
         [(); D + 1]: Sized,
     {
-        let t = self.t_at_length_approx(s, nsteps)?;
-        self.eval(t)
+        match self.location_at_length(s, accuracy)? {
+            Some((index, local)) => {
+                let (start, end) = self.segments[index].knot_domain();
+                let local = crate::numeric::unit_parameter(local, start, end);
+                crate::path_parameter::encode(index, local, self.len()).map(Some)
+            }
+            None => Ok(None),
+        }
     }
 
-    /// Evaluate the point at arc length `s` using a default resolution.
-    pub fn point_at_length(&self, s: P::Scalar) -> Option<P>
+    fn location_at_length(
+        &self,
+        s: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<Option<(usize, P::Scalar)>, ArcLengthError>
     where
         P: PointNorm,
         [(); D + 1]: Sized,
     {
-        self.point_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+        validate_accuracy(accuracy)?;
+        if !s.is_finite() {
+            return Err(ArcLengthError::InvalidParameter);
+        }
+        if self.is_empty() {
+            return Ok(None);
+        }
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        if s <= zero {
+            return Ok(Some((0, self.segments[0].knot_domain().0)));
+        }
+        let count = <P::Scalar as NumCast>::from(self.len()).unwrap();
+        let tolerance =
+            (accuracy / (count + one)).max(P::Scalar::min_positive_value() * P::Scalar::epsilon());
+        let mut remaining = s;
+        let mut any_length = false;
+        for (index, segment) in self.segments.iter().enumerate() {
+            let length = segment.arclen(tolerance)?;
+            any_length |= length > zero;
+            if length > zero && remaining < length {
+                let local = segment.t_at_length(remaining, tolerance)?;
+                return Ok(Some((index, local)));
+            }
+            remaining = remaining - length;
+        }
+        Ok(Some(if any_length {
+            (
+                self.len() - 1,
+                self.segments[self.len() - 1].knot_domain().1,
+            )
+        } else {
+            (0, self.segments[0].knot_domain().0)
+        }))
     }
 
-    /// Return a conservative bounding box based on all control points.
-    /// Returns None for empty paths.
-    pub fn bounding_box(&self) -> Option<[(P::Scalar, P::Scalar); P::DIM]>
+    /// Evaluate a point at length `s`. Returns `Ok(None)` for an empty path.
+    pub fn point_at_length(
+        &self,
+        s: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<Option<P>, ArcLengthError>
+    where
+        P: PointNorm,
+        [(); D + 1]: Sized,
+    {
+        match self.location_at_length(s, accuracy)? {
+            Some((index, local)) => self.segments[index]
+                .eval(local)
+                .map(Some)
+                .map_err(|_| ArcLengthError::CurveEvaluationFailed),
+            None => Ok(None),
+        }
+    }
+
+    /// Return the union of tight segment boxes, or `None` for an empty path.
+    pub fn bounding_box(&self) -> Option<BoundingBox<P::Scalar, { P::DIM }>>
+    where
+        P: PointIndex,
+        [(); D + 1]: Sized,
+    {
+        let mut segments = self.segments.iter();
+        let mut bounds = segments.next()?.bounding_box();
+        for segment in segments {
+            bounds = bounds.union(&segment.bounding_box());
+        }
+        Some(bounds)
+    }
+
+    /// Return a conservative box around all segment control points.
+    /// Returns `None` for an empty path.
+    pub fn control_box(&self) -> Option<BoundingBox<P::Scalar, { P::DIM }>>
     where
         P: PointIndex,
     {
-        let mut iter = self.segments.iter();
-        let first = segment_control_bounds(iter.next()?);
-
-        let mut bounds = first;
-        for segment in iter {
-            let segment_bounds = segment_control_bounds(segment);
-            for dim in 0..P::DIM {
-                if segment_bounds[dim].0 < bounds[dim].0 {
-                    bounds[dim].0 = segment_bounds[dim].0;
-                }
-                if segment_bounds[dim].1 > bounds[dim].1 {
-                    bounds[dim].1 = segment_bounds[dim].1;
-                }
-            }
+        let mut segments = self.segments.iter();
+        let mut bounds = segments.next()?.control_box();
+        for segment in segments {
+            bounds = bounds.union(&segment.control_box());
         }
-
         Some(bounds)
     }
 
     fn segment_parameter(&self, t: P::Scalar) -> Option<(usize, P::Scalar)> {
-        let count = self.segments.len();
-        if count == 0 {
-            return None;
-        }
-
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let t = t.clamp(zero, one);
-
-        let count_scalar = <P::Scalar as NumCast>::from(count as f64).unwrap();
-        let scaled = t * count_scalar;
-        if scaled >= count_scalar {
-            return Some((count - 1, one));
-        }
-
-        let index = num_traits::cast::<P::Scalar, usize>(scaled.floor()).unwrap_or(0);
-        let index_scalar = <P::Scalar as NumCast>::from(index as f64).unwrap();
-        let local = scaled - index_scalar;
-        Some((index, local))
-    }
-
-    fn arclen_partial(&self, t: P::Scalar, nsteps: usize) -> Option<P::Scalar>
-    where
-        P: PointNorm,
-        [(); D + 1]: Sized,
-    {
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let t = t.clamp(zero, one);
-        if t <= zero {
-            return Some(zero);
-        }
-
-        let nsteps = nsteps.max(1);
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let dt = t / nsteps_scalar;
-        let mut arclen = zero;
-        let mut prev = self.eval(zero)?;
-
-        for i in 1..=nsteps {
-            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
-            let ti = if i == nsteps { t } else { dt * i_scalar };
-            let p = self.eval(ti)?;
-            arclen = arclen + (p - prev).squared_norm().sqrt();
-            prev = p;
-        }
-
-        Some(arclen)
+        crate::path_parameter::decode(t, self.segments.len())
     }
 }
 
@@ -323,40 +376,6 @@ where
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn segment_control_bounds<P, const K: usize, const C: usize, const D: usize>(
-    segment: &BSpline<P, K, C, D>,
-) -> [(P::Scalar, P::Scalar); P::DIM]
-where
-    P: PointIndex,
-{
-    let mut iter = segment.control_points();
-    let first = *iter
-        .next()
-        .expect("BSpline must have at least one control point");
-    let mut bounds = [(
-        <P::Scalar as NumCast>::from(0.0).unwrap(),
-        <P::Scalar as NumCast>::from(0.0).unwrap(),
-    ); P::DIM];
-    for dim in 0..P::DIM {
-        let value = first[dim];
-        bounds[dim] = (value, value);
-    }
-
-    for point in iter {
-        for dim in 0..P::DIM {
-            let value = point[dim];
-            if value < bounds[dim].0 {
-                bounds[dim].0 = value;
-            }
-            if value > bounds[dim].1 {
-                bounds[dim].1 = value;
-            }
-        }
-    }
-
-    bounds
 }
 
 #[cfg(test)]
@@ -457,10 +476,10 @@ mod tests {
         assert_approx_equal(tangent[0], 1.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
         assert_approx_equal(tangent[1], 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
-        let t = path.t_at_length(1.0).unwrap();
+        let t = path.t_at_length(1.0, 1e-12).unwrap().unwrap();
         assert!((t - 0.5).abs() < 1e-6);
 
-        let p = path.point_at_length(1.0).unwrap();
+        let p = path.point_at_length(1.0, 1e-12).unwrap().unwrap();
         assert_point_approx_equal(p, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
     }
 
@@ -499,6 +518,11 @@ mod tests {
         let mut path: BSplinePath<PointN<f64, 1>, 4, 2, 1, 1> = BSplinePath::new();
         assert!(path.push(segment));
 
-        assert_approx_equal(path.t_at_length(scale * 0.5).unwrap(), 0.5, 1e-9, 1e-9);
+        assert_approx_equal(
+            path.t_at_length(scale * 0.5, 1e-12).unwrap().unwrap(),
+            0.5,
+            1e-9,
+            1e-9,
+        );
     }
 }

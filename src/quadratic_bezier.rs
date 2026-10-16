@@ -1,13 +1,13 @@
 //! Quadratic Bezier curve specialization.
 
-use super::{ArrayVec, LineSegment, Point, PointDot, PointIndex, PointNorm};
+use super::{
+    ArcLengthError, ArrayVec, BoundingBox, LineSegment, Point, PointDot, PointIndex, PointNorm,
+};
 use crate::error::{CurveConstructionError, validate_control_points};
 use crate::numeric::is_negligible;
 use num_traits::{Float, NumCast};
 
 const DEFAULT_DISTANCE_STEPS: usize = 64;
-const DEFAULT_LENGTH_STEPS: usize = 64;
-const MAX_LENGTH_ITERS: usize = 32;
 const LOCAL_SEARCH_ITERS: usize = 16;
 
 /// Quadratic Bezier curve defined by start, control, and end points.
@@ -127,7 +127,7 @@ where
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let dir = self.derivative().eval(t);
-        let len = dir.squared_norm().sqrt();
+        let len = dir.norm();
         if len == zero { dir } else { dir * (one / len) }
     }
 
@@ -203,56 +203,47 @@ where
         self.start[axis] * c0 + self.ctrl[axis] * c1 + self.end[axis] * c2
     }
 
-    /// Approximates the arc length of the curve by flattening it with straight line segments.
-    /// This works quite well, at ~32 segments it should already provide an error < 0.5
-    /// Remember arclen also works by linear approximation, not the integral, so we have to accept error!
-    /// This approximation is unfeasable if desired accuracy is greater than 2 decimal places
-    pub fn arclen(&self, nsteps: usize) -> P::Scalar
+    /// Approximate the arc length by flattening the curve into `segments` lines.
+    pub fn arclen_polyline(&self, segments: usize) -> P::Scalar
     where
         P: PointNorm,
     {
-        let nsteps = nsteps.max(1);
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let stepsize = one / nsteps_scalar;
-        let mut arclen: P::Scalar = <P::Scalar as NumCast>::from(0.0).unwrap();
-        for i in 0..nsteps {
-            let t0 = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
-            let t1 = if i + 1 == nsteps { one } else { t0 + stepsize };
-            let p1 = self.eval_casteljau(t0);
-            let p2 = self.eval_casteljau(t1);
-
-            arclen = arclen + (p1 - p2).squared_norm().sqrt();
+        crate::Bezier {
+            control_points: [self.start, self.ctrl, self.end],
         }
-        arclen
+        .arclen_polyline(segments)
     }
 
-    fn arclen_partial(&self, t: P::Scalar, nsteps: usize) -> P::Scalar
+    /// Return the arc length using adaptive Gauss-Legendre quadrature.
+    pub fn arclen(&self, accuracy: P::Scalar) -> Result<P::Scalar, ArcLengthError>
     where
         P: PointNorm,
     {
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let t = t.clamp(zero, one);
-        if t <= zero {
-            return zero;
+        self.arclen_to(<P::Scalar as NumCast>::from(1.0).unwrap(), accuracy)
+    }
+
+    fn arclen_to(&self, t: P::Scalar, accuracy: P::Scalar) -> Result<P::Scalar, ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        self.arclen_between(<P::Scalar as NumCast>::from(0.0).unwrap(), t, accuracy)
+    }
+
+    /// Integrate arc length over `start..end`, where `0 <= start <= end <= 1`.
+    /// The positive finite `accuracy` is an absolute length tolerance.
+    pub fn arclen_between(
+        &self,
+        start: P::Scalar,
+        end: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<P::Scalar, ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        crate::Bezier {
+            control_points: [self.start, self.ctrl, self.end],
         }
-
-        let nsteps = nsteps.max(1);
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let dt = t / nsteps_scalar;
-        let mut arclen = zero;
-        let mut prev = self.eval_casteljau(zero);
-
-        for i in 1..=nsteps {
-            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
-            let ti = if i == nsteps { t } else { dt * i_scalar };
-            let p = self.eval_casteljau(ti);
-            arclen = arclen + (p - prev).squared_norm().sqrt();
-            prev = p;
-        }
-
-        arclen
+        .arclen_between(start, end, accuracy)
     }
 
     /// Solve for the roots of the polynomial at^2 + bt + c
@@ -272,6 +263,13 @@ where
         let two = <P::Scalar as NumCast>::from(2.0).unwrap();
         let four = <P::Scalar as NumCast>::from(4.0).unwrap();
         let coefficient_scale = a.abs().max(b.abs()).max(c.abs());
+        if coefficient_scale == zero || !coefficient_scale.is_finite() {
+            return result;
+        }
+        let a = a / coefficient_scale;
+        let b = b / coefficient_scale;
+        let c = c / coefficient_scale;
+        let coefficient_scale = <P::Scalar as NumCast>::from(1.0).unwrap();
 
         // check if can be handled below quadratic order
         if is_negligible(a, coefficient_scale) {
@@ -291,9 +289,12 @@ where
             result.push(-b / (a * two));
         } else if delta > zero {
             let sqrt_delta = delta.sqrt();
-            result.push((-b - sqrt_delta) / (a * two));
-            result.push((-b + sqrt_delta) / (a * two));
+            // The q form avoids cancellation in one of the two roots.
+            let q = -(b + b.signum() * sqrt_delta) / two;
+            result.push(q / a);
+            result.push(c / q);
         }
+        result.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
         result
     }
 
@@ -353,58 +354,28 @@ where
         self.distance_to_point_approx(point, DEFAULT_DISTANCE_STEPS)
     }
 
-    /// Approximate parameter `t` at arc length `s`.
-    pub fn t_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> P::Scalar
+    /// Return parameter `t` at arc length `s`, clamped to the curve's endpoints.
+    /// `accuracy` is an absolute length tolerance, subject to floating-point roundoff.
+    pub fn t_at_length(
+        &self,
+        s: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<P::Scalar, ArcLengthError>
     where
         P: PointNorm,
     {
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
-
-        let total = self.arclen(nsteps);
-        if total == zero {
-            return zero;
-        }
-        let target = s.clamp(zero, total);
-
-        let mut lo = zero;
-        let mut hi = one;
-        for _ in 0..MAX_LENGTH_ITERS {
-            let mid = (lo + hi) * half;
-            let len = self.arclen_partial(mid, nsteps);
-            if len < target {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-
-        (lo + hi) * half
+        let total = self.arclen(accuracy)?;
+        crate::arc_length::inverse(s, accuracy, total, |a, b, tolerance| {
+            self.arclen_between(a, b, tolerance)
+        })
     }
 
-    /// Approximate parameter `t` at arc length `s` using a default resolution.
-    pub fn t_at_length(&self, s: P::Scalar) -> P::Scalar
+    /// Evaluate the point at arc length `s` using adaptive quadrature.
+    pub fn point_at_length(&self, s: P::Scalar, accuracy: P::Scalar) -> Result<P, ArcLengthError>
     where
         P: PointNorm,
     {
-        self.t_at_length_approx(s, DEFAULT_LENGTH_STEPS)
-    }
-
-    /// Evaluate the point at arc length `s`.
-    pub fn point_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> P
-    where
-        P: PointNorm,
-    {
-        self.eval_casteljau(self.t_at_length_approx(s, nsteps))
-    }
-
-    /// Evaluate the point at arc length `s` using a default resolution.
-    pub fn point_at_length(&self, s: P::Scalar) -> P
-    where
-        P: PointNorm,
-    {
-        self.point_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+        Ok(self.eval_casteljau(self.t_at_length(s, accuracy)?))
     }
 
     /// Returns the line segment formed by the curve's start and endpoint
@@ -490,8 +461,8 @@ where
         result
     }
 
-    /// Return the bounding box of the curve as an array of (min, max) tuples for each dimension (its index)
-    pub fn bounding_box(&self) -> [(P::Scalar, P::Scalar); P::DIM]
+    /// Return the tight axis-aligned box using analytic coordinate extrema.
+    pub fn bounding_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
     where
         P: PointIndex,
         [P::Scalar; 1]: tinyvec::Array<Item = P::Scalar>,
@@ -507,6 +478,12 @@ where
         //      b   a
         let a = derivative.start * <P::Scalar as NumCast>::from(-1.0).unwrap() + derivative.end;
         let b = derivative.start;
+        if !a.is_finite() || !b.is_finite() {
+            return crate::Bezier {
+                control_points: [self.start, self.ctrl, self.end],
+            }
+            .bounding_box();
+        }
 
         for dim in 0..P::DIM {
             // calculate roots for t over x axis and plug them into the bezier function
@@ -530,7 +507,15 @@ where
             // unwrap() is ok as it always at least contains the endpoints
             bounds[dim] = (extrema[0], *extrema.last().unwrap());
         }
-        bounds
+        BoundingBox::from_axes_unchecked(bounds)
+    }
+
+    /// Return a conservative box around the control points.
+    pub fn control_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
+    where
+        P: PointIndex,
+    {
+        BoundingBox::from_points(&[self.start, self.ctrl, self.end])
     }
 }
 
@@ -579,7 +564,7 @@ mod tests {
             PointN::new([2f64, 0f64]),
         )
         .unwrap();
-        let length = bezier.arclen(32);
+        let length = bezier.arclen_polyline(32);
         assert!((length - 2.0).abs() < 1e-3);
     }
 
@@ -715,10 +700,10 @@ mod tests {
         assert_approx_equal(curvature, 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
         assert!(bezier.normal(0.3).is_none());
 
-        let t = bezier.t_at_length(1.0);
+        let t = bezier.t_at_length(1.0, 1e-12).unwrap();
         assert!((t - 0.5).abs() < 1e-6);
 
-        let p = bezier.point_at_length(1.0);
+        let p = bezier.point_at_length(1.0, 1e-12).unwrap();
         assert_point_approx_equal(p, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
     }
 

@@ -70,10 +70,10 @@ These are the main supported features. Some further utility methods are exposed 
 - [x] normal (principal)
 - [x] curvature (magnitude)
 - [x] arc length (linear approx.)
-- [ ] arc length (Legendre-Gauss)
+- [x] arc length (adaptive Gauss-Legendre)
 - [ ] Frenet-Serret frame / torsion
 - [x] bounding box
-- [ ] tight box
+- [x] tight axis-aligned bounding box and conservative control-point bounds
 
 ### Generic Bézier Curves
 
@@ -84,30 +84,84 @@ These are the main supported features. Some further utility methods are exposed 
 - [x] normal (principal)
 - [x] curvature (magnitude)
 - [x] arc length (linear approx.)
-- [ ] arc length (Legendre-Gauss)
+- [x] arc length (adaptive Gauss-Legendre)
 - [ ] Frenet-Serret frame / torsion
 - [x] bounding box
-- [ ] tight box
+- [x] tight axis-aligned bounding box and conservative control-point bounds
 
 ### Generic B-Splines
 
 - [x] evaluation (De Boor)
-- [x] split
+- [x] Bézier span extraction (`bezier_spans`, without allocation)
 - [x] derivative
 - [x] basis functions (and derivatives)
 - [x] tangent (unit)
 - [x] normal (principal)
 - [x] curvature (magnitude)
-- [x] arc length (linear approx.; returns Result on eval errors)
-- [ ] arc length (Legendre-Gauss)
+- [x] arc length (polyline approximation)
+- [x] arc length (adaptive Gauss-Legendre)
 - [ ] Frenet-Serret frame / torsion
 - [x] bounding box
-- [ ] tight box
+- [x] tight axis-aligned bounding box and conservative control-point bounds
 
-### Approximation Notes
+### Arc length and bounds
 
-- `arclen` and `distance_to_point*` use sampling-based approximations; increase steps for accuracy.
-- `BSpline::arclen` returns `Result` because evaluation is fallible outside the knot domain.
+Every curve, segment, and path provides `arclen(accuracy)`,
+`arclen_between(start, end, accuracy)`, `t_at_length(length, accuracy)`, and
+`point_at_length(length, accuracy)`. Length calculations use adaptive 8/16-point
+Gauss-Legendre quadrature, with explicit splits at stationary-point candidates
+and B-spline knots. Lines use their exact Euclidean length.
+
+`accuracy` is a finite, positive absolute length tolerance, subject to scalar
+roundoff. The quadrature error estimate controls subdivision; it is not an
+interval-arithmetic proof of the error. These methods return `Result`, reporting
+invalid inputs, non-finite arithmetic, or exhausted convergence budgets.
+`arclen_polyline(segments)` retains the cheaper sampling approximation, with a
+subdivision count per curve (per nonzero knot span for B-splines).
+
+Inverse lengths clamp finite distances to the endpoints and choose the start
+for zero-length curves. Paths return `Result<Option<_>, ArcLengthError>` for
+inverse length and point lookup: `Ok(None)` means the path is empty. Empty paths
+have length zero. Disconnected segments and full-multiplicity spline knots
+contribute the lengths of their pieces without an implicit connecting line;
+lookup at an interior boundary selects the piece on its right. Path parameters
+remain uniformly partitioned by segment; B-spline parameters use the standard
+active knot domain `[knots[D], knots[C]]`.
+Path evaluation and inverse-length lookup share the same representable segment
+boundaries. Point lookup retains the selected segment directly, avoiding loss
+of local precision through a normalized parameter round trip.
+
+`bounding_box()` returns a tight `BoundingBox<Scalar, DIM>`, with analytic extrema
+for quadratic/cubic curves and Bernstein convex-hull subdivision for generic
+Béziers and extracted B-spline spans. Tightness is subject to floating-point
+resolution. Generic bounds refine in local coordinates so a large translation
+does not inflate the stopping tolerance; the final bounds still round to the
+chosen scalar's coordinate precision. `control_box()` returns the axis-aligned box around the control
+points. Ordinary Bézier and B-spline curves lie inside their control-point convex
+hull, so these control bounds also enclose the curve, but are usually looser.
+The box supports `axis`, indexing, `contains`, `union`, and `into_axes`. Path
+boxes are `None` when empty.
+
+For example:
+
+```rust
+use stroke::{Bezier, PointN};
+
+let curve = Bezier::new([
+    PointN::new([0.0_f64, 0.0]),
+    PointN::new([1.0, 2.0]),
+    PointN::new([2.0, 0.0]),
+]).unwrap();
+let length = curve.arclen(1e-10).unwrap();
+let midpoint = curve.point_at_length(length * 0.5, 1e-10).unwrap();
+let tight = curve.bounding_box();
+let control = curve.control_box();
+assert!(tight[1].1 < control[1].1);
+```
+
+`distance_to_point*` still uses sampling-based approximations; increase its step
+count for accuracy. General B-spline splitting into two fixed-size B-spline
+values is not currently provided; use `bezier_spans()` for decomposition.
 
 ## Examples
 
