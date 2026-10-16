@@ -18,7 +18,9 @@ jobs:
     - name: Install rustfmt and Clippy
       run: rustup component add rustfmt clippy
     - name: Format
-      run: cargo fmt -- --check
+      run: |
+        cargo fmt -- --check
+        cargo fmt --manifest-path tests/downstream/Cargo.toml -- --check
     - name: Clippy (no default features)
       run: cargo lint-default
     - name: Clippy (all features)
@@ -35,3 +37,19 @@ jobs:
       run: cargo test --verbose
     - name: Run tests (nalgebra)
       run: cargo test --features nalgebra --verbose
+    - name: Test example assertions
+      run: cargo test --examples --all-features
+    - name: Run domain examples
+      run: |
+        cargo run --example bspline_signal_1d
+        cargo run --example motion_3d
+        cargo run --example spatial_queries
+        cargo run --example animation_envelope
+    - name: Downstream consumer without repository configuration
+      shell: bash
+      run: |
+        repo_dir="$PWD"
+        consumer_dir="$(mktemp -d)"
+        cd "$consumer_dir"
+        cargo +nightly run --manifest-path "$repo_dir/tests/downstream/Cargo.toml" --no-default-features
+        cargo +nightly run --manifest-path "$repo_dir/tests/downstream/Cargo.toml" --all-features

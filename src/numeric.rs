@@ -1,5 +1,36 @@
 use num_traits::{Float, NumCast, One, Zero};
 
+/// Divide a point without first overflowing the reciprocal of a tiny divisor.
+pub(crate) fn divide<P: crate::Point>(value: P, divisor: P::Scalar) -> P {
+    let reciprocal = P::Scalar::one() / divisor;
+    if divisor != P::Scalar::zero() && !reciprocal.is_finite() {
+        let factor = P::Scalar::one() / divisor.abs().sqrt();
+        (value * factor) * (factor * divisor.signum())
+    } else {
+        value * reciprocal
+    }
+}
+
+/// Difference quotient with finite endpoints, avoiding overflowing differences.
+pub(crate) fn difference_quotient<P: crate::Point>(
+    a: P,
+    b: P,
+    start: P::Scalar,
+    end: P::Scalar,
+) -> P {
+    let width = end - start;
+    if !width.is_finite() {
+        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+        return divide(b * half - a * half, end * half - start * half);
+    }
+    let difference = b - a;
+    if difference.is_finite() {
+        divide(difference, width)
+    } else {
+        divide(b, width) - divide(a, width)
+    }
+}
+
 /// Affine interpolation that preserves exact endpoints and avoids subtracting
 /// opposite finite extremes unless that subtraction is representable.
 pub(crate) fn lerp<P: crate::Point>(start: P, end: P, t: P::Scalar) -> P {

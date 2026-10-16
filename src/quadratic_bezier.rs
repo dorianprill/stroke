@@ -58,9 +58,65 @@ where
         ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t
     }
 
-    /// Return the control points array.
-    pub fn control_points(&self) -> [P; 3] {
+    /// Borrow the control points in curve order.
+    pub fn control_points(&self) -> core::array::IntoIter<&P, 3> {
+        [&self.start, &self.ctrl, &self.end].into_iter()
+    }
+
+    /// Consume the curve, returning its control-point array.
+    pub fn into_control_points(self) -> [P; 3] {
         [self.start, self.ctrl, self.end]
+    }
+
+    /// Replace all control points atomically, leaving this curve unchanged on error.
+    pub fn set_control_points(&mut self, points: [P; 3]) -> Result<(), CurveConstructionError> {
+        *self = Self::new(points[0], points[1], points[2])?;
+        Ok(())
+    }
+
+    /// Map control points and validate the result without modifying this curve.
+    /// This maps the entire curve geometrically only when `map` is affine.
+    pub fn try_map_control_points(
+        &self,
+        map: impl FnMut(P) -> P,
+    ) -> Result<Self, CurveConstructionError> {
+        let points = (*self).into_control_points().map(map);
+        Self::new(points[0], points[1], points[2])
+    }
+
+    /// Evaluate the derivative with respect to the unit-domain parameter.
+    pub fn derivative_at(&self, t: P::Scalar) -> P {
+        crate::Bezier::from(*self).derivative_at(t)
+    }
+
+    /// Return the derivative magnitude with respect to the unit-domain parameter.
+    pub fn speed(&self, t: P::Scalar) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        self.derivative_at(t).norm()
+    }
+
+    /// Extract a finite ordered range in `[0, 1]`, reparameterized to `[0, 1]`.
+    /// Equal range endpoints yield a constant curve.
+    pub fn subcurve(
+        &self,
+        range: core::ops::Range<P::Scalar>,
+    ) -> Result<Self, crate::CurveParameterError> {
+        crate::Bezier::from(*self).subcurve(range).map(Self::from)
+    }
+
+    /// Split at a distance from the start, clamping finite distances to the endpoints.
+    pub fn split_at_length(
+        &self,
+        length: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<(Self, Self), ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        let (left, right) = crate::Bezier::from(*self).split_at_length(length, accuracy)?;
+        Ok((Self::from(left), Self::from(right)))
     }
 
     /// Return the start point of the curve.

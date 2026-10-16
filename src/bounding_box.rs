@@ -30,6 +30,38 @@ impl<T: Copy, const D: usize> BoundingBox<T, D> {
         self.axes[axis]
     }
 
+    /// Return the minimum coordinates.
+    pub fn min(&self) -> [T; D] {
+        self.axes.map(|(min, _)| min)
+    }
+
+    /// Return the maximum coordinates.
+    pub fn max(&self) -> [T; D] {
+        self.axes.map(|(_, max)| max)
+    }
+
+    /// Return whether the boxes overlap, including touching boundaries.
+    pub fn intersects(&self, other: &Self) -> bool
+    where
+        T: PartialOrd,
+    {
+        (0..D).all(|i| self.axes[i].0 <= other.axes[i].1 && other.axes[i].0 <= self.axes[i].1)
+    }
+
+    /// Return the overlap, including zero-width intersections, or `None` if disjoint.
+    pub fn intersection(&self, other: &Self) -> Option<Self>
+    where
+        T: PartialOrd,
+    {
+        self.intersects(other).then(|| Self {
+            axes: core::array::from_fn(|i| {
+                let (a, b) = self.axes[i];
+                let (c, d) = other.axes[i];
+                (if a > c { a } else { c }, if b < d { b } else { d })
+            }),
+        })
+    }
+
     /// Return whether the point is inside this box, including its boundary.
     pub fn contains<P>(&self, point: &P) -> bool
     where
@@ -86,6 +118,27 @@ impl<T: Copy, const D: usize> BoundingBox<T, D> {
 }
 
 impl<T: Float, const D: usize> BoundingBox<T, D> {
+    /// Return the center, avoiding intermediate overflow for finite bounds.
+    pub fn center(&self) -> [T; D] {
+        let half = T::one() / (T::one() + T::one());
+        self.axes.map(|(min, max)| {
+            if min.abs() <= T::max_value() * half && max.abs() <= T::max_value() * half {
+                return (min + max) * half;
+            }
+            let width = max - min;
+            if width.is_finite() {
+                min + width * half
+            } else {
+                min * half + max * half
+            }
+        })
+    }
+
+    /// Return axis widths. A width can be infinite even when both bounds are finite.
+    pub fn extent(&self) -> [T; D] {
+        self.axes.map(|(min, max)| max - min)
+    }
+
     /// Construct a finite bounding box from minimum and maximum coordinates.
     /// Returns `None` if a coordinate is non-finite or a minimum exceeds its maximum.
     pub fn new(min: [T; D], max: [T; D]) -> Option<Self> {

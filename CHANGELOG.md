@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Breaking changes
+- Changed Bézier `control_points()` to borrowed iteration; `into_control_points()` returns the owned array. Removed mutable generic Bézier iteration in favor of checked control-point replacement/mapping.
 - Added `Point::is_finite`; custom point implementations must report whether all coordinates are finite.
 - Made line and Bezier `new` constructors fallible so they reject non-finite control points; generic Bezier construction also rejects an empty control-point array.
 - Replaced `arclen(nsteps)` with `arclen(accuracy) -> Result<_, ArcLengthError>` across curves, segments, and paths; the old sampling calculation is now `arclen_polyline(segments)`.
@@ -13,6 +14,11 @@ All notable changes to this project will be documented in this file.
 - B-spline construction rejects empty active knot domains and knot multiplicities greater than degree + 1. Partly clamped splines use the standard `[knots[D], knots[C]]` active domain.
 
 ### Added
+- Array conversions and borrowed iteration for `PointN`, lossless specialized/generic Bézier conversions, and conditional debugging/comparison traits for generic curves and cloning/debugging for paths.
+- Validated control-point mapping and atomic replacement, clamped-uniform B-spline construction, and direct `derivative_at`/`speed` helpers, including path chain-rule scaling.
+- Checked Bézier `subcurve` extraction and distance-based splitting; fixed-capacity path reuse helpers and a segment-preserving `try_push` API.
+- Bounding-box coordinate, center, extent, overlap, and intersection helpers, including touching and zero-width boxes.
+- 3D motion, spatial-query, and time-domain animation examples, and external-consumer smoke coverage with/without nalgebra.
 - Adaptive Gauss-Legendre arc length, consistent partial-length APIs, and bracketed inverse-length lookup, shared across all curve types and paths.
 - Allocation-free B-spline `bezier_spans()` extraction using the polar de Boor algorithm.
 - Tight generic Bézier, B-spline, and path boxes; explicit `control_box()` methods and a `BoundingBox` type with union and containment helpers.
@@ -26,6 +32,9 @@ All notable changes to this project will be documented in this file.
 - Cleaned up existing curve-code Clippy findings and added strict Clippy checks to CI.
 
 ### Fixed
+- Export public root-finding errors and common segment/B-spline error types at the crate root; all public errors implement `core::error::Error`.
+- Correct the signal interpolation example using actual clamped basis functions and report singular/non-finite solver failures instead of skipping pivots.
+- Align the README nalgebra dependency with the adapter's 0.34 dependency.
 - Evaluate unclamped B-splines at the final domain parameter using de Boor's algorithm instead of incorrectly returning the last control point.
 - Reject non-finite B-spline knots and control points, reporting the first invalid control-point index.
 - Treat B-spline knot multiplicity and zero-width spans structurally, while using scale-aware tolerances only for algebraic cancellation.

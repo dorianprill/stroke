@@ -12,6 +12,19 @@ pub enum RootFindingError {
     ZeroDerivative,
 }
 
+impl core::fmt::Display for RootFindingError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::NoRootsFound => "no roots found",
+            Self::FailedToConverge => "root search failed to converge",
+            Self::MaxIterationsReached => "root search reached its iteration limit",
+            Self::ZeroDerivative => "root search encountered a zero derivative",
+        })
+    }
+}
+
+impl core::error::Error for RootFindingError {}
+
 /// Find a single (any) root of the function f(x) = 0 close to a given a start value, f and its derivative f'.
 /// This function cannot predict which root is going to be found.
 /// Uses the Newton-Raphson method because it is suited for splines as they are cont. differentiable.

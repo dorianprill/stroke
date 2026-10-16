@@ -25,7 +25,7 @@ const LOCAL_SEARCH_ITERS: usize = 16;
 /// # Parameters
 /// - `P`: point type implementing [`Point`].
 /// - `N`: number of control points.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Bezier<P, const N: usize>
 where
     P: Point,
@@ -43,12 +43,12 @@ impl<P: Point, const N: usize> IntoIterator for Bezier<P, { N }> {
     }
 }
 
-impl<'a, P: Point, const N: usize> IntoIterator for &'a mut Bezier<P, { N }> {
-    type Item = &'a mut P;
-    type IntoIter = slice::IterMut<'a, P>;
+impl<'a, P: Point, const N: usize> IntoIterator for &'a Bezier<P, { N }> {
+    type Item = &'a P;
+    type IntoIter = slice::Iter<'a, P>;
 
-    fn into_iter(self) -> slice::IterMut<'a, P> {
-        self.control_points.iter_mut()
+    fn into_iter(self) -> Self::IntoIter {
+        self.control_points.iter()
     }
 }
 
@@ -72,9 +72,35 @@ where
         Ok(Bezier { control_points })
     }
 
-    /// Return the control points array.
-    pub fn control_points(&self) -> [P; N] {
+    /// Borrow the control points in curve order.
+    pub fn control_points(&self) -> slice::Iter<'_, P> {
+        self.control_points.iter()
+    }
+
+    /// Consume the curve, returning its control-point array.
+    pub fn into_control_points(self) -> [P; N] {
         self.control_points
+    }
+
+    /// Replace all control points atomically, leaving the curve unchanged on error.
+    /// Mutable control-point iteration is deliberately unavailable:
+    /// ```compile_fail
+    /// use stroke::{Bezier, PointN};
+    /// let mut curve = Bezier::new([PointN::new([0.0_f64]), PointN::new([1.0])]).unwrap();
+    /// for point in &mut curve { *point = PointN::new([f64::NAN]); }
+    /// ```
+    pub fn set_control_points(&mut self, points: [P; N]) -> Result<(), CurveConstructionError> {
+        *self = Self::new(points)?;
+        Ok(())
+    }
+
+    /// Map control points and validate the result without modifying this curve.
+    /// This maps the entire curve geometrically only when `map` is affine.
+    pub fn try_map_control_points(
+        &self,
+        map: impl FnMut(P) -> P,
+    ) -> Result<Self, CurveConstructionError> {
+        Self::new(self.control_points.map(map))
     }
 
     /// Return the start point of the curve.
@@ -98,14 +124,12 @@ where
     /// Evaluate a point on the curve at point 't' which should be in the interval \[0, 1\] (unchecked!)
     /// This is implemented using De Casteljau's algorithm (over a temporary array with const generic sizing)
     pub fn eval(&self, t: P::Scalar) -> P {
-        //let t = t.into();
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         // start with a copy of the original control points array and succesively use it for evaluation
         let mut p: [P; N] = self.control_points;
         // loop up to degree = control_points.len() -1
         for i in 1..p.len() {
             for j in 0..p.len() - i {
-                p[j] = p[j] * (one - t) + p[j + 1] * t;
+                p[j] = crate::numeric::lerp(p[j], p[j + 1], t);
             }
         }
         p[0]
@@ -193,7 +217,6 @@ where
 
     /// Split the curve at `t` into two sub-curves.
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         // start with a copy of the original control points for now
         // TODO how to initialize const generic array without using unsafe?
         let mut left: [P; N] = self.control_points;
@@ -208,7 +231,8 @@ where
             right[right.len() - i] = casteljau_points[right.len() - i];
             // calculate next level of points (one less point each level until we reach one point, the one at t)
             for j in 0..casteljau_points.len() - i {
-                casteljau_points[j] = casteljau_points[j] * (one - t) + casteljau_points[j + 1] * t;
+                casteljau_points[j] =
+                    crate::numeric::lerp(casteljau_points[j], casteljau_points[j + 1], t);
             }
         }
 
@@ -220,6 +244,62 @@ where
                 control_points: right,
             },
         )
+    }
+
+    /// Extract `start..end`, reparameterized to `[0, 1]`.
+    /// Requires finite `0 <= start <= end <= 1`; equal endpoints yield a constant curve.
+    pub fn subcurve(
+        &self,
+        range: core::ops::Range<P::Scalar>,
+    ) -> Result<Self, crate::CurveParameterError> {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let (start, end) = (range.start, range.end);
+        if !start.is_finite() || !end.is_finite() || start < zero || end > one || start > end {
+            return Err(crate::CurveParameterError::InvalidRange);
+        }
+        let result = if start == zero && end == one {
+            *self
+        } else if start == end {
+            Self {
+                control_points: [self.eval(start); N],
+            }
+        } else if start == zero {
+            self.split(end).0
+        } else {
+            self.split(start).1.split((end - start) / (one - start)).0
+        };
+        if result.control_points.iter().all(Point::is_finite) {
+            Ok(result)
+        } else {
+            Err(crate::CurveParameterError::NonFiniteComputation)
+        }
+    }
+
+    /// Split at a distance from the start, clamping finite distances to the endpoints.
+    pub fn split_at_length(
+        &self,
+        length: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<(Self, Self), ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        Ok(self.split(self.t_at_length(length, accuracy)?))
+    }
+
+    /// Evaluate the derivative with respect to `t` without constructing another curve.
+    /// Constant curves return zero; `t` is expected to be in `[0, 1]`.
+    pub fn derivative_at(&self, t: P::Scalar) -> P {
+        self.velocity(t)
+    }
+
+    /// Return the derivative magnitude with respect to `t` in `[0, 1]`.
+    pub fn speed(&self, t: P::Scalar) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        self.derivative_at(t).norm()
     }
 
     /// Returns the derivative curve of self which has N-1 control points.

@@ -21,6 +21,42 @@ impl<T, const N: usize> PointN<T, N> {
     pub fn new(array: [T; N]) -> Self {
         PointN(array)
     }
+
+    /// Borrow the component array.
+    pub fn as_array(&self) -> &[T; N] {
+        &self.0
+    }
+
+    /// Consume the point, returning its component array without copying.
+    pub fn into_array(self) -> [T; N] {
+        self.0
+    }
+}
+
+impl<T, const N: usize> From<[T; N]> for PointN<T, N> {
+    fn from(array: [T; N]) -> Self {
+        Self::new(array)
+    }
+}
+
+impl<T, const N: usize> From<PointN<T, N>> for [T; N] {
+    fn from(point: PointN<T, N>) -> Self {
+        point.into_array()
+    }
+}
+
+impl<T, const N: usize> AsRef<[T; N]> for PointN<T, N> {
+    fn as_ref(&self) -> &[T; N] {
+        self.as_array()
+    }
+}
+
+impl<'a, T, const N: usize> IntoIterator for &'a PointN<T, N> {
+    type Item = &'a T;
+    type IntoIter = slice::Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
 }
 
 /// Initialize with the Default value for the underlying type

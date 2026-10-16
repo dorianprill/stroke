@@ -37,6 +37,8 @@ pub enum BSplineError {
     KnotDomainViolation,
     /// The de Boor evaluation encountered a NaN alpha value.
     EvaluationAlphaIsNaN,
+    /// Differential evaluation produced a non-finite result.
+    NonFiniteComputation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -83,9 +85,14 @@ impl core::fmt::Display for BSplineError {
             BSplineError::EvaluationAlphaIsNaN => {
                 write!(f, "Cox-deBoor evaluation yields alpha NaN value")
             }
+            BSplineError::NonFiniteComputation => {
+                f.write_str("B-spline arithmetic produced a non-finite value")
+            }
         }
     }
 }
+
+impl core::error::Error for BSplineError {}
 
 /// Const-generic B-spline curve with fixed control-point and knot counts.
 ///
@@ -96,7 +103,7 @@ impl core::fmt::Display for BSplineError {
 /// - `C`: number of control points.
 /// - `K`: number of knots (`K = C + D + 1`).
 /// - `D`: degree (order - 1).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct BSpline<P, const K: usize, const C: usize, const D: usize>
 where
     P: Point,
@@ -107,6 +114,19 @@ where
     knot_kind: KnotVectorKind,
     /// Control points
     control_points: [P; C],
+}
+
+impl<P, const K: usize, const C: usize, const D: usize> core::fmt::Debug for BSpline<P, K, C, D>
+where
+    P: Point + core::fmt::Debug,
+    P::Scalar: core::fmt::Debug,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BSpline")
+            .field("knots", &self.knots)
+            .field("control_points", &self.control_points)
+            .finish()
+    }
 }
 
 impl<P, const K: usize, const C: usize, const D: usize> Default for BSpline<P, K, C, D>
@@ -181,6 +201,121 @@ where
                 knot_kind,
                 control_points,
             })
+        }
+    }
+
+    /// Construct an open uniform, fully clamped B-spline on `[0, 1]`.
+    /// Requires `C > D` and `K = C + D + 1`; control points must be finite.
+    pub fn new_clamped_uniform(control_points: [P; C]) -> Result<Self, BSplineError> {
+        if C <= D {
+            return Err(BSplineError::TooFewControlPoints);
+        }
+        let expected = C
+            .checked_add(D)
+            .and_then(|n| n.checked_add(1))
+            .ok_or(BSplineError::TooFewKnots)?;
+        if K < expected {
+            return Err(BSplineError::TooFewKnots);
+        }
+        if K > expected {
+            return Err(BSplineError::TooManyKnots);
+        }
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let spans = <P::Scalar as NumCast>::from(C - D).unwrap();
+        let knots = core::array::from_fn(|i| {
+            if i <= D {
+                zero
+            } else if i >= C {
+                one
+            } else {
+                <P::Scalar as NumCast>::from(i - D).unwrap() / spans
+            }
+        });
+        Self::new(knots, control_points)
+    }
+
+    /// Consume the curve, returning its control-point array.
+    pub fn into_control_points(self) -> [P; C] {
+        self.control_points
+    }
+
+    /// Replace control points atomically, retaining the knot vector.
+    pub fn set_control_points(&mut self, points: [P; C]) -> Result<(), BSplineError> {
+        *self = Self::new(self.knots, points)?;
+        Ok(())
+    }
+
+    /// Map control points and validate the result without modifying this curve.
+    /// Only affine maps geometrically transform the whole curve in the same way.
+    pub fn try_map_control_points(&self, map: impl FnMut(P) -> P) -> Result<Self, BSplineError> {
+        Self::new(self.knots, self.control_points.map(map))
+    }
+
+    /// Evaluate the derivative with respect to the native knot parameter.
+    /// At interior knots this returns the right-hand piece derivative; at the final
+    /// endpoint it uses the left-hand piece. Degree-zero pieces return zero.
+    /// This does not assert differentiability across a knot or jump.
+    pub fn derivative_at(&self, t: P::Scalar) -> Result<P, BSplineError>
+    where
+        [(); D + 1]: Sized,
+    {
+        let span = self.knot_span(t)?;
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        if D == 0 {
+            return Ok(self.control_points[span] * zero);
+        }
+        let degree = <P::Scalar as NumCast>::from(D).unwrap();
+        // Evaluate the degree D-1 derivative with one D+1 workspace. This avoids
+        // exposing D-1, C-1 and K-2 const-expression bounds to callers.
+        let mut work = [self.control_points[0] * zero; D + 1];
+        for (j, value) in work.iter_mut().enumerate().take(D) {
+            let i = span - D + j;
+            let start = self.knots[i + 1];
+            let end = self.knots[i + D + 1];
+            *value = if start == end {
+                self.control_points[i] * zero
+            } else {
+                crate::numeric::difference_quotient(
+                    self.control_points[i],
+                    self.control_points[i + 1],
+                    start,
+                    end,
+                ) * degree
+            };
+        }
+        for r in 1..D {
+            for j in (r..D).rev() {
+                let i = span - D + j;
+                let start = self.knots[i + 1];
+                let end = self.knots[i + D - r + 1];
+                let alpha = if start == end {
+                    zero
+                } else {
+                    crate::numeric::unit_parameter(t, start, end)
+                };
+                work[j] = crate::numeric::lerp(work[j - 1], work[j], alpha);
+            }
+        }
+        let result = work[D - 1];
+        if result.is_finite() {
+            Ok(result)
+        } else {
+            Err(BSplineError::NonFiniteComputation)
+        }
+    }
+
+    /// Return derivative magnitude per unit of the native knot parameter.
+    pub fn speed(&self, t: P::Scalar) -> Result<P::Scalar, BSplineError>
+    where
+        P: PointNorm,
+        [(); D + 1]: Sized,
+    {
+        let speed = self.derivative_at(t)?.norm();
+        if speed.is_finite() {
+            Ok(speed)
+        } else {
+            Err(BSplineError::NonFiniteComputation)
         }
     }
 

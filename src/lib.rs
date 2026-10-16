@@ -13,6 +13,8 @@
 //!
 //! `Point::Scalar` must implement [`num_traits::Float`], so the library currently
 //! targets floating-point numeric representations such as `f32` and `f64`.
+//! Consumers using const-expression-based APIs, such as bounding boxes, should
+//! enable `#![feature(generic_const_exprs)]` at their crate root on nightly.
 //!
 //! Curves and paths expose accuracy-controlled Gauss-Legendre arc length and
 //! tight [`BoundingBox`] values. Their `control_box()` methods return the
@@ -58,6 +60,7 @@ pub mod path;
 pub mod point;
 
 mod arc_length;
+mod conversions;
 mod numeric;
 mod path_parameter;
 mod roots;
@@ -77,11 +80,12 @@ mod adapters;
 // export common types at crate root
 pub use arc_length::ArcLengthError;
 pub use bezier::Bezier;
+pub use bezier_segment::BezierSegment;
 pub use bounding_box::BoundingBox;
-pub use bspline::BSpline;
+pub use bspline::{BSpline, BSplineError};
 pub use bspline_path::BSplinePath;
 pub use cubic_bezier::CubicBezier;
-pub use error::CurveConstructionError;
+pub use error::{CurveConstructionError, CurveParameterError};
 pub use find_root::FindRoot;
 pub use line::LineSegment;
 pub use path::BezierPath;
@@ -89,3 +93,4 @@ pub use point::Point;
 pub use point::{PointDot, PointIndex, PointNorm};
 pub use point_generic::PointN;
 pub use quadratic_bezier::QuadraticBezier;
+pub use roots::RootFindingError;

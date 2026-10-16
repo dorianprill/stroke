@@ -52,6 +52,32 @@ where
     segments: ArrayVec<[BSpline<P, K, C, D>; N]>,
 }
 
+impl<P: Point, const K: usize, const C: usize, const D: usize, const N: usize> Clone
+    for BSplinePath<P, K, C, D, N>
+where
+    [BSpline<P, K, C, D>; N]: tinyvec::Array<Item = BSpline<P, K, C, D>>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            segments: self.segments,
+        }
+    }
+}
+
+impl<P, const K: usize, const C: usize, const D: usize, const N: usize> core::fmt::Debug
+    for BSplinePath<P, K, C, D, N>
+where
+    P: Point + core::fmt::Debug,
+    P::Scalar: core::fmt::Debug,
+    [BSpline<P, K, C, D>; N]: tinyvec::Array<Item = BSpline<P, K, C, D>>,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BSplinePath")
+            .field("segments", &self.segments.as_slice())
+            .finish()
+    }
+}
+
 impl<P, const K: usize, const C: usize, const D: usize, const N: usize> BSplinePath<P, K, C, D, N>
 where
     P: Point,
@@ -74,6 +100,36 @@ where
         self.segments.len() == 0
     }
 
+    /// Return the fixed segment capacity.
+    pub fn capacity(&self) -> usize {
+        N
+    }
+
+    /// Return the number of additional segments that fit.
+    pub fn remaining_capacity(&self) -> usize {
+        N - self.len()
+    }
+
+    /// Remove all segments while retaining capacity.
+    pub fn clear(&mut self) {
+        self.segments.clear();
+    }
+
+    /// Remove and return the final segment, or `None` when empty.
+    pub fn pop(&mut self) -> Option<BSpline<P, K, C, D>> {
+        self.segments.pop()
+    }
+
+    /// Append a segment, returning it unchanged if the path is full.
+    pub fn try_push(&mut self, segment: BSpline<P, K, C, D>) -> Result<(), BSpline<P, K, C, D>> {
+        if self.len() == N {
+            Err(segment)
+        } else {
+            self.segments.push(segment);
+            Ok(())
+        }
+    }
+
     /// Iterate over the stored segments.
     pub fn segments(&self) -> slice::Iter<'_, BSpline<P, K, C, D>> {
         self.segments.iter()
@@ -81,12 +137,7 @@ where
 
     /// Push a segment, returning false if the path is at capacity.
     pub fn push(&mut self, segment: BSpline<P, K, C, D>) -> bool {
-        if self.segments.len() < self.segments.capacity() {
-            self.segments.push(segment);
-            true
-        } else {
-            false
-        }
+        self.try_push(segment).is_ok()
     }
 
     /// Evaluate a point along the path for `t` in `[0, 1]`.
@@ -128,6 +179,45 @@ where
             let _ = reversed.push(segment.reverse());
         }
         reversed
+    }
+
+    /// Evaluate the derivative with respect to the normalized path parameter.
+    /// Includes both native knot-domain and path segment scaling. Values outside
+    /// `[0, 1]` are clamped before taking the selected piece's derivative.
+    /// Interior boundaries select the right-hand piece; the final endpoint uses
+    /// the left. No derivative across a jump is implied.
+    /// Returns `None` for an empty path, NaN, or failed differential evaluation.
+    pub fn derivative_at(&self, t: P::Scalar) -> Option<P>
+    where
+        [(); D + 1]: Sized,
+    {
+        let (index, local) = self.segment_parameter(t)?;
+        let segment = &self.segments[index];
+        let (start, end) = segment.knot_domain();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let parameter = start * (one - local) + end * local;
+        let derivative = segment.derivative_at(parameter).ok()?;
+        let width = end - start;
+        let scaled = if width.is_finite() {
+            derivative * width
+        } else {
+            let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+            (derivative * (end * half - start * half)) * (one + one)
+        };
+        let path_start = crate::path_parameter::boundary::<P::Scalar>(index, self.len());
+        let path_end = crate::path_parameter::boundary::<P::Scalar>(index + 1, self.len());
+        let result = crate::numeric::divide(scaled, path_end - path_start);
+        result.is_finite().then_some(result)
+    }
+
+    /// Return the selected piece's speed per unit of normalized path parameter.
+    pub fn speed(&self, t: P::Scalar) -> Option<P::Scalar>
+    where
+        P: PointNorm,
+        [(); D + 1]: Sized,
+    {
+        let speed = self.derivative_at(t)?.norm();
+        speed.is_finite().then_some(speed)
     }
 
     /// Return the unit tangent direction at `t`.

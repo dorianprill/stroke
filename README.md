@@ -11,6 +11,8 @@ Made with [Kuva](https://github.com/Psy-Fer/kuva). Regenerate with `cargo run --
 
 The library makes heavy use of const-generics and `generic_const_exprs`, so the nightly compiler is required.  
 This repo uses `nightly` via `rust-toolchain`.  
+Consumers using const-expression-based APIs (such as bounding boxes) must also
+enable `#![feature(generic_const_exprs)]` at their crate root on nightly.
 It comes with a const-generic N-dimensional Point type so you can use the library without any other dependencies.  
 `PointN<T, N>` uses your chosen scalar `T` (typically `f32`/`f64`) and keeps the dimension at compile time.  
 Point scalar types must implement `num_traits::Float`; the library therefore currently targets floating-point numeric representations such as `f32` and `f64`.
@@ -42,8 +44,8 @@ let mid = curve.eval(0.5);
 Enable with:
 
 ```toml
-stroke = { version = "0.3.0", features = ["nalgebra"] }
-nalgebra = { version = "0.32", default-features = false, features = ["libm"] }
+stroke = { version = "0.4", features = ["nalgebra"] }
+nalgebra = { version = "0.34", default-features = false, features = ["libm"] }
 ```
 
 ## Goals
@@ -163,6 +165,25 @@ assert!(tight[1].1 < control[1].1);
 count for accuracy. General B-spline splitting into two fixed-size B-spline
 values is not currently provided; use `bezier_spans()` for decomposition.
 
+### Convenience APIs
+
+- `PointN` converts to/from arrays, exposes `as_array()`/`into_array()`, and supports borrowed iteration.
+- Curves expose borrowed `control_points()` iterators and owned `into_control_points()` arrays. Use `set_control_points()` for atomic validated replacement or `try_map_control_points()` for validated mapping; mapping controls represents a geometric transform only for affine maps. Generic Bézier controls no longer support mutable iteration.
+- Lines, quadratic/cubic Béziers, and equivalent generic Béziers convert losslessly with `From`/`Into`.
+- `BSpline::new_clamped_uniform(points)` builds a fully clamped uniform knot vector on `[0, 1]`; it shapes a curve from controls, not an interpolant through every control point.
+- `derivative_at(t)` and `speed(t)` avoid constructing derivative curves. They are measured per unit of the curve's parameter: native knot units for B-splines, normalized path units for paths. At interior boundaries they use the right-hand piece, at the final endpoint the left; no differentiability across a jump is implied.
+- Bézier curves and segments provide checked `subcurve(start..end)`, reparameterized to `[0, 1]`, and `split_at_length(length, accuracy)`. Equal subcurve endpoints produce a constant curve; invalid ranges are rejected.
+- Paths provide `try_push()` (returning the segment on overflow), `capacity()`, `remaining_capacity()`, `pop()`, and `clear()` for reusable fixed-capacity storage. Existing boolean `push` methods remain available.
+- Boxes expose `min()`, `max()`, `center()`, `extent()`, `intersects()`, and `intersection()`. Touching boundaries count as intersection; box overlap alone does not prove curve intersection. Finite bounds can have an overflowing extent.
+
+For migration from 0.3: constructors are fallible; replace sampling-based
+`arclen(steps)` with `arclen_polyline(steps)` or accuracy-controlled `arclen(accuracy)?`.
+Inverse-length methods now take an accuracy target and return `Result`; boxes
+use `into_axes()` for raw arrays. For copied controls use `into_control_points()`
+or `control_points().copied()`, and use checked replacement instead of mutable
+Bézier iteration. Error types implement `core::error::Error` and are exported at
+the crate root.
+
 ## Examples
 
 - `bezier_path`: mixed Bezier path segments; run `cargo run --example bezier_path`.
@@ -170,6 +191,9 @@ values is not currently provided; use `bezier_spans()` for decomposition.
 - `bspline_signal_1d`: 1D signal interpolation with a cubic B-spline; run `cargo run --example bspline_signal_1d`.
 - `bezier_quarter_circle`: cubic Bezier quarter-circle approximation; run `cargo run --example bezier_quarter_circle`.
 - `arc_length_sampling`: equal-arc-length sampling along a Bezier curve; run `cargo run --example arc_length_sampling`.
+- `motion_3d`: constant-path-speed sampling of a 3D robot/tool trajectory, producing CSV positions and velocities; this is not an acceleration-limited motion planner. Run `cargo run --example motion_3d`.
+- `spatial_queries`: CAD/GIS broad-phase filtering with tight versus control boxes, overlap queries, and trimmed curve bounds. Run `cargo run --example spatial_queries`.
+- `animation_envelope`: scalar B-spline value and rate over a native time domain, producing CSV output. Run `cargo run --example animation_envelope`.
 - `tangent_normal_curvature`: sample tangent/normal/curvature; run `cargo run --example tangent_normal_curvature`.
 - `kuva_curves`: render a 2×2 SVG figure with generic quadratic and cubic `Bezier` curves, a clamped quintic `BSpline`, and an unclamped cubic `BSpline`, with curve bounding boxes, control polygons, named control points, knot-vector legends, and marked interior knots and unclamped endpoints; run `cargo run --example kuva_curves` to write `curves.svg`. Uses Kuva's SVG backend with optional features disabled; no system font library or font installation is required.
 - `nalgebra_basic`: Bezier with nalgebra SVector; run `cargo run --example nalgebra_basic --features nalgebra`.
@@ -181,6 +205,10 @@ Run `cargo lint` for all targets with all features, or `cargo lint-default`
 for all targets without default features. Both treat warnings as errors;
 CI runs both commands. `.cargo/config.toml` also selects the compatible
 nightly trait solver for local builds, Clippy, and doctests.
+Run `cargo test --examples --all-features` for example assertions. CI also
+builds a separate downstream consumer from outside the repository, without
+inheriting this configuration. The API pass was tested with
+`rustc 1.101.0-nightly (7df81381d 2026-10-14)`; stable Rust is not supported.
 
 Enable automatic checks before each commit in a fresh clone:
 

@@ -175,6 +175,71 @@ where
         }
     }
 
+    /// Evaluate the derivative with respect to the unit-domain parameter.
+    pub fn derivative_at(&self, t: P::Scalar) -> P {
+        match self {
+            Self::Linear(curve) => curve.derivative_at(t),
+            Self::Quadratic(curve) => curve.derivative_at(t),
+            Self::Cubic(curve) => curve.derivative_at(t),
+        }
+    }
+
+    /// Return derivative magnitude per unit of the unit-domain parameter.
+    pub fn speed(&self, t: P::Scalar) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        self.derivative_at(t).norm()
+    }
+
+    /// Extract a finite ordered range in `[0, 1]`, reparameterized to `[0, 1]`.
+    /// Equal endpoints yield a constant segment.
+    pub fn subcurve(
+        &self,
+        range: core::ops::Range<P::Scalar>,
+    ) -> Result<Self, crate::CurveParameterError> {
+        match self {
+            Self::Linear(curve) => curve.subcurve(range).map(Self::Linear),
+            Self::Quadratic(curve) => curve.subcurve(range).map(Self::Quadratic),
+            Self::Cubic(curve) => curve.subcurve(range).map(Self::Cubic),
+        }
+    }
+
+    /// Split at a distance from the start, clamping finite distances to endpoints.
+    pub fn split_at_length(
+        &self,
+        length: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<(Self, Self), ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        match self {
+            Self::Linear(curve) => curve
+                .split_at_length(length, accuracy)
+                .map(|(a, b)| (Self::Linear(a), Self::Linear(b))),
+            Self::Quadratic(curve) => curve
+                .split_at_length(length, accuracy)
+                .map(|(a, b)| (Self::Quadratic(a), Self::Quadratic(b))),
+            Self::Cubic(curve) => curve
+                .split_at_length(length, accuracy)
+                .map(|(a, b)| (Self::Cubic(a), Self::Cubic(b))),
+        }
+    }
+
+    /// Map control points and validate the result without modifying this segment.
+    /// Only affine maps geometrically transform the whole curve in the same way.
+    pub fn try_map_control_points(
+        &self,
+        map: impl FnMut(P) -> P,
+    ) -> Result<Self, crate::CurveConstructionError> {
+        match self {
+            Self::Linear(curve) => curve.try_map_control_points(map).map(Self::Linear),
+            Self::Quadratic(curve) => curve.try_map_control_points(map).map(Self::Quadratic),
+            Self::Cubic(curve) => curve.try_map_control_points(map).map(Self::Cubic),
+        }
+    }
+
     /// Return the unit tangent direction at `t`.
     pub fn tangent(&self, t: P::Scalar) -> P
     where
