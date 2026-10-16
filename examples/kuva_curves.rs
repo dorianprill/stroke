@@ -253,7 +253,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         panel(
             "Bezier<PointN<f64, 2>, 3>",
             2,
-            &quadratic.control_points(),
+            &quadratic.into_control_points(),
             (0..=STEPS)
                 .map(|i| quadratic.eval(i as f64 / STEPS as f64))
                 .collect(),
@@ -262,7 +262,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         panel(
             "Bezier<PointN<f64, 2>, 4>",
             3,
-            &cubic.control_points(),
+            &cubic.into_control_points(),
             (0..=STEPS)
                 .map(|i| cubic.eval(i as f64 / STEPS as f64))
                 .collect(),

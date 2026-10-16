@@ -1,6 +1,6 @@
 //! Line segment curve type.
 
-use super::{ArcLengthError, ArrayVec, BoundingBox, Point, PointDot, PointIndex, PointNorm};
+use super::{ArcLengthError, ArrayVec, BoundingBox, Point, PointIndex, PointNorm};
 use crate::arc_length::validate_accuracy;
 use crate::error::{CurveConstructionError, validate_control_points};
 use crate::numeric::is_negligible;
@@ -32,6 +32,67 @@ where
     pub fn new(start: P, end: P) -> Result<Self, CurveConstructionError> {
         validate_control_points(&[start, end])?;
         Ok(LineSegment { start, end })
+    }
+
+    /// Borrow the control points in curve order.
+    pub fn control_points(&self) -> core::array::IntoIter<&P, 2> {
+        [&self.start, &self.end].into_iter()
+    }
+
+    /// Consume the curve, returning its control-point array.
+    pub fn into_control_points(self) -> [P; 2] {
+        [self.start, self.end]
+    }
+
+    /// Replace all control points atomically, leaving this curve unchanged on error.
+    pub fn set_control_points(&mut self, points: [P; 2]) -> Result<(), CurveConstructionError> {
+        *self = Self::new(points[0], points[1])?;
+        Ok(())
+    }
+
+    /// Map control points and validate the result without modifying this curve.
+    /// This maps the entire curve geometrically only when `map` is affine.
+    pub fn try_map_control_points(
+        &self,
+        map: impl FnMut(P) -> P,
+    ) -> Result<Self, CurveConstructionError> {
+        let points = (*self).into_control_points().map(map);
+        Self::new(points[0], points[1])
+    }
+
+    /// Evaluate the derivative with respect to the unit-domain parameter.
+    pub fn derivative_at(&self, t: P::Scalar) -> P {
+        crate::Bezier::from(*self).derivative_at(t)
+    }
+
+    /// Return the derivative magnitude with respect to the unit-domain parameter.
+    pub fn speed(&self, t: P::Scalar) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        self.derivative_at(t).norm()
+    }
+
+    /// Extract a finite ordered range in `[0, 1]`, reparameterized to `[0, 1]`.
+    /// Equal range endpoints yield a constant curve.
+    pub fn subcurve(
+        &self,
+        range: core::ops::Range<P::Scalar>,
+    ) -> Result<Self, crate::CurveParameterError> {
+        crate::Bezier::from(*self).subcurve(range).map(Self::from)
+    }
+
+    /// Split at a distance from the start, clamping finite distances to the endpoints.
+    pub fn split_at_length(
+        &self,
+        length: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<(Self, Self), ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        let (left, right) = crate::Bezier::from(*self).split_at_length(length, accuracy)?;
+        Ok((Self::from(left), Self::from(right)))
     }
 
     /// Return the start point of the segment.
@@ -76,32 +137,118 @@ where
         )
     }
 
-    /// Return the distance from the `LineSegment` to Point p by calculating the projection
+    /// Return the Euclidean distance to this segment using a scaled projection.
+    /// Non-finite input points return NaN; an unrepresentable distance is infinite.
     pub fn distance_to_point(&self, p: P) -> P::Scalar
     where
         P: PointNorm,
     {
-        let l2 = (self.end - self.start).squared_norm();
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        // A nonzero segment remains meaningful regardless of its coordinate scale.
-        if l2 == zero {
-            (self.start - p).norm()
-        } else {
-            let v1 = p - self.start;
-            let v2 = self.end - self.start;
-            let dot = PointDot::dot(&v1, &v2);
-            // v1 and v2 will by definition always have the same number of axes and produce a value for each Item
-            // dot = v1.into_iter()
-            //         .zip(v2.into_iter())
-            //         .map(|(x1, x2)| x1 * x2)
-            //         .sum::<P::Scalar>();
-            let t = (dot / l2).clamp(
-                <P::Scalar as NumCast>::from(0.0).unwrap(),
-                <P::Scalar as NumCast>::from(1.0).unwrap(),
-            );
-            let projection = self.start + (self.end - self.start) * t; // Projection falls on the segment
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+        if !p.is_finite() || !self.start.is_finite() || !self.end.is_finite() {
+            return P::Scalar::nan();
+        }
+        let start_distance = crate::distance::between(p, self.start);
+        let end_distance = crate::distance::between(p, self.end);
+        let best_endpoint = start_distance.min(end_distance);
+        if best_endpoint == zero {
+            return zero;
+        }
 
-            (p - projection).norm()
+        // Center the geometry before projection rather than reconstructing a
+        // normalized global t: tiny displacements on a huge line can disappear
+        // when added to t=0.5. High/low centers retain midpoint rounding errors.
+        let offset = |axis, scaled| {
+            let (center, tail) = crate::numeric::midpoint_parts(self.start[axis], self.end[axis]);
+            if scaled {
+                (p[axis] * half - center * half) - tail * half
+            } else {
+                (p[axis] - center) - tail
+            }
+        };
+        let direction_half = (0..P::DIM).any(|i| !(self.end[i] - self.start[i]).is_finite());
+        let offset_half = (0..P::DIM).any(|i| !offset(i, false).is_finite());
+        let direction = |axis| {
+            if direction_half {
+                self.end[axis] * half - self.start[axis] * half
+            } else {
+                self.end[axis] - self.start[axis]
+            }
+        };
+        let mut direction_scale = zero;
+        let mut offset_scale = zero;
+        for axis in 0..P::DIM {
+            direction_scale = direction_scale.max(direction(axis).abs());
+            offset_scale = offset_scale.max(offset(axis, offset_half).abs());
+        }
+        // These are structural zero checks, not scale-dependent tolerances.
+        if direction_scale == zero {
+            return start_distance;
+        }
+        if offset_scale == zero {
+            return zero;
+        }
+        let mut dot = zero;
+        let mut correction = zero;
+        let mut squared_direction = zero;
+        for axis in 0..P::DIM {
+            let d = direction(axis) / direction_scale;
+            let w = offset(axis, offset_half) / offset_scale;
+            let product = d * w;
+            let next = dot + product;
+            correction = correction
+                + if dot.abs() >= product.abs() {
+                    (dot - next) + product
+                } else {
+                    (product - next) + dot
+                };
+            dot = next;
+            squared_direction = squared_direction + d * d;
+        }
+        dot = dot + correction;
+        // Twice the absolute displacement from the midpoint, in segment units.
+        // Restore scales only after the dot products. Neither very large ratios
+        // nor tiny products must be rounded to inf/zero before they cancel.
+        let shift = if offset_half { 1 } else { 0 } - if direction_half { 1 } else { 0 };
+        let position = crate::numeric::scaled_product_ratio(
+            &[offset_scale, dot.abs()],
+            &[direction_scale, squared_direction],
+            shift + 1,
+        );
+        if position >= one {
+            return if dot < zero {
+                start_distance
+            } else {
+                end_distance
+            };
+        }
+        let mut distance = zero;
+        for axis in 0..P::DIM {
+            let d = direction(axis) / direction_scale;
+            let native_offset = offset(axis, false);
+            let residual = if native_offset.is_finite() {
+                native_offset
+                    - crate::numeric::scaled_product_ratio(
+                        &[offset_scale, dot, d],
+                        &[squared_direction],
+                        if offset_half { 1 } else { 0 },
+                    )
+            } else {
+                (offset(axis, true)
+                    - crate::numeric::scaled_product_ratio(
+                        &[offset_scale, dot, d],
+                        &[squared_direction],
+                        0,
+                    ))
+                    * (one + one)
+            };
+            distance = distance.hypot(residual);
+        }
+        if distance.is_nan() {
+            distance
+        } else {
+            distance.min(best_endpoint)
         }
     }
 

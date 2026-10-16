@@ -4,7 +4,7 @@ const DEGREE: usize = 3;
 const CONTROL_POINTS: usize = 8;
 const KNOTS: usize = CONTROL_POINTS + DEGREE + 1;
 
-fn main() {
+fn main() -> Result<(), Box<dyn core::error::Error>> {
     // Sample a 1D signal.
     let samples: [f64; CONTROL_POINTS] = core::array::from_fn(|i| {
         let x = i as f64 / (CONTROL_POINTS - 1) as f64;
@@ -14,15 +14,20 @@ fn main() {
     });
 
     // Interpolate the samples with a cubic B-spline.
-    // We solve a tridiagonal system to recover control points that force the
+    // We solve a basis-function collocation system to recover control points that force the
     // spline to pass through the sample values at uniform parameter steps.
-    let control = interpolate_cubic_uniform(&samples);
+    let control = interpolate_cubic_uniform(&samples)?;
     let control_points: [PointN<f64, 1>; CONTROL_POINTS] =
         core::array::from_fn(|i| PointN::new([control[i]]));
     // Use a clamped uniform knot vector so the spline starts/ends at the samples.
-    let knots = open_uniform_knots();
     let spline: BSpline<PointN<f64, 1>, KNOTS, CONTROL_POINTS, DEGREE> =
-        BSpline::new(knots, control_points).expect("valid knot vector");
+        BSpline::new_clamped_uniform(control_points)?;
+
+    // Verify the example actually interpolates every sample, not just the endpoints.
+    for (i, expected) in samples.iter().enumerate() {
+        let t = i as f64 / (CONTROL_POINTS - 1) as f64;
+        assert!((spline.eval(t)?[0] - expected).abs() < 1e-12);
+    }
 
     let (kmin, kmax) = spline.knot_domain();
     let width = 80usize;
@@ -58,9 +63,10 @@ fn main() {
         let row = value_to_row(value, min, max, height);
         grid[row][i] = '*';
     }
-    // Overlay control points as letters.
+    // Overlay controls at their Greville abscissae (not at uniform sample times).
     for (i, value) in control.iter().copied().enumerate() {
-        let col = ((i as f64) * (width - 1) as f64 / (control.len() - 1) as f64).round() as usize;
+        let t = spline.knots().skip(i + 1).take(DEGREE).sum::<f64>() / DEGREE as f64;
+        let col = ((t - kmin) / (kmax - kmin) * (width - 1) as f64).round() as usize;
         let row = value_to_row(value, min, max, height);
         let letter = if i < CONTROL_POINTS / 2 { 'a' } else { 'b' };
         grid[row][col] = letter;
@@ -75,6 +81,7 @@ fn main() {
         let line: String = row.into_iter().collect();
         println!("{}", line);
     }
+    Ok(())
 }
 
 fn value_to_row(value: f64, min: f64, max: f64, height: usize) -> usize {
@@ -83,48 +90,39 @@ fn value_to_row(value: f64, min: f64, max: f64, height: usize) -> usize {
     y.round().clamp(0.0, (height - 1) as f64) as usize
 }
 
-// Open uniform (clamped) knot vector for a cubic spline with uniform spacing.
-fn open_uniform_knots() -> [f64; KNOTS] {
-    let end = (CONTROL_POINTS - DEGREE) as f64;
-    core::array::from_fn(|i| {
-        if i <= DEGREE {
-            0.0
-        } else if i >= KNOTS - DEGREE - 1 {
-            end
-        } else {
-            (i - DEGREE) as f64
-        }
-    })
-}
-
 // Solve for control points P so the cubic B-spline interpolates the samples.
-// For uniform knots, interior samples satisfy: P_{i-1} + 4 P_i + P_{i+1} = 6 D_i.
-// Endpoints are clamped: P_0 = D_0, P_{n-1} = D_{n-1}.
-fn interpolate_cubic_uniform(samples: &[f64; CONTROL_POINTS]) -> [f64; CONTROL_POINTS] {
-    let n = samples.len();
+// Build the actual basis matrix: the 1:4:1 cardinal-spline stencil does not
+// describe a clamped spline sampled at arbitrary uniform parameter steps.
+fn interpolate_cubic_uniform(
+    samples: &[f64; CONTROL_POINTS],
+) -> Result<[f64; CONTROL_POINTS], Box<dyn core::error::Error>> {
+    let basis_curve =
+        BSpline::<PointN<f64, 1>, KNOTS, CONTROL_POINTS, DEGREE>::new_clamped_uniform(
+            [PointN::new([0.0]); CONTROL_POINTS],
+        )?;
     let mut a = [[0.0; CONTROL_POINTS + 1]; CONTROL_POINTS];
-
-    // Endpoints are clamped.
-    a[0][0] = 1.0;
-    a[0][CONTROL_POINTS] = samples[0];
-    a[n - 1][n - 1] = 1.0;
-    a[n - 1][CONTROL_POINTS] = samples[n - 1];
-
-    // Interior: P_{i-1} + 4 P_i + P_{i+1} = 6 D_i.
-    for i in 1..n - 1 {
-        a[i][i - 1] = 1.0;
-        a[i][i] = 4.0;
-        a[i][i + 1] = 1.0;
-        a[i][CONTROL_POINTS] = 6.0 * samples[i];
+    for (i, row) in a.iter_mut().enumerate() {
+        let t = i as f64 / (CONTROL_POINTS - 1) as f64;
+        let span = basis_curve.knot_span(t)?;
+        let basis = basis_curve.basis_functions(span, t)?;
+        row[span - DEGREE..=span].copy_from_slice(&basis);
+        row[CONTROL_POINTS] = samples[i];
     }
-
-    gaussian_elimination(&mut a)
+    Ok(gaussian_elimination(&mut a)?)
 }
 
 // Solve the dense system in-place with Gauss-Jordan elimination.
 fn gaussian_elimination(
     matrix: &mut [[f64; CONTROL_POINTS + 1]; CONTROL_POINTS],
-) -> [f64; CONTROL_POINTS] {
+) -> Result<[f64; CONTROL_POINTS], &'static str> {
+    if matrix.iter().flatten().any(|value| !value.is_finite()) {
+        return Err("interpolation system must be finite");
+    }
+    let scale = matrix
+        .iter()
+        .flat_map(|row| &row[..CONTROL_POINTS])
+        .fold(0.0_f64, |m, value| m.max(value.abs()));
+    let threshold = scale * f64::EPSILON * CONTROL_POINTS as f64;
     for i in 0..CONTROL_POINTS {
         let mut pivot = i;
         for r in i + 1..CONTROL_POINTS {
@@ -132,9 +130,8 @@ fn gaussian_elimination(
                 pivot = r;
             }
         }
-        // If the pivot is tiny, the system is ill-conditioned; keep going with the current row.
-        if matrix[pivot][i].abs() < 1e-12 {
-            continue;
+        if matrix[pivot][i].abs() <= threshold {
+            return Err("interpolation system is singular or ill-conditioned");
         }
         if pivot != i {
             matrix.swap(i, pivot);
@@ -154,5 +151,43 @@ fn gaussian_elimination(
         }
     }
 
-    core::array::from_fn(|i| matrix[i][CONTROL_POINTS])
+    let result = core::array::from_fn(|i| matrix[i][CONTROL_POINTS]);
+    if result.iter().all(|value| value.is_finite()) {
+        Ok(result)
+    } else {
+        Err("interpolation arithmetic overflowed")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reconstructs_samples_with_clamped_basis() {
+        for samples in [
+            [1.0; CONTROL_POINTS],
+            [0.0, 1.0, -0.5, 2.0, 0.25, -1.0, 0.5, 0.0],
+        ] {
+            let control = interpolate_cubic_uniform(&samples).unwrap();
+            let curve =
+                BSpline::<PointN<f64, 1>, KNOTS, CONTROL_POINTS, DEGREE>::new_clamped_uniform(
+                    control.map(|value| PointN::new([value])),
+                )
+                .unwrap();
+            for (i, expected) in samples.iter().enumerate() {
+                assert!(
+                    (curve.eval(i as f64 / (CONTROL_POINTS - 1) as f64).unwrap()[0] - expected)
+                        .abs()
+                        < 1e-12
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_interpolation_systems() {
+        assert!(gaussian_elimination(&mut [[0.0; CONTROL_POINTS + 1]; CONTROL_POINTS]).is_err());
+        assert!(interpolate_cubic_uniform(&[f64::NAN; CONTROL_POINTS]).is_err());
+    }
 }

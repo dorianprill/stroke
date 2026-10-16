@@ -27,6 +27,30 @@ impl fmt::Display for CurveConstructionError {
     }
 }
 
+impl core::error::Error for CurveConstructionError {}
+
+/// Errors returned when extracting a Bezier subcurve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CurveParameterError {
+    /// Endpoints must be finite and satisfy `0 <= start <= end <= 1`.
+    InvalidRange,
+    /// Curve arithmetic produced a non-finite control point.
+    NonFiniteComputation,
+}
+
+impl fmt::Display for CurveParameterError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidRange => f.write_str("invalid subcurve parameter range"),
+            Self::NonFiniteComputation => {
+                f.write_str("subcurve arithmetic produced a non-finite point")
+            }
+        }
+    }
+}
+
+impl core::error::Error for CurveParameterError {}
+
 pub(crate) fn validate_control_points<P: Point>(
     points: &[P],
 ) -> Result<(), CurveConstructionError> {

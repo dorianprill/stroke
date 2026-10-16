@@ -13,7 +13,6 @@ use num_traits::{Float, NumCast};
 
 const MAX_ROOT_DEPTH: usize = 64;
 const DEFAULT_DISTANCE_STEPS: usize = 64;
-const LOCAL_SEARCH_ITERS: usize = 16;
 
 /// General implementation of a Bezier curve of arbitrary degree (`N - 1`).
 ///
@@ -25,7 +24,7 @@ const LOCAL_SEARCH_ITERS: usize = 16;
 /// # Parameters
 /// - `P`: point type implementing [`Point`].
 /// - `N`: number of control points.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Bezier<P, const N: usize>
 where
     P: Point,
@@ -43,12 +42,12 @@ impl<P: Point, const N: usize> IntoIterator for Bezier<P, { N }> {
     }
 }
 
-impl<'a, P: Point, const N: usize> IntoIterator for &'a mut Bezier<P, { N }> {
-    type Item = &'a mut P;
-    type IntoIter = slice::IterMut<'a, P>;
+impl<'a, P: Point, const N: usize> IntoIterator for &'a Bezier<P, { N }> {
+    type Item = &'a P;
+    type IntoIter = slice::Iter<'a, P>;
 
-    fn into_iter(self) -> slice::IterMut<'a, P> {
-        self.control_points.iter_mut()
+    fn into_iter(self) -> Self::IntoIter {
+        self.control_points.iter()
     }
 }
 
@@ -72,9 +71,35 @@ where
         Ok(Bezier { control_points })
     }
 
-    /// Return the control points array.
-    pub fn control_points(&self) -> [P; N] {
+    /// Borrow the control points in curve order.
+    pub fn control_points(&self) -> slice::Iter<'_, P> {
+        self.control_points.iter()
+    }
+
+    /// Consume the curve, returning its control-point array.
+    pub fn into_control_points(self) -> [P; N] {
         self.control_points
+    }
+
+    /// Replace all control points atomically, leaving the curve unchanged on error.
+    /// Mutable control-point iteration is deliberately unavailable:
+    /// ```compile_fail
+    /// use stroke::{Bezier, PointN};
+    /// let mut curve = Bezier::new([PointN::new([0.0_f64]), PointN::new([1.0])]).unwrap();
+    /// for point in &mut curve { *point = PointN::new([f64::NAN]); }
+    /// ```
+    pub fn set_control_points(&mut self, points: [P; N]) -> Result<(), CurveConstructionError> {
+        *self = Self::new(points)?;
+        Ok(())
+    }
+
+    /// Map control points and validate the result without modifying this curve.
+    /// This maps the entire curve geometrically only when `map` is affine.
+    pub fn try_map_control_points(
+        &self,
+        map: impl FnMut(P) -> P,
+    ) -> Result<Self, CurveConstructionError> {
+        Self::new(self.control_points.map(map))
     }
 
     /// Return the start point of the curve.
@@ -98,14 +123,12 @@ where
     /// Evaluate a point on the curve at point 't' which should be in the interval \[0, 1\] (unchecked!)
     /// This is implemented using De Casteljau's algorithm (over a temporary array with const generic sizing)
     pub fn eval(&self, t: P::Scalar) -> P {
-        //let t = t.into();
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         // start with a copy of the original control points array and succesively use it for evaluation
         let mut p: [P; N] = self.control_points;
         // loop up to degree = control_points.len() -1
         for i in 1..p.len() {
             for j in 0..p.len() - i {
-                p[j] = p[j] * (one - t) + p[j + 1] * t;
+                p[j] = crate::numeric::lerp(p[j], p[j + 1], t);
             }
         }
         p[0]
@@ -113,49 +136,18 @@ where
 
     /// Approximate the minimum distance between given `point` and the curve.
     /// Uses a coarse sampling pass over the full domain and a local search around
-    /// the best sample. `nsteps` is the number of coarse samples.
+    /// the best sample. `nsteps` counts coarse subdivisions (at least one).
+    /// Every sampled/refined candidate is retained if better; the search has no
+    /// global-minimum or accuracy guarantee. Non-finite query points return NaN;
+    /// distances outside the scalar range are infinite.
     pub fn distance_to_point_approx(&self, point: P, nsteps: usize) -> P::Scalar
     where
         P: PointNorm,
     {
-        let nsteps = nsteps.max(1);
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
-        let three = <P::Scalar as NumCast>::from(3.0).unwrap();
-
-        let mut best_i = 0usize;
-        let mut best_d = (self.eval(zero) - point).squared_norm();
-        for i in 1..=nsteps {
-            let t = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
-            let candidate = self.eval(t);
-            let d = (candidate - point).squared_norm();
-            if d < best_d {
-                best_d = d;
-                best_i = i;
-            }
-        }
-
-        let left_i = if best_i == 0 { 0 } else { best_i - 1 };
-        let right_i = if best_i == nsteps { nsteps } else { best_i + 1 };
-        let mut left = <P::Scalar as NumCast>::from(left_i as f64).unwrap() / nsteps_scalar;
-        let mut right = <P::Scalar as NumCast>::from(right_i as f64).unwrap() / nsteps_scalar;
-
-        for _ in 0..LOCAL_SEARCH_ITERS {
-            let third = (right - left) / three;
-            let t1 = left + third;
-            let t2 = right - third;
-            let d1 = (self.eval(t1) - point).squared_norm();
-            let d2 = (self.eval(t2) - point).squared_norm();
-            if d1 < d2 {
-                right = t2;
-            } else {
-                left = t1;
-            }
-        }
-
-        let t = (left + right) * half;
-        (self.eval(t) - point).squared_norm().sqrt()
+        crate::distance::approximate(point, nsteps, |t| {
+            Ok::<_, core::convert::Infallible>(self.eval(t))
+        })
+        .unwrap_or_else(|never| match never {})
     }
 
     /// Approximate the minimum distance between given `point` and the curve using
@@ -193,7 +185,6 @@ where
 
     /// Split the curve at `t` into two sub-curves.
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         // start with a copy of the original control points for now
         // TODO how to initialize const generic array without using unsafe?
         let mut left: [P; N] = self.control_points;
@@ -208,7 +199,8 @@ where
             right[right.len() - i] = casteljau_points[right.len() - i];
             // calculate next level of points (one less point each level until we reach one point, the one at t)
             for j in 0..casteljau_points.len() - i {
-                casteljau_points[j] = casteljau_points[j] * (one - t) + casteljau_points[j + 1] * t;
+                casteljau_points[j] =
+                    crate::numeric::lerp(casteljau_points[j], casteljau_points[j + 1], t);
             }
         }
 
@@ -220,6 +212,62 @@ where
                 control_points: right,
             },
         )
+    }
+
+    /// Extract `start..end`, reparameterized to `[0, 1]`.
+    /// Requires finite `0 <= start <= end <= 1`; equal endpoints yield a constant curve.
+    pub fn subcurve(
+        &self,
+        range: core::ops::Range<P::Scalar>,
+    ) -> Result<Self, crate::CurveParameterError> {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        let (start, end) = (range.start, range.end);
+        if !start.is_finite() || !end.is_finite() || start < zero || end > one || start > end {
+            return Err(crate::CurveParameterError::InvalidRange);
+        }
+        let result = if start == zero && end == one {
+            *self
+        } else if start == end {
+            Self {
+                control_points: [self.eval(start); N],
+            }
+        } else if start == zero {
+            self.split(end).0
+        } else {
+            self.split(start).1.split((end - start) / (one - start)).0
+        };
+        if result.control_points.iter().all(Point::is_finite) {
+            Ok(result)
+        } else {
+            Err(crate::CurveParameterError::NonFiniteComputation)
+        }
+    }
+
+    /// Split at a distance from the start, clamping finite distances to the endpoints.
+    pub fn split_at_length(
+        &self,
+        length: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<(Self, Self), ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        Ok(self.split(self.t_at_length(length, accuracy)?))
+    }
+
+    /// Evaluate the derivative with respect to `t` without constructing another curve.
+    /// Constant curves return zero; `t` is expected to be in `[0, 1]`.
+    pub fn derivative_at(&self, t: P::Scalar) -> P {
+        self.velocity(t)
+    }
+
+    /// Return the derivative magnitude with respect to `t` in `[0, 1]`.
+    pub fn speed(&self, t: P::Scalar) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        self.derivative_at(t).norm()
     }
 
     /// Returns the derivative curve of self which has N-1 control points.
@@ -618,6 +666,8 @@ where
     }
 
     /// Find a root for a particular axis using Newton-Raphson on the scalar axis function.
+    /// `eps` is a positive finite absolute coordinate residual tolerance (default
+    /// `1e-6`). This local search can fail even when a root exists.
     pub fn root_newton_axis(
         &self,
         value: P::Scalar,
@@ -628,7 +678,6 @@ where
     ) -> Result<P::Scalar, RootFindingError>
     where
         P: PointIndex,
-        [(); N - 1]: Sized,
     {
         FindRoot::root_newton_axis(self, value, axis, start, eps, max_iter)
     }
@@ -687,7 +736,6 @@ where
 impl<P, const N: usize> FindRoot<P> for Bezier<P, { N }>
 where
     P: PointIndex,
-    [(); N - 1]: Sized,
 {
     fn parameter_domain(&self) -> (P::Scalar, P::Scalar) {
         (
@@ -697,11 +745,29 @@ where
     }
 
     fn axis_value(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
+        if axis >= P::DIM {
+            return Err(RootFindingError::InvalidAxis);
+        }
+        if !t.is_finite()
+            || t < <P::Scalar as NumCast>::from(0.0).unwrap()
+            || t > <P::Scalar as NumCast>::from(1.0).unwrap()
+        {
+            return Err(RootFindingError::InvalidParameter);
+        }
         Ok(self.eval(t)[axis])
     }
 
     fn axis_derivative(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
-        Ok(self.derivative().eval(t)[axis])
+        if axis >= P::DIM {
+            return Err(RootFindingError::InvalidAxis);
+        }
+        if !t.is_finite()
+            || t < <P::Scalar as NumCast>::from(0.0).unwrap()
+            || t > <P::Scalar as NumCast>::from(1.0).unwrap()
+        {
+            return Err(RootFindingError::InvalidParameter);
+        }
+        Ok(self.derivative_at(t)[axis])
     }
 }
 

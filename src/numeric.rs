@@ -1,5 +1,101 @@
 use num_traits::{Float, NumCast, One, Zero};
 
+/// Restore a short product/quotient without overflowing or underflowing its
+/// scale factors first. `Float::integer_decode` specifies a binary decomposition;
+/// this uses that trait contract, not an IEEE layout or a concrete scalar type.
+pub(crate) fn scaled_product_ratio<T: Float>(
+    numerators: &[T],
+    denominators: &[T],
+    power: i32,
+) -> T {
+    let one = T::one();
+    let two = one + one;
+    let half = one / two;
+    let mut fraction = one;
+    let mut exponent = power;
+    let mut sign = one;
+    for (factors, divide) in [(numerators, false), (denominators, true)] {
+        for &value in factors {
+            if value == T::zero() {
+                return T::zero();
+            }
+            let (mantissa, exp, value_sign) = value.integer_decode();
+            let bits = (u64::BITS - 1 - mantissa.leading_zeros()) as i32;
+            let normalized = <T as NumCast>::from(mantissa).unwrap() * two.powi(-bits);
+            let exp = exp as i32 + bits;
+            if value_sign < 0 {
+                sign = -sign;
+            }
+            if divide {
+                fraction = fraction / normalized;
+                exponent -= exp;
+                if fraction < one {
+                    fraction = fraction * two;
+                    exponent -= 1;
+                }
+            } else {
+                fraction = fraction * normalized;
+                exponent += exp;
+                if fraction >= two {
+                    fraction = fraction * half;
+                    exponent += 1;
+                }
+            }
+        }
+    }
+    // Splitting the exponent also handles results near the subnormal and
+    // overflow limits without prematurely rounding the power of two to 0/inf.
+    let first = exponent / 2;
+    sign * ((fraction * two.powi(first)) * two.powi(exponent - first))
+}
+
+/// Midpoint as a high/low pair. Retaining the addition error avoids shifting a
+/// line by an ulp when its midpoint itself falls between representable values.
+pub(crate) fn midpoint_parts<T: Float>(a: T, b: T) -> (T, T) {
+    let half = T::one() / (T::one() + T::one());
+    let sum = a + b;
+    let (a, b, scale) = if sum.is_finite() {
+        (a, b, half)
+    } else {
+        (a * half, b * half, T::one())
+    };
+    let sum = a + b;
+    let tail = sum - a;
+    let error = (a - (sum - tail)) + (b - tail);
+    (sum * scale, error * scale)
+}
+
+/// Divide a point without first overflowing the reciprocal of a tiny divisor.
+pub(crate) fn divide<P: crate::Point>(value: P, divisor: P::Scalar) -> P {
+    let reciprocal = P::Scalar::one() / divisor;
+    if divisor != P::Scalar::zero() && !reciprocal.is_finite() {
+        let factor = P::Scalar::one() / divisor.abs().sqrt();
+        (value * factor) * (factor * divisor.signum())
+    } else {
+        value * reciprocal
+    }
+}
+
+/// Difference quotient with finite endpoints, avoiding overflowing differences.
+pub(crate) fn difference_quotient<P: crate::Point>(
+    a: P,
+    b: P,
+    start: P::Scalar,
+    end: P::Scalar,
+) -> P {
+    let width = end - start;
+    if !width.is_finite() {
+        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+        return divide(b * half - a * half, end * half - start * half);
+    }
+    let difference = b - a;
+    if difference.is_finite() {
+        divide(difference, width)
+    } else {
+        divide(b, width) - divide(a, width)
+    }
+}
+
 /// Affine interpolation that preserves exact endpoints and avoids subtracting
 /// opposite finite extremes unless that subtraction is representable.
 pub(crate) fn lerp<P: crate::Point>(start: P, end: P, t: P::Scalar) -> P {

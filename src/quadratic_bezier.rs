@@ -8,7 +8,6 @@ use crate::numeric::is_negligible;
 use num_traits::{Float, NumCast};
 
 const DEFAULT_DISTANCE_STEPS: usize = 64;
-const LOCAL_SEARCH_ITERS: usize = 16;
 
 /// Quadratic Bezier curve defined by start, control, and end points.
 ///
@@ -58,9 +57,65 @@ where
         ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t
     }
 
-    /// Return the control points array.
-    pub fn control_points(&self) -> [P; 3] {
+    /// Borrow the control points in curve order.
+    pub fn control_points(&self) -> core::array::IntoIter<&P, 3> {
+        [&self.start, &self.ctrl, &self.end].into_iter()
+    }
+
+    /// Consume the curve, returning its control-point array.
+    pub fn into_control_points(self) -> [P; 3] {
         [self.start, self.ctrl, self.end]
+    }
+
+    /// Replace all control points atomically, leaving this curve unchanged on error.
+    pub fn set_control_points(&mut self, points: [P; 3]) -> Result<(), CurveConstructionError> {
+        *self = Self::new(points[0], points[1], points[2])?;
+        Ok(())
+    }
+
+    /// Map control points and validate the result without modifying this curve.
+    /// This maps the entire curve geometrically only when `map` is affine.
+    pub fn try_map_control_points(
+        &self,
+        map: impl FnMut(P) -> P,
+    ) -> Result<Self, CurveConstructionError> {
+        let points = (*self).into_control_points().map(map);
+        Self::new(points[0], points[1], points[2])
+    }
+
+    /// Evaluate the derivative with respect to the unit-domain parameter.
+    pub fn derivative_at(&self, t: P::Scalar) -> P {
+        crate::Bezier::from(*self).derivative_at(t)
+    }
+
+    /// Return the derivative magnitude with respect to the unit-domain parameter.
+    pub fn speed(&self, t: P::Scalar) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        self.derivative_at(t).norm()
+    }
+
+    /// Extract a finite ordered range in `[0, 1]`, reparameterized to `[0, 1]`.
+    /// Equal range endpoints yield a constant curve.
+    pub fn subcurve(
+        &self,
+        range: core::ops::Range<P::Scalar>,
+    ) -> Result<Self, crate::CurveParameterError> {
+        crate::Bezier::from(*self).subcurve(range).map(Self::from)
+    }
+
+    /// Split at a distance from the start, clamping finite distances to the endpoints.
+    pub fn split_at_length(
+        &self,
+        length: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<(Self, Self), ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        let (left, right) = crate::Bezier::from(*self).split_at_length(length, accuracy)?;
+        Ok((Self::from(left), Self::from(right)))
     }
 
     /// Return the start point of the curve.
@@ -300,49 +355,15 @@ where
 
     /// Approximate the minimum distance between given `point` and the curve.
     /// Uses a coarse sampling pass over the full domain and a local search around
-    /// the best sample. `nsteps` is the number of coarse samples.
+    /// the best sample. `nsteps` counts coarse subdivisions (at least one).
+    /// Every sampled/refined candidate is retained if better; the search has no
+    /// global-minimum or accuracy guarantee. Non-finite query points return NaN;
+    /// distances outside the scalar range are infinite.
     pub fn distance_to_point_approx(&self, point: P, nsteps: usize) -> P::Scalar
     where
         P: PointNorm,
     {
-        let nsteps = nsteps.max(1);
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
-        let three = <P::Scalar as NumCast>::from(3.0).unwrap();
-
-        let mut best_i = 0usize;
-        let mut best_d = (self.eval(zero) - point).squared_norm();
-        for i in 1..=nsteps {
-            let t = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
-            let candidate = self.eval(t);
-            let d = (candidate - point).squared_norm();
-            if d < best_d {
-                best_d = d;
-                best_i = i;
-            }
-        }
-
-        let left_i = if best_i == 0 { 0 } else { best_i - 1 };
-        let right_i = if best_i == nsteps { nsteps } else { best_i + 1 };
-        let mut left = <P::Scalar as NumCast>::from(left_i as f64).unwrap() / nsteps_scalar;
-        let mut right = <P::Scalar as NumCast>::from(right_i as f64).unwrap() / nsteps_scalar;
-
-        for _ in 0..LOCAL_SEARCH_ITERS {
-            let third = (right - left) / three;
-            let t1 = left + third;
-            let t2 = right - third;
-            let d1 = (self.eval(t1) - point).squared_norm();
-            let d2 = (self.eval(t2) - point).squared_norm();
-            if d1 < d2 {
-                right = t2;
-            } else {
-                left = t1;
-            }
-        }
-
-        let t = (left + right) * half;
-        (self.eval(t) - point).squared_norm().sqrt()
+        crate::Bezier::from(*self).distance_to_point_approx(point, nsteps)
     }
 
     /// Approximate the minimum distance between given `point` and the curve using
