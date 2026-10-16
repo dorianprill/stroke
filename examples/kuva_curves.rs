@@ -34,8 +34,7 @@ fn panel(
     bounds: Bounds,
 ) -> (Vec<Plot>, Layout) {
     let [(xmin, xmax), (ymin, ymax)] = bounds;
-    // Check the sampled curve against the library's bounds, allowing for the
-    // numerical root-finding tolerance used by bounding_box().
+    // Allow floating-point roundoff when checking sampled curve containment.
     for point in &samples {
         for axis in 0..2 {
             assert!(point[axis].is_finite());
@@ -193,7 +192,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         5,
         &clamped.control_points().copied().collect::<Vec<_>>(),
         clamped_samples,
-        clamped.bounding_box(),
+        clamped.bounding_box().into_axes(),
     );
     let clamped_layout = with_knot_legend(clamped_layout, clamped.knots().copied(), (start, end))
         .with_subtitle("Degree 5 · clamped");
@@ -211,7 +210,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         3,
         &spline.control_points().copied().collect::<Vec<_>>(),
         spline_samples,
-        spline.bounding_box(),
+        spline.bounding_box().into_axes(),
     );
     // Mark the actual endpoints separately from the blue control points.
     spline_plots.push(
@@ -258,7 +257,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
             (0..=STEPS)
                 .map(|i| quadratic.eval(i as f64 / STEPS as f64))
                 .collect(),
-            quadratic.bounding_box(),
+            quadratic.bounding_box().into_axes(),
         ),
         panel(
             "Bezier<PointN<f64, 2>, 4>",
@@ -267,7 +266,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
             (0..=STEPS)
                 .map(|i| cubic.eval(i as f64 / STEPS as f64))
                 .collect(),
-            cubic.bounding_box(),
+            cubic.bounding_box().into_axes(),
         ),
         (clamped_plots, clamped_layout),
         (spline_plots, spline_layout),

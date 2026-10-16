@@ -7,6 +7,16 @@ All notable changes to this project will be documented in this file.
 ### Breaking changes
 - Added `Point::is_finite`; custom point implementations must report whether all coordinates are finite.
 - Made line and Bezier `new` constructors fallible so they reject non-finite control points; generic Bezier construction also rejects an empty control-point array.
+- Replaced `arclen(nsteps)` with `arclen(accuracy) -> Result<_, ArcLengthError>` across curves, segments, and paths; the old sampling calculation is now `arclen_polyline(segments)`.
+- Length-to-parameter and length-to-point methods now require an accuracy target and return `Result`; paths additionally retain `Option` for empty lookups. Removed the old `_approx` inverse-length methods.
+- Bounding-box methods now return `BoundingBox<Scalar, DIM>` instead of raw axis arrays; use `into_axes()` for the previous representation.
+- B-spline construction rejects empty active knot domains and knot multiplicities greater than degree + 1. Partly clamped splines use the standard `[knots[D], knots[C]]` active domain.
+
+### Added
+- Adaptive Gauss-Legendre arc length, consistent partial-length APIs, and bracketed inverse-length lookup, shared across all curve types and paths.
+- Allocation-free B-spline `bezier_spans()` extraction using the polar de Boor algorithm.
+- Tight generic Bézier, B-spline, and path boxes; explicit `control_box()` methods and a `BoundingBox` type with union and containment helpers.
+- Stable `PointNorm::norm()` accumulation for very small and very large representable magnitudes.
 
 ### Changed
 - Added a project Clippy policy, Cargo lint aliases, and a pre-commit hook; CI checks both feature configurations with warnings treated as errors.
@@ -19,6 +29,14 @@ All notable changes to this project will be documented in this file.
 - Evaluate unclamped B-splines at the final domain parameter using de Boor's algorithm instead of incorrectly returning the last control point.
 - Reject non-finite B-spline knots and control points, reporting the first invalid control-point index.
 - Treat B-spline knot multiplicity and zero-width spans structurally, while using scale-aware tolerances only for algebraic cancellation.
+- Preserve discontinuities when measuring paths and B-splines: gaps no longer acquire implicit connecting-line lengths.
+- Replace derivative sign sampling and coordinate-scale-dependent root tolerances in bounds with Bernstein subdivision.
+- Normalize analytic quadratic-root coefficients to avoid discriminant overflow/underflow, and use the cancellation-resistant quadratic formula.
+- Default B-splines now have a valid clamped knot domain instead of an all-zero knot vector.
+- Preserve the selected path segment at discontinuities using shared representable parameter boundaries and direct segment-local point lookup.
+- Refine generic bounds in local coordinates, avoiding origin-dependent tolerances while preserving the original curve endpoints.
+- Compute partial line lengths from scaled coordinate displacements, including representable portions of lines whose full length overflows. Linear Bézier and B-spline spans share this exact line formula.
+- Preserve exact interpolation endpoints and avoid subtracting opposite finite extremes when their difference overflows.
 
 ## [0.3.0] - 2026-01-22
 

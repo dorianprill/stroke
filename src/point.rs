@@ -1,7 +1,7 @@
 //! Point traits and capability helpers.
 
 use core::ops::{Add, Index, Mul, Sub};
-use num_traits::Float;
+use num_traits::{Float, Zero};
 
 /// Core point abstraction used across the library.
 ///
@@ -46,10 +46,32 @@ impl<T> PointDot for T where T: PointIndex {}
 
 /// Optional capability trait for norms.
 ///
-/// Provides `squared_norm()`; it does not require allocation or dynamic sizing.
+/// Provides stable norm calculations without allocation or dynamic sizing.
 pub trait PointNorm: PointDot {
     fn squared_norm(&self) -> Self::Scalar {
         self.dot(self)
+    }
+
+    /// Return the Euclidean norm using scaled accumulation to avoid avoidable
+    /// intermediate overflow and underflow.
+    fn norm(&self) -> Self::Scalar {
+        let mut scale = Self::Scalar::zero();
+        for axis in 0..Self::DIM {
+            if !self[axis].is_finite() {
+                return self[axis].abs();
+            }
+            scale = scale.max(self[axis].abs());
+        }
+        if scale == Self::Scalar::zero() {
+            return scale;
+        }
+
+        let mut sum = Self::Scalar::zero();
+        for axis in 0..Self::DIM {
+            let normalized = self[axis] / scale;
+            sum = sum + normalized * normalized;
+        }
+        scale * sum.sqrt()
     }
 }
 

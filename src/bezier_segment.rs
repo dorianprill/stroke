@@ -1,9 +1,10 @@
 //! Sum type for specialized Bezier segments.
 
-use super::{CubicBezier, LineSegment, Point, PointDot, PointIndex, PointNorm, QuadraticBezier};
+use super::{
+    ArcLengthError, BoundingBox, CubicBezier, LineSegment, Point, PointDot, PointIndex, PointNorm,
+    QuadraticBezier,
+};
 use num_traits::{Float, NumCast};
-
-const DEFAULT_LENGTH_STEPS: usize = 64;
 
 /// Sum type for line/quadratic/cubic Bezier segments.
 ///
@@ -84,7 +85,7 @@ where
 
     #[inline]
     /// Return the bounding box across all axes.
-    pub fn bounding_box(&self) -> [(P::Scalar, P::Scalar); P::DIM]
+    pub fn bounding_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
     where
         P: PointIndex,
         [P::Scalar; 1]: tinyvec::Array<Item = P::Scalar>,
@@ -96,6 +97,59 @@ where
             BezierSegment::Linear(segment) => segment.bounding_box(),
             BezierSegment::Quadratic(segment) => segment.bounding_box(),
             BezierSegment::Cubic(segment) => segment.bounding_box(),
+        }
+    }
+
+    /// Return a conservative box around the segment's control points.
+    pub fn control_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
+    where
+        P: PointIndex,
+    {
+        match self {
+            BezierSegment::Linear(segment) => segment.control_box(),
+            BezierSegment::Quadratic(segment) => segment.control_box(),
+            BezierSegment::Cubic(segment) => segment.control_box(),
+        }
+    }
+
+    /// Return the arc length using adaptive Gauss-Legendre quadrature.
+    pub fn arclen(&self, accuracy: P::Scalar) -> Result<P::Scalar, ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        match self {
+            BezierSegment::Linear(segment) => segment.arclen(accuracy),
+            BezierSegment::Quadratic(segment) => segment.arclen(accuracy),
+            BezierSegment::Cubic(segment) => segment.arclen(accuracy),
+        }
+    }
+
+    /// Integrate length over `start..end`, where `0 <= start <= end <= 1`.
+    pub fn arclen_between(
+        &self,
+        start: P::Scalar,
+        end: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<P::Scalar, ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        match self {
+            BezierSegment::Linear(segment) => segment.arclen_between(start, end, accuracy),
+            BezierSegment::Quadratic(segment) => segment.arclen_between(start, end, accuracy),
+            BezierSegment::Cubic(segment) => segment.arclen_between(start, end, accuracy),
+        }
+    }
+
+    /// Approximate the arc length using `segments` line segments.
+    pub fn arclen_polyline(&self, segments: usize) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        match self {
+            BezierSegment::Linear(segment) => segment.arclen_polyline(segments),
+            BezierSegment::Quadratic(segment) => segment.arclen_polyline(segments),
+            BezierSegment::Cubic(segment) => segment.arclen_polyline(segments),
         }
     }
 
@@ -159,40 +213,28 @@ where
         }
     }
 
-    /// Approximate parameter `t` at arc length `s`.
-    pub fn t_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> P::Scalar
+    /// Return parameter `t` at arc length `s` using adaptive quadrature.
+    pub fn t_at_length(
+        &self,
+        s: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<P::Scalar, ArcLengthError>
     where
         P: PointNorm,
     {
         match self {
-            BezierSegment::Linear(segment) => segment.t_at_length_approx(s, nsteps),
-            BezierSegment::Quadratic(segment) => segment.t_at_length_approx(s, nsteps),
-            BezierSegment::Cubic(segment) => segment.t_at_length_approx(s, nsteps),
+            BezierSegment::Linear(segment) => segment.t_at_length(s, accuracy),
+            BezierSegment::Quadratic(segment) => segment.t_at_length(s, accuracy),
+            BezierSegment::Cubic(segment) => segment.t_at_length(s, accuracy),
         }
     }
 
-    /// Approximate parameter `t` at arc length `s` using a default resolution.
-    pub fn t_at_length(&self, s: P::Scalar) -> P::Scalar
+    /// Evaluate the point at arc length `s` using adaptive quadrature.
+    pub fn point_at_length(&self, s: P::Scalar, accuracy: P::Scalar) -> Result<P, ArcLengthError>
     where
         P: PointNorm,
     {
-        self.t_at_length_approx(s, DEFAULT_LENGTH_STEPS)
-    }
-
-    /// Evaluate the point at arc length `s`.
-    pub fn point_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> P
-    where
-        P: PointNorm,
-    {
-        self.eval(self.t_at_length_approx(s, nsteps))
-    }
-
-    /// Evaluate the point at arc length `s` using a default resolution.
-    pub fn point_at_length(&self, s: P::Scalar) -> P
-    where
-        P: PointNorm,
-    {
-        self.point_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+        Ok(self.eval(self.t_at_length(s, accuracy)?))
     }
 }
 
@@ -265,10 +307,10 @@ mod tests {
         assert_approx_equal(curvature, 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
         assert!(segment.normal(0.3).is_none());
 
-        let t = segment.t_at_length(1.0);
+        let t = segment.t_at_length(1.0, 1e-12).unwrap();
         assert_approx_equal(t, 0.5, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
-        let p = segment.point_at_length(1.0);
+        let p = segment.point_at_length(1.0, 1e-12).unwrap();
         assert_point_approx_equal(
             p,
             PointN::new([1.0, 0.0]),

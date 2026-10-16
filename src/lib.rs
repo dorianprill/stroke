@@ -14,6 +14,11 @@
 //! `Point::Scalar` must implement [`num_traits::Float`], so the library currently
 //! targets floating-point numeric representations such as `f32` and `f64`.
 //!
+//! Curves and paths expose accuracy-controlled Gauss-Legendre arc length and
+//! tight [`BoundingBox`] values. Their `control_box()` methods return the
+//! conservative box of the control points. Arc-length operations return
+//! [`ArcLengthError`] for invalid input, non-finite arithmetic or failure to converge.
+//!
 //! # Examples
 //! ```rust
 //! use stroke::{Bezier, PointN};
@@ -35,6 +40,7 @@ use tinyvec::ArrayVec;
 
 // abstraction types
 pub mod bezier_segment;
+pub mod bounding_box;
 // specialized types
 pub mod cubic_bezier;
 pub mod error;
@@ -51,17 +57,27 @@ pub mod find_root;
 pub mod path;
 pub mod point;
 
+mod arc_length;
 mod numeric;
+mod path_parameter;
 mod roots;
 
 #[cfg(test)]
 mod test_support;
 
+#[cfg(test)]
+mod geometry_tests;
+
+#[cfg(test)]
+mod geometry_regressions;
+
 #[cfg(feature = "nalgebra")]
 mod adapters;
 
 // export common types at crate root
+pub use arc_length::ArcLengthError;
 pub use bezier::Bezier;
+pub use bounding_box::BoundingBox;
 pub use bspline::BSpline;
 pub use bspline_path::BSplinePath;
 pub use cubic_bezier::CubicBezier;

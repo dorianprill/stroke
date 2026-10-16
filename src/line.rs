@@ -1,11 +1,10 @@
 //! Line segment curve type.
 
-use super::{ArrayVec, Point, PointDot, PointIndex, PointNorm};
+use super::{ArcLengthError, ArrayVec, BoundingBox, Point, PointDot, PointIndex, PointNorm};
+use crate::arc_length::validate_accuracy;
 use crate::error::{CurveConstructionError, validate_control_points};
 use crate::numeric::is_negligible;
 use num_traits::{Float, NumCast};
-
-const DEFAULT_LENGTH_STEPS: usize = 64;
 
 /// `LineSegment` defined by a start and an endpoint, evaluable anywhere inbetween using interpolation parameter t: \[0, 1\] in `eval()`.
 ///
@@ -57,13 +56,13 @@ where
 
     /// Evaluate a point along the segment for `t` in `[0, 1]`.
     pub fn eval(&self, t: P::Scalar) -> P {
-        self.start + (self.end - self.start) * t
+        crate::numeric::lerp(self.start, self.end, t)
     }
 
     /// Split the segment at `t` into two sub-segments.
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
         // compute the split point by interpolation
-        let ctrl_ab = self.start + (self.end - self.start) * t;
+        let ctrl_ab = self.eval(t);
 
         (
             LineSegment {
@@ -86,7 +85,7 @@ where
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         // A nonzero segment remains meaningful regardless of its coordinate scale.
         if l2 == zero {
-            (self.start - p).squared_norm().sqrt()
+            (self.start - p).norm()
         } else {
             let v1 = p - self.start;
             let v2 = self.end - self.start;
@@ -102,7 +101,7 @@ where
             );
             let projection = self.start + (self.end - self.start) * t; // Projection falls on the segment
 
-            (p - projection).squared_norm().sqrt()
+            (p - projection).norm()
         }
     }
 
@@ -119,7 +118,7 @@ where
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let dir = self.derivative();
-        let len = dir.squared_norm().sqrt();
+        let len = dir.norm();
         if len == zero { dir } else { dir * (one / len) }
     }
 
@@ -143,43 +142,94 @@ where
         None
     }
 
-    /// Approximate parameter `t` at arc length `s`.
-    pub fn t_at_length_approx(&self, s: P::Scalar, _nsteps: usize) -> P::Scalar
+    /// Return the line's length; the subdivision count is accepted for API parity.
+    pub fn arclen_polyline(&self, _segments: usize) -> P::Scalar
+    where
+        P: PointNorm,
+    {
+        (self.end - self.start).norm()
+    }
+
+    /// Return the exact arc length of this segment.
+    ///
+    /// `accuracy` is accepted for API parity with curved segments.
+    pub fn arclen(&self, accuracy: P::Scalar) -> Result<P::Scalar, ArcLengthError>
     where
         P: PointNorm,
     {
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let length = (self.end - self.start).squared_norm().sqrt();
-        if length == zero {
-            zero
+        self.arclen_between(zero, one, accuracy)
+    }
+
+    /// Return the length over `start..end`, where `0 <= start <= end <= 1`.
+    pub fn arclen_between(
+        &self,
+        start: P::Scalar,
+        end: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<P::Scalar, ArcLengthError>
+    where
+        P: PointNorm,
+    {
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        validate_accuracy(accuracy)?;
+        if !start.is_finite() || !end.is_finite() || start < zero || end > one || start > end {
+            return Err(ArcLengthError::InvalidParameter);
+        }
+        let fraction = end - start;
+        let mut length = zero;
+        for axis in 0..P::DIM {
+            let a = self.start[axis];
+            let b = self.end[axis];
+            let difference = b - a;
+            // Form the requested displacement before its norm. For opposite
+            // signs the full subtraction may overflow even though its scaled
+            // value is representable. Scaling the operands then cannot cause
+            // cancellation, because they have opposite signs.
+            let component = if difference.is_finite() {
+                difference * fraction
+            } else {
+                b * fraction - a * fraction
+            };
+            length = length.hypot(component);
+        }
+        if length.is_finite() {
+            Ok(length)
         } else {
-            (s / length).clamp(zero, one)
+            Err(ArcLengthError::NonFiniteComputation)
         }
     }
 
-    /// Approximate parameter `t` at arc length `s` using a default resolution.
-    pub fn t_at_length(&self, s: P::Scalar) -> P::Scalar
+    /// Return the exact parameter `t` at arc length `s`.
+    pub fn t_at_length(
+        &self,
+        s: P::Scalar,
+        accuracy: P::Scalar,
+    ) -> Result<P::Scalar, ArcLengthError>
     where
         P: PointNorm,
     {
-        self.t_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+        let length = self.arclen(accuracy)?;
+        if !s.is_finite() {
+            return Err(ArcLengthError::InvalidParameter);
+        }
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        Ok(if length == zero {
+            zero
+        } else {
+            (s / length).clamp(zero, one)
+        })
     }
 
     /// Evaluate the point at arc length `s`.
-    pub fn point_at_length_approx(&self, s: P::Scalar, nsteps: usize) -> P
+    pub fn point_at_length(&self, s: P::Scalar, accuracy: P::Scalar) -> Result<P, ArcLengthError>
     where
         P: PointNorm,
     {
-        self.eval(self.t_at_length_approx(s, nsteps))
-    }
-
-    /// Evaluate the point at arc length `s` using a default resolution.
-    pub fn point_at_length(&self, s: P::Scalar) -> P
-    where
-        P: PointNorm,
-    {
-        self.point_at_length_approx(s, DEFAULT_LENGTH_STEPS)
+        Ok(self.eval(self.t_at_length(s, accuracy)?))
     }
 
     pub(crate) fn root(&self, a: P::Scalar, b: P::Scalar) -> ArrayVec<[P::Scalar; 1]>
@@ -194,8 +244,8 @@ where
         r
     }
 
-    /// Return the bounding box of the line as an array of (min, max) tuples for each dimension (its index)
-    pub fn bounding_box(&self) -> [(P::Scalar, P::Scalar); P::DIM]
+    /// Return the tight axis-aligned bounding box of the line.
+    pub fn bounding_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
     where
         P: PointIndex,
     {
@@ -213,7 +263,17 @@ where
             }
         }
 
-        bounds
+        BoundingBox::from_axes_unchecked(bounds)
+    }
+
+    /// Return the bounding box of the segment's control points.
+    ///
+    /// This is identical to [`Self::bounding_box`] for a line.
+    pub fn control_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
+    where
+        P: PointIndex,
+    {
+        self.bounding_box()
     }
 }
 
@@ -337,7 +397,7 @@ mod tests {
             RELATIVE_TOLERANCE,
         );
         assert_approx_equal(
-            line.t_at_length(scale * 0.5),
+            line.t_at_length(scale * 0.5, 1e-12).unwrap(),
             0.5,
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
@@ -378,10 +438,10 @@ mod tests {
         assert_approx_equal(curvature, 0.0, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
         assert!(line.normal(0.3).is_none());
 
-        let t = line.t_at_length(1.0);
+        let t = line.t_at_length(1.0, 1e-12).unwrap();
         assert_approx_equal(t, 0.5, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
-        let p = line.point_at_length(1.0);
+        let p = line.point_at_length(1.0, 1e-12).unwrap();
         assert_point_approx_equal(
             p,
             PointN::new([1.0, 0.0]),
