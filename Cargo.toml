@@ -20,9 +20,9 @@ include = [
     "curves.svg",
     "LICENSE",
     "rust-toolchain",
-    "src/**",
+    "src/**/*.rs",
     "examples/**/*.rs",
-    "tests/api_conveniences.rs",
+    "tests/*.rs",
 ]
 
 [dependencies]

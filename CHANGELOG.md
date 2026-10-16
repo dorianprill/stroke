@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Breaking changes
+- Added root-search input/arithmetic error variants and defined root accuracy as an absolute coordinate residual tolerance; tiny parameter steps no longer establish success.
 - Changed Bézier `control_points()` to borrowed iteration; `into_control_points()` returns the owned array. Removed mutable generic Bézier iteration in favor of checked control-point replacement/mapping.
 - Added `Point::is_finite`; custom point implementations must report whether all coordinates are finite.
 - Made line and Bezier `new` constructors fallible so they reject non-finite control points; generic Bezier construction also rejects an empty control-point array.
@@ -32,6 +33,10 @@ All notable changes to this project will be documented in this file.
 - Cleaned up existing curve-code Clippy findings and added strict Clippy checks to CI.
 
 ### Fixed
+- Validate Newton inputs and report success only for a finite satisfactory residual at the returned domain-clamped parameter. Share the solver across curve types and support direct derivative evaluation for constant pieces.
+- Preserve every better coarse/refinement distance candidate, including exact endpoint and interior-sample hits, while retaining the heuristic search contract. Use stable Euclidean norms and overflow-safe B-spline sampling parameters.
+- Scale and center line projections to avoid squared-length overflow/underflow and loss of small central offsets on huge segments; retain midpoint rounding tails and distinguish zero-length segments structurally.
+- Verify release packages, warning-free all-feature docs, and library portability with/without nalgebra on WASM and bare-metal ARM in CI.
 - Export public root-finding errors and common segment/B-spline error types at the crate root; all public errors implement `core::error::Error`.
 - Correct the signal interpolation example using actual clamped basis functions and report singular/non-finite solver failures instead of skipping pivots.
 - Align the README nalgebra dependency with the adapter's 0.34 dependency.

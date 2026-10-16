@@ -5,11 +5,10 @@ use core::slice::*;
 use super::{ArcLengthError, Bezier, BoundingBox, Point, PointDot, PointIndex, PointNorm};
 use crate::arc_length::validate_accuracy;
 use crate::find_root::FindRoot;
-use crate::roots::{RootFindingError, root_newton_raphson};
+use crate::roots::RootFindingError;
 use num_traits::{Float, NumCast};
 
 const DEFAULT_DISTANCE_STEPS: usize = 64;
-const LOCAL_SEARCH_ITERS: usize = 16;
 
 /// Errors returned by B-spline construction or evaluation.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -702,7 +701,10 @@ where
 
     /// Approximate the minimum distance between given `point` and the curve.
     /// Uses a coarse sampling pass over the knot domain and a local search around
-    /// the best sample. `nsteps` is the number of coarse samples.
+    /// the best sample. `nsteps` counts coarse subdivisions (at least one).
+    /// Every sampled/refined candidate is retained if better; the search has no
+    /// global-minimum or accuracy guarantee. Non-finite query points return NaN;
+    /// distances outside the scalar range are infinite.
     pub fn distance_to_point_approx(
         &self,
         point: P,
@@ -712,48 +714,20 @@ where
         P: PointNorm,
         [(); D + 1]: Sized,
     {
-        let nsteps = nsteps.max(1);
         let (kmin, kmax) = self.knot_domain();
-        let span = kmax - kmin;
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
-        let three = <P::Scalar as NumCast>::from(3.0).unwrap();
-
-        let mut best_i = 0usize;
-        let mut best_d = (self.eval(kmin)? - point).squared_norm();
-        for i in 1..=nsteps {
-            let i_scalar = <P::Scalar as NumCast>::from(i as f64).unwrap();
-            let t = kmin + span * (i_scalar / nsteps_scalar);
-            let candidate = self.eval(t)?;
-            let distance = (candidate - point).squared_norm();
-            if distance < best_d {
-                best_d = distance;
-                best_i = i;
-            }
-        }
-
-        let left_i = if best_i == 0 { 0 } else { best_i - 1 };
-        let right_i = if best_i == nsteps { nsteps } else { best_i + 1 };
-        let mut left =
-            kmin + span * (<P::Scalar as NumCast>::from(left_i as f64).unwrap() / nsteps_scalar);
-        let mut right =
-            kmin + span * (<P::Scalar as NumCast>::from(right_i as f64).unwrap() / nsteps_scalar);
-
-        for _ in 0..LOCAL_SEARCH_ITERS {
-            let third = (right - left) / three;
-            let t1 = left + third;
-            let t2 = right - third;
-            let d1 = (self.eval(t1)? - point).squared_norm();
-            let d2 = (self.eval(t2)? - point).squared_norm();
-            if d1 < d2 {
-                right = t2;
+        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
+        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
+        crate::distance::approximate(point, nsteps, |u| {
+            // Preserve endpoints and avoid forming an overflowing domain width.
+            let t = if u == zero {
+                kmin
+            } else if u == one {
+                kmax
             } else {
-                left = t1;
-            }
-        }
-
-        let t = (left + right) * half;
-        Ok((self.eval(t)? - point).squared_norm().sqrt())
+                kmin * (one - u) + kmax * u
+            };
+            self.eval(t)
+        })
     }
 
     /// Approximate the minimum distance between given `point` and the curve using
@@ -1105,18 +1079,9 @@ where
         Ok(Some(a_perp * (one / n2.sqrt())))
     }
 
-    fn derivative_curve(
-        &self,
-    ) -> Result<BSpline<P, { K - 2 }, { C - 1 }, { D - 1 }>, RootFindingError>
-    where
-        [(); D - 1]: Sized,
-        [(); C - 1]: Sized,
-        [(); K - 2]: Sized,
-    {
-        Ok(self.derivative())
-    }
-
     /// Find a root for a particular axis using Newton-Raphson on the scalar axis function.
+    /// `eps` is a positive finite absolute coordinate residual tolerance (default
+    /// `1e-6`). This local search can fail even when a root exists.
     pub fn root_newton_axis(
         &self,
         value: P::Scalar,
@@ -1127,11 +1092,6 @@ where
     ) -> Result<P::Scalar, RootFindingError>
     where
         [(); D + 1]: Sized,
-        [(); D - 1]: Sized,
-        [(); D]: Sized,
-        [(); C - 1]: Sized,
-        [(); (D - 1) + 1]: Sized, // keep (D - 1) + 1; compiler doesn't normalize to D
-        [(); K - 2]: Sized,
         P: PointIndex,
     {
         FindRoot::root_newton_axis(self, value, axis, start, eps, max_iter)
@@ -1142,67 +1102,33 @@ impl<P, const K: usize, const C: usize, const D: usize> FindRoot<P> for BSpline<
 where
     P: PointIndex,
     [(); D + 1]: Sized,
-    [(); D - 1]: Sized,
-    [(); D]: Sized,
-    [(); C - 1]: Sized,
-    [(); (D - 1) + 1]: Sized, // keep (D - 1) + 1; compiler doesn't normalize to D
-    [(); K - 2]: Sized,
 {
     fn parameter_domain(&self) -> (P::Scalar, P::Scalar) {
         self.knot_domain()
     }
 
     fn axis_value(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
+        if axis >= P::DIM {
+            return Err(RootFindingError::InvalidAxis);
+        }
+        if !t.is_finite() || !self.domain_contains(t) {
+            return Err(RootFindingError::InvalidParameter);
+        }
         self.eval(t)
             .map(|p| p[axis])
             .map_err(|_| RootFindingError::FailedToConverge)
     }
 
     fn axis_derivative(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
-        let derivative = self.derivative_curve()?;
-        derivative
-            .eval(t)
+        if axis >= P::DIM {
+            return Err(RootFindingError::InvalidAxis);
+        }
+        if !t.is_finite() || !self.domain_contains(t) {
+            return Err(RootFindingError::InvalidParameter);
+        }
+        self.derivative_at(t)
             .map(|p| p[axis])
-            .map_err(|_| RootFindingError::FailedToConverge)
-    }
-
-    fn root_newton_axis(
-        &self,
-        value: P::Scalar,
-        axis: usize,
-        start: P::Scalar,
-        eps: Option<P::Scalar>,
-        max_iter: Option<usize>,
-    ) -> Result<P::Scalar, RootFindingError> {
-        let eps = eps.unwrap_or_else(|| <P::Scalar as NumCast>::from(1e-6).unwrap());
-        let max_iter = max_iter.unwrap_or(64);
-        let (kmin, kmax) = self.knot_domain();
-        let derivative = self.derivative_curve()?;
-
-        let clamp_t = |mut t: P::Scalar| {
-            if t < kmin {
-                t = kmin;
-            } else if t > kmax {
-                t = kmax;
-            }
-            t
-        };
-
-        let start = clamp_t(start);
-        let fx = |x: P::Scalar| {
-            let t = clamp_t(x);
-            self.axis_value(t, axis).map(|v| v - value)
-        };
-        let dx = |x: P::Scalar| {
-            let t = clamp_t(x);
-            derivative
-                .eval(t)
-                .map(|p| p[axis])
-                .map_err(|_| RootFindingError::FailedToConverge)
-        };
-
-        let root = root_newton_raphson(start, fx, dx, eps, max_iter)?;
-        Ok(clamp_t(root))
+            .map_err(|_| RootFindingError::NonFiniteComputation)
     }
 }
 

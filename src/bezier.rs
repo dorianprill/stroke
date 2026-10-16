@@ -13,7 +13,6 @@ use num_traits::{Float, NumCast};
 
 const MAX_ROOT_DEPTH: usize = 64;
 const DEFAULT_DISTANCE_STEPS: usize = 64;
-const LOCAL_SEARCH_ITERS: usize = 16;
 
 /// General implementation of a Bezier curve of arbitrary degree (`N - 1`).
 ///
@@ -137,49 +136,18 @@ where
 
     /// Approximate the minimum distance between given `point` and the curve.
     /// Uses a coarse sampling pass over the full domain and a local search around
-    /// the best sample. `nsteps` is the number of coarse samples.
+    /// the best sample. `nsteps` counts coarse subdivisions (at least one).
+    /// Every sampled/refined candidate is retained if better; the search has no
+    /// global-minimum or accuracy guarantee. Non-finite query points return NaN;
+    /// distances outside the scalar range are infinite.
     pub fn distance_to_point_approx(&self, point: P, nsteps: usize) -> P::Scalar
     where
         P: PointNorm,
     {
-        let nsteps = nsteps.max(1);
-        let nsteps_scalar = <P::Scalar as NumCast>::from(nsteps as f64).unwrap();
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
-        let three = <P::Scalar as NumCast>::from(3.0).unwrap();
-
-        let mut best_i = 0usize;
-        let mut best_d = (self.eval(zero) - point).squared_norm();
-        for i in 1..=nsteps {
-            let t = <P::Scalar as NumCast>::from(i as f64).unwrap() / nsteps_scalar;
-            let candidate = self.eval(t);
-            let d = (candidate - point).squared_norm();
-            if d < best_d {
-                best_d = d;
-                best_i = i;
-            }
-        }
-
-        let left_i = if best_i == 0 { 0 } else { best_i - 1 };
-        let right_i = if best_i == nsteps { nsteps } else { best_i + 1 };
-        let mut left = <P::Scalar as NumCast>::from(left_i as f64).unwrap() / nsteps_scalar;
-        let mut right = <P::Scalar as NumCast>::from(right_i as f64).unwrap() / nsteps_scalar;
-
-        for _ in 0..LOCAL_SEARCH_ITERS {
-            let third = (right - left) / three;
-            let t1 = left + third;
-            let t2 = right - third;
-            let d1 = (self.eval(t1) - point).squared_norm();
-            let d2 = (self.eval(t2) - point).squared_norm();
-            if d1 < d2 {
-                right = t2;
-            } else {
-                left = t1;
-            }
-        }
-
-        let t = (left + right) * half;
-        (self.eval(t) - point).squared_norm().sqrt()
+        crate::distance::approximate(point, nsteps, |t| {
+            Ok::<_, core::convert::Infallible>(self.eval(t))
+        })
+        .unwrap_or_else(|never| match never {})
     }
 
     /// Approximate the minimum distance between given `point` and the curve using
@@ -698,6 +666,8 @@ where
     }
 
     /// Find a root for a particular axis using Newton-Raphson on the scalar axis function.
+    /// `eps` is a positive finite absolute coordinate residual tolerance (default
+    /// `1e-6`). This local search can fail even when a root exists.
     pub fn root_newton_axis(
         &self,
         value: P::Scalar,
@@ -708,7 +678,6 @@ where
     ) -> Result<P::Scalar, RootFindingError>
     where
         P: PointIndex,
-        [(); N - 1]: Sized,
     {
         FindRoot::root_newton_axis(self, value, axis, start, eps, max_iter)
     }
@@ -767,7 +736,6 @@ where
 impl<P, const N: usize> FindRoot<P> for Bezier<P, { N }>
 where
     P: PointIndex,
-    [(); N - 1]: Sized,
 {
     fn parameter_domain(&self) -> (P::Scalar, P::Scalar) {
         (
@@ -777,11 +745,29 @@ where
     }
 
     fn axis_value(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
+        if axis >= P::DIM {
+            return Err(RootFindingError::InvalidAxis);
+        }
+        if !t.is_finite()
+            || t < <P::Scalar as NumCast>::from(0.0).unwrap()
+            || t > <P::Scalar as NumCast>::from(1.0).unwrap()
+        {
+            return Err(RootFindingError::InvalidParameter);
+        }
         Ok(self.eval(t)[axis])
     }
 
     fn axis_derivative(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError> {
-        Ok(self.derivative().eval(t)[axis])
+        if axis >= P::DIM {
+            return Err(RootFindingError::InvalidAxis);
+        }
+        if !t.is_finite()
+            || t < <P::Scalar as NumCast>::from(0.0).unwrap()
+            || t > <P::Scalar as NumCast>::from(1.0).unwrap()
+        {
+            return Err(RootFindingError::InvalidParameter);
+        }
+        Ok(self.derivative_at(t)[axis])
     }
 }
 

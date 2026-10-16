@@ -162,7 +162,13 @@ assert!(tight[1].1 < control[1].1);
 ```
 
 `distance_to_point*` still uses sampling-based approximations; increase its step
-count for accuracy. General B-spline splitting into two fixed-size B-spline
+count for coverage, without a global-minimum or accuracy guarantee. Refinement
+retains the best candidate found; line distances use scaled projection. Non-finite
+query points produce NaN, and distances outside the scalar range are infinite.
+Newton root queries are local: `eps` is a positive finite absolute coordinate
+residual tolerance, not a parameter-step tolerance. Success checks the returned
+parameter's residual; stagnation or a failed search does not prove no root exists.
+General B-spline splitting into two fixed-size B-spline
 values is not currently provided; use `bezier_spans()` for decomposition.
 
 ### Convenience APIs
@@ -205,6 +211,8 @@ Run `cargo lint` for all targets with all features, or `cargo lint-default`
 for all targets without default features. Both treat warnings as errors;
 CI runs both commands. `.cargo/config.toml` also selects the compatible
 nightly trait solver for local builds, Clippy, and doctests.
+CI checks the library with and without nalgebra on WASM and bare-metal ARM,
+verifies the release package, and denies warnings in all-feature rustdoc.
 Run `cargo test --examples --all-features` for example assertions. CI also
 builds a separate downstream consumer from outside the repository, without
 inheriting this configuration. The API pass was tested with

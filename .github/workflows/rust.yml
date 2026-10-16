@@ -29,10 +29,12 @@ jobs:
       run: cargo build --verbose
     - name: Build examples
       run: cargo build --examples --verbose
+    - name: Verify release package
+      run: cargo package --locked
     - name: Render curve examples
       run: cargo run --example kuva_curves
     - name: Build docs
-      run: cargo doc --no-deps --verbose
+      run: cargo rustdoc --all-features --lib -- -D warnings
     - name: Run tests
       run: cargo test --verbose
     - name: Run tests (nalgebra)
@@ -53,3 +55,19 @@ jobs:
         cd "$consumer_dir"
         cargo +nightly run --manifest-path "$repo_dir/tests/downstream/Cargo.toml" --no-default-features
         cargo +nightly run --manifest-path "$repo_dir/tests/downstream/Cargo.toml" --all-features
+
+  portability:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [wasm32-unknown-unknown, thumbv7em-none-eabihf]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install nightly target
+      run: |
+        rustup toolchain install nightly --profile minimal
+        rustup target add --toolchain nightly ${{ matrix.target }}
+    - name: Check no-std library
+      run: cargo +nightly check --lib --no-default-features --target ${{ matrix.target }}
+    - name: Check nalgebra adapter without std
+      run: cargo +nightly check --lib --all-features --target ${{ matrix.target }}

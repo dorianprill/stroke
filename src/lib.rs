@@ -61,6 +61,7 @@ pub mod point;
 
 mod arc_length;
 mod conversions;
+mod distance;
 mod numeric;
 mod path_parameter;
 mod roots;
