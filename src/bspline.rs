@@ -2,7 +2,7 @@
 
 use core::slice::*;
 
-use super::{ArcLengthError, Bezier, BoundingBox, Point, PointDot, PointIndex, PointNorm};
+use super::{ArcLengthError, Bezier, BoundingBox, Point, PointIndex, PointNorm};
 use crate::arc_length::validate_accuracy;
 use crate::find_root::FindRoot;
 use crate::roots::RootFindingError;
@@ -34,6 +34,8 @@ pub enum BSplineError {
     ExcessKnotMultiplicity,
     /// The evaluation parameter is outside the knot domain.
     KnotDomainViolation,
+    /// The supplied span does not own the evaluation parameter.
+    InvalidSpan,
     /// The de Boor evaluation encountered a NaN alpha value.
     EvaluationAlphaIsNaN,
     /// Differential evaluation produced a non-finite result.
@@ -81,6 +83,7 @@ impl core::fmt::Display for BSplineError {
                 write!(f, "Knot multiplicity exceeds degree + 1")
             }
             BSplineError::KnotDomainViolation => write!(f, "Parameter outside of knot span"),
+            BSplineError::InvalidSpan => f.write_str("B-spline span does not own the parameter"),
             BSplineError::EvaluationAlphaIsNaN => {
                 write!(f, "Cox-deBoor evaluation yields alpha NaN value")
             }
@@ -404,11 +407,11 @@ where
     ///
     /// # Examples
     /// ```rust
-    /// use stroke::{BSpline, PointN};
+    /// use stroke::{BSpline, ArrayPoint};
     ///
     /// let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-    /// let points = [PointN::new([0.0]), PointN::new([2.0])];
-    /// let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+    /// let points = [ArrayPoint::new([0.0]), ArrayPoint::new([2.0])];
+    /// let curve: BSpline<ArrayPoint<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
     ///
     /// assert!(curve.domain_contains(0.5));
     /// assert!(!curve.domain_contains(-0.1));
@@ -426,11 +429,11 @@ where
     ///
     /// # Examples
     /// ```rust
-    /// use stroke::{BSpline, PointN};
+    /// use stroke::{BSpline, ArrayPoint};
     ///
     /// let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-    /// let points = [PointN::new([0.0]), PointN::new([2.0])];
-    /// let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+    /// let points = [ArrayPoint::new([0.0]), ArrayPoint::new([2.0])];
+    /// let curve: BSpline<ArrayPoint<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
     ///
     /// let span = curve.knot_span(0.25).unwrap();
     /// assert_eq!(span, 1);
@@ -448,14 +451,16 @@ where
     /// Returns the `D + 1` basis values `N_{i,p}(t)` for the active span,
     /// ordered from `i = span - D` through `i = span`.
     /// The caller should pass a `span` obtained from `knot_span(t)`.
+    /// Returns `InvalidSpan` if it does not own `t`, or `NonFiniteComputation`
+    /// if a result cannot be represented by the scalar type.
     ///
     /// # Examples
     /// ```rust
-    /// use stroke::{BSpline, PointN};
+    /// use stroke::{BSpline, ArrayPoint};
     ///
     /// let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-    /// let points = [PointN::new([0.0]), PointN::new([2.0])];
-    /// let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+    /// let points = [ArrayPoint::new([0.0]), ArrayPoint::new([2.0])];
+    /// let curve: BSpline<ArrayPoint<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
     ///
     /// let t = 0.25;
     /// let span = curve.knot_span(t).unwrap();
@@ -471,38 +476,7 @@ where
     where
         [(); D + 1]: Sized,
     {
-        if !self.domain_contains(t) {
-            return Err(BSplineError::KnotDomainViolation);
-        }
-        if span < D || span + D >= K {
-            return Err(BSplineError::KnotDomainViolation);
-        }
-
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let mut left = [zero; D + 1];
-        let mut right = [zero; D + 1];
-        let mut basis = [zero; D + 1];
-        basis[0] = one;
-
-        for j in 1..=D {
-            left[j] = t - self.knots[span + 1 - j];
-            right[j] = self.knots[span + j] - t;
-            let mut saved = zero;
-            for r in 0..j {
-                let denom = right[r + 1] + left[j - r];
-                let temp = if denom == zero {
-                    zero
-                } else {
-                    basis[r] / denom
-                };
-                basis[r] = saved + right[r + 1] * temp;
-                saved = left[j - r] * temp;
-            }
-            basis[j] = saved;
-        }
-
-        Ok(basis)
+        Ok(self.basis_table::<0>(span, t)?[0])
     }
 
     /// Evaluate the basis functions and their derivatives up to order `R`.
@@ -511,14 +485,16 @@ where
     /// derivative order and `j` indexes the basis functions for the active span
     /// (`j = 0` corresponds to `i = span - D`). The zeroth row `ders[0]` matches
     /// `basis_functions(span, t)`. Requires `R <= D`.
+    /// Span validation matches `basis_functions`; derivatives are in native
+    /// knot units. Unrepresentable results return `NonFiniteComputation`.
     ///
     /// # Examples
     /// ```rust
-    /// use stroke::{BSpline, PointN};
+    /// use stroke::{BSpline, ArrayPoint};
     ///
     /// let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-    /// let points = [PointN::new([0.0]), PointN::new([2.0])];
-    /// let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+    /// let points = [ArrayPoint::new([0.0]), ArrayPoint::new([2.0])];
+    /// let curve: BSpline<ArrayPoint<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
     ///
     /// let t = 0.25;
     /// let span = curve.knot_span(t).unwrap();
@@ -538,104 +514,105 @@ where
         [(); R + 1]: Sized,
         [(); D - R]: Sized,
     {
+        self.basis_table::<R>(span, t)
+    }
+
+    /// Validate the same one-sided span ownership as `knot_span` without
+    /// adding an unchecked caller-supplied index to the degree.
+    fn validate_span(&self, span: usize, t: P::Scalar) -> Result<(), BSplineError> {
         if !self.domain_contains(t) {
             return Err(BSplineError::KnotDomainViolation);
         }
-        if span < D || span + D >= K {
-            return Err(BSplineError::KnotDomainViolation);
+        if !(D..C).contains(&span) {
+            return Err(BSplineError::InvalidSpan);
         }
-
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let mut left = [zero; D + 1];
-        let mut right = [zero; D + 1];
-        let mut ndu = [[zero; D + 1]; D + 1];
-        ndu[0][0] = one;
-
-        for j in 1..=D {
-            left[j] = t - self.knots[span + 1 - j];
-            right[j] = self.knots[span + j] - t;
-            let mut saved = zero;
-            for r in 0..j {
-                let denom = right[r + 1] + left[j - r];
-                ndu[j][r] = denom;
-                let temp = if denom == zero {
-                    zero
-                } else {
-                    ndu[r][j - 1] / denom
-                };
-                ndu[r][j] = saved + right[r + 1] * temp;
-                saved = left[j - r] * temp;
-            }
-            ndu[j][j] = saved;
+        let start = self.knots[span];
+        let end = self.knots[span + 1];
+        if start >= end || t < start || (t >= end && !(t == self.knots[C] && t == end)) {
+            return Err(BSplineError::InvalidSpan);
         }
+        Ok(())
+    }
 
-        let mut ders = [[zero; D + 1]; R + 1];
-        for j in 0..=D {
-            ders[0][j] = ndu[j][D];
-        }
+    /// Cox-de Boor recurrence with separate exponents. Derivatives are built
+    /// from the preceding degree, delaying conversion to native scalar units
+    /// until each complete row is available. Equal knots contribute zero.
+    fn basis_table<const R: usize>(
+        &self,
+        span: usize,
+        t: P::Scalar,
+    ) -> Result<[[P::Scalar; D + 1]; R + 1], BSplineError>
+    where
+        [(); D + 1]: Sized,
+        [(); R + 1]: Sized,
+    {
+        use crate::numeric::Scaled;
 
-        for r in 0..=D {
-            let mut a = [[zero; D + 1]; 2];
-            a[0][0] = one;
-            let mut s1 = 0usize;
-            let mut s2 = 1usize;
-
-            for k in 1..=R {
-                let mut d = zero;
-                let rk = r as isize - k as isize;
-                let pk = D - k;
-
-                if r >= k {
-                    let denom = ndu[pk + 1][rk as usize];
-                    a[s2][0] = if denom == zero {
-                        zero
-                    } else {
-                        a[s1][0] / denom
-                    };
-                    d = a[s2][0] * ndu[rk as usize][pk];
-                }
-
-                let j1 = if rk >= -1 { 1 } else { (-rk) as usize };
-                let j2 = if r <= pk { k - 1 } else { D - r };
-
-                if j1 <= j2 {
-                    for j in j1..=j2 {
-                        let denom = ndu[pk + 1][(rk + j as isize) as usize];
-                        a[s2][j] = if denom == zero {
-                            zero
-                        } else {
-                            (a[s1][j] - a[s1][j - 1]) / denom
-                        };
-                        d = d + a[s2][j] * ndu[(rk + j as isize) as usize][pk];
+        self.validate_span(span, t)?;
+        let zero = Scaled::new(<P::Scalar as NumCast>::from(0_u8).unwrap());
+        let mut table = [[zero; D + 1]; R + 1];
+        table[0][0] = Scaled::new(<P::Scalar as NumCast>::from(1_u8).unwrap());
+        let parameter = Scaled::new(t);
+        for degree in 1..=D {
+            let mut next = [[zero; D + 1]; R + 1];
+            let factor = Scaled::new(<P::Scalar as NumCast>::from(degree).unwrap());
+            for j in 0..=degree {
+                let i = span - degree + j;
+                if j > 0 && self.knots[i] < self.knots[i + degree] {
+                    let lower = Scaled::new(self.knots[i]);
+                    let width = Scaled::new(self.knots[i + degree]).difference(lower);
+                    let weight = parameter.difference(lower).quotient(width);
+                    next[0][j] = next[0][j].sum(table[0][j - 1].product(weight));
+                    for order in 1..=R.min(degree) {
+                        next[order][j] = next[order][j]
+                            .sum(table[order - 1][j - 1].product(factor).quotient(width));
                     }
                 }
-
-                if r <= pk {
-                    let denom = ndu[pk + 1][r];
-                    a[s2][k] = if denom == zero {
-                        zero
-                    } else {
-                        -a[s1][k - 1] / denom
-                    };
-                    d = d + a[s2][k] * ndu[r][pk];
+                if j < degree && self.knots[i + 1] < self.knots[i + degree + 1] {
+                    let upper = Scaled::new(self.knots[i + degree + 1]);
+                    let width = upper.difference(Scaled::new(self.knots[i + 1]));
+                    let weight = upper.difference(parameter).quotient(width);
+                    next[0][j] = next[0][j].sum(table[0][j].product(weight));
+                    for order in 1..=R.min(degree) {
+                        next[order][j] = next[order][j]
+                            .difference(table[order - 1][j].product(factor).quotient(width));
+                    }
                 }
-
-                ders[k][r] = d;
-                core::mem::swap(&mut s1, &mut s2);
             }
+            table = next;
         }
+        let result = table.map(|row| row.map(Scaled::value));
+        if result.iter().flatten().all(|value| value.is_finite()) {
+            Ok(result)
+        } else {
+            Err(BSplineError::NonFiniteComputation)
+        }
+    }
 
-        let mut factor = one;
-        for (k, row) in ders.iter_mut().enumerate().skip(1) {
-            let mult = <P::Scalar as NumCast>::from((D - k + 1) as f64).unwrap();
-            factor = factor * mult;
-            for value in row {
-                *value = *value * factor;
+    fn bezier_span(&self, span: usize) -> Bezier<P, { D + 1 }>
+    where
+        [(); D + 1]: Sized,
+    {
+        let a = self.knots[span];
+        let b = self.knots[span + 1];
+        let control_points = core::array::from_fn(|j| {
+            let mut points: [P; D + 1] =
+                core::array::from_fn(|i| self.control_points[span - D + i]);
+            for r in 1..=D {
+                let parameter = if r <= D - j { a } else { b };
+                for i in (r..=D).rev() {
+                    let index = span - D + i;
+                    let alpha = crate::numeric::unit_parameter(
+                        parameter,
+                        self.knots[index],
+                        self.knots[index + D - r + 1],
+                    );
+                    points[i] = crate::numeric::lerp(points[i - 1], points[i], alpha);
+                }
             }
-        }
-
-        Ok(ders)
+            points[D]
+        });
+        Bezier { control_points }
     }
 
     /// Iterate over the nonzero polynomial spans as Bézier curves.
@@ -653,26 +630,7 @@ where
         (D..C).filter_map(move |span| {
             let a = self.knots[span];
             let b = self.knots[span + 1];
-            if a >= b {
-                return None;
-            }
-            let control_points = core::array::from_fn(|j| {
-                let mut points: [P; D + 1] =
-                    core::array::from_fn(|i| self.control_points[span - D + i]);
-                for r in 1..=D {
-                    let parameter = if r <= D - j { a } else { b };
-                    for i in (r..=D).rev() {
-                        let index = span - D + i;
-                        let lower = self.knots[index];
-                        let upper = self.knots[index + D - r + 1];
-                        // Every denominator covers this nonzero span.
-                        let alpha = crate::numeric::unit_parameter(parameter, lower, upper);
-                        points[i] = crate::numeric::lerp(points[i - 1], points[i], alpha);
-                    }
-                }
-                points[D]
-            });
-            Some((a..b, Bezier { control_points }))
+            (a < b).then(|| (a..b, self.bezier_span(span)))
         })
     }
 
@@ -986,97 +944,47 @@ where
     pub fn tangent(&self, t: P::Scalar) -> Result<P, BSplineError>
     where
         P: PointNorm,
-        [(); D - 1]: Sized,
-        [(); C - 1]: Sized,
-        [(); K - 2]: Sized,
-        [(); D]: Sized,
         [(); D + 1]: Sized,
-        [(); (D - 1) + 1]: Sized, // keep (D - 1) + 1; compiler doesn't normalize to D
     {
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let dir = self.derivative().eval(t)?;
-        let len = dir.norm();
-        if len == zero {
-            Ok(dir)
+        let span = self.knot_span(t)?;
+        let local = crate::numeric::unit_parameter(t, self.knots[span], self.knots[span + 1]);
+        let result = self.bezier_span(span).tangent(local);
+        if result.is_finite() {
+            Ok(result)
         } else {
-            Ok(dir * (one / len))
+            Err(BSplineError::NonFiniteComputation)
         }
     }
 
     /// Return the curvature magnitude at `t`.
     ///
-    /// Requires `D >= 2` so that the second derivative exists.
+    /// Constant and linear pieces have zero curvature.
     pub fn curvature(&self, t: P::Scalar) -> Result<P::Scalar, BSplineError>
     where
-        P: PointNorm + PointDot,
+        P: PointNorm,
         [(); D + 1]: Sized,
-        [(); D - 2]: Sized,
     {
         let span = self.knot_span(t)?;
-        let ders = self.basis_functions_with_derivatives::<2>(span, t)?;
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let mut v = self.control_points[0] * zero;
-        let mut a = v;
-        let start = span - D;
-        for j in 0..=D {
-            let cp = self.control_points[start + j];
-            v = v + cp * ders[1][j];
-            a = a + cp * ders[2][j];
-        }
-
-        let v2 = v.squared_norm();
-        if v2 == zero {
-            return Ok(zero);
-        }
-        let a2 = a.squared_norm();
-        let dot = PointDot::dot(&v, &a);
-        let mut num = v2 * a2 - dot * dot;
-        if num < zero {
-            num = zero;
-        }
-        let denom = v2 * v2.sqrt();
-        if denom == zero {
-            Ok(zero)
+        let local = crate::numeric::unit_parameter(t, self.knots[span], self.knots[span + 1]);
+        let result = self.bezier_span(span).curvature(local);
+        if result.is_finite() {
+            Ok(result)
         } else {
-            Ok(num.sqrt() / denom)
+            Err(BSplineError::NonFiniteComputation)
         }
     }
 
     /// Return the principal normal direction at `t`.
     ///
-    /// Requires `D >= 2` so that the second derivative exists. Returns `None`
-    /// if the velocity is zero or curvature is undefined.
+    /// Returns `None` for stationary or straight pieces.
     pub fn normal(&self, t: P::Scalar) -> Result<Option<P>, BSplineError>
     where
-        P: PointNorm + PointDot,
+        P: PointNorm,
         [(); D + 1]: Sized,
-        [(); D - 2]: Sized,
     {
         let span = self.knot_span(t)?;
-        let ders = self.basis_functions_with_derivatives::<2>(span, t)?;
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let mut v = self.control_points[0] * zero;
-        let mut a = v;
-        let start = span - D;
-        for j in 0..=D {
-            let cp = self.control_points[start + j];
-            v = v + cp * ders[1][j];
-            a = a + cp * ders[2][j];
-        }
-
-        let v2 = v.squared_norm();
-        if v2 == zero {
-            return Ok(None);
-        }
-        let dot = PointDot::dot(&v, &a);
-        let a_perp = a - v * (dot / v2);
-        let n2 = a_perp.squared_norm();
-        if n2 == zero {
-            return Ok(None);
-        }
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        Ok(Some(a_perp * (one / n2.sqrt())))
+        let local = crate::numeric::unit_parameter(t, self.knots[span], self.knots[span + 1]);
+        Ok(self.bezier_span(span).normal(local))
     }
 
     /// Find a root for a particular axis using Newton-Raphson on the scalar axis function.
@@ -1137,7 +1045,7 @@ mod tests {
     //use std;
     use super::*;
     //use crate::num_traits::{Pow};
-    use crate::PointN;
+    use crate::ArrayPoint;
     use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
 
     const ABSOLUTE_TOLERANCE: f64 = 1e-12;
@@ -1145,10 +1053,11 @@ mod tests {
 
     #[test]
     fn rejects_non_finite_knots() {
-        let points = [PointN::new([0.0_f64]), PointN::new([1.0])];
+        let points = [ArrayPoint::new([0.0_f64]), ArrayPoint::new([1.0])];
 
         for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            let result = BSpline::<PointN<f64, 1>, 4, 2, 1>::new([0.0, invalid, 1.0, 1.0], points);
+            let result =
+                BSpline::<ArrayPoint<f64, 1>, 4, 2, 1>::new([0.0, invalid, 1.0, 1.0], points);
             assert_eq!(result.err(), Some(BSplineError::NonFiniteKnot));
         }
     }
@@ -1156,12 +1065,12 @@ mod tests {
     #[test]
     fn rejects_non_finite_control_points_with_index() {
         let points = [
-            PointN::new([0.0_f64]),
-            PointN::new([f64::NAN]),
-            PointN::new([f64::INFINITY]),
+            ArrayPoint::new([0.0_f64]),
+            ArrayPoint::new([f64::NAN]),
+            ArrayPoint::new([f64::INFINITY]),
         ];
         let result =
-            BSpline::<PointN<f64, 1>, 6, 3, 2>::new([0.0, 0.0, 0.0, 1.0, 1.0, 1.0], points);
+            BSpline::<ArrayPoint<f64, 1>, 6, 3, 2>::new([0.0, 0.0, 0.0, 1.0, 1.0, 1.0], points);
 
         assert_eq!(
             result.err(),
@@ -1171,10 +1080,12 @@ mod tests {
 
     #[test]
     fn knot_clamping_is_classified_structurally() {
-        let points = [PointN::new([0.0_f64]), PointN::new([1.0])];
-        let curve =
-            BSpline::<PointN<f64, 1>, 4, 2, 1>::new([0.0, f64::EPSILON / 2.0, 1.0, 1.0], points)
-                .unwrap();
+        let points = [ArrayPoint::new([0.0_f64]), ArrayPoint::new([1.0])];
+        let curve = BSpline::<ArrayPoint<f64, 1>, 4, 2, 1>::new(
+            [0.0, f64::EPSILON / 2.0, 1.0, 1.0],
+            points,
+        )
+        .unwrap();
 
         assert_eq!(curve.knot_kind, KnotVectorKind::ClampedEnd);
     }
@@ -1182,14 +1093,14 @@ mod tests {
     #[test]
     fn narrow_knot_span_remains_non_degenerate() {
         let span = 1e-20_f64;
-        let points = [PointN::new([0.0]), PointN::new([1.0])];
+        let points = [ArrayPoint::new([0.0]), ArrayPoint::new([1.0])];
         let curve =
-            BSpline::<PointN<f64, 1>, 4, 2, 1>::new([0.0, 0.0, span, span], points).unwrap();
+            BSpline::<ArrayPoint<f64, 1>, 4, 2, 1>::new([0.0, 0.0, span, span], points).unwrap();
         let t = span * 0.5;
 
         assert_point_approx_equal(
             curve.eval(t).unwrap(),
-            PointN::new([0.5]),
+            ArrayPoint::new([0.5]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
@@ -1200,7 +1111,7 @@ mod tests {
         assert_approx_equal(basis[1], 0.5, ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
         assert_point_approx_equal(
             curve.tangent(t).unwrap(),
-            PointN::new([1.0]),
+            ArrayPoint::new([1.0]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
@@ -1210,15 +1121,15 @@ mod tests {
     fn degree_1_clamped_construct_and_eval_endpoints() {
         // Define the control points for a degree 1 B-Spline (essentially a line)
         let points = [
-            PointN::new([0f64, 0f64]),   // Start of the line at origin
-            PointN::new([10f64, 10f64]), // End of the line at (10, 10)
+            ArrayPoint::new([0f64, 0f64]),   // Start of the line at origin
+            ArrayPoint::new([10f64, 10f64]), // End of the line at (10, 10)
         ];
 
         // Define a uniform clamped knot vector for a degree 1 B-spline
         let knots: [f64; 4] = [0., 0., 1., 1.];
 
         // Create the B-Spline
-        let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
         assert!(curve.knot_kind == KnotVectorKind::Clamped);
 
@@ -1245,7 +1156,7 @@ mod tests {
         let mid = curve.eval(0.5).unwrap();
         assert_point_approx_equal(
             mid,
-            PointN::new([5.0, 5.0]),
+            ArrayPoint::new([5.0, 5.0]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
@@ -1255,15 +1166,15 @@ mod tests {
     fn degree_1_unclamped_construct_and_eval() {
         // Define the control points for a degree 1 B-Spline (essentially a line)
         let points = [
-            PointN::new([0f64, 0f64]),   // Start of the line at origin
-            PointN::new([10f64, 10f64]), // End of the line at (10, 10)
+            ArrayPoint::new([0f64, 0f64]),   // Start of the line at origin
+            ArrayPoint::new([10f64, 10f64]), // End of the line at (10, 10)
         ];
 
         // Define a uniform unclamped knot vector for a degree 1 B-spline
         let knots: [f64; 4] = [0., 1., 2., 3.];
 
         // Create the B-Spline
-        let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
         assert!(curve.knot_kind == KnotVectorKind::Unclamped);
 
@@ -1284,7 +1195,7 @@ mod tests {
         let mid = curve.eval(1.5).unwrap();
         assert_point_approx_equal(
             mid,
-            PointN::new([5.0, 5.0]),
+            ArrayPoint::new([5.0, 5.0]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
@@ -1294,13 +1205,13 @@ mod tests {
     fn unclamped_cubic_endpoint_matches_polynomial_segment() {
         // On [3, 4], these uniform knots and control values define (t - 3)^3.
         // In particular, the final value is 1, rather than the last control's 6.
-        let curve = BSpline::<PointN<f64, 1>, 8, 4, 3>::new(
+        let curve = BSpline::<ArrayPoint<f64, 1>, 8, 4, 3>::new(
             [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
             [
-                PointN::new([0.0]),
-                PointN::new([0.0]),
-                PointN::new([0.0]),
-                PointN::new([6.0]),
+                ArrayPoint::new([0.0]),
+                ArrayPoint::new([0.0]),
+                ArrayPoint::new([0.0]),
+                ArrayPoint::new([6.0]),
             ],
         )
         .unwrap();
@@ -1316,9 +1227,12 @@ mod tests {
 
     #[test]
     fn arclen_line_approx() {
-        let points = [PointN::new([0f64, 0f64]), PointN::new([10f64, 0f64])];
+        let points = [
+            ArrayPoint::new([0f64, 0f64]),
+            ArrayPoint::new([10f64, 0f64]),
+        ];
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
         let expected = (points[1] - points[0]).squared_norm().sqrt();
         let length = curve.arclen_polyline(32);
@@ -1330,16 +1244,16 @@ mod tests {
     fn degree_2_clamped_construct_and_eval_endpoints() {
         // Define the control points for a degree 2 B-Spline
         let points = [
-            PointN::new([0f64, 0f64]),   // Start of the curve at origin
-            PointN::new([10f64, 10f64]), // Control point off the baseline
-            PointN::new([20f64, 0f64]),  // End of the curve at (20, 0)
+            ArrayPoint::new([0f64, 0f64]),   // Start of the curve at origin
+            ArrayPoint::new([10f64, 10f64]), // Control point off the baseline
+            ArrayPoint::new([20f64, 0f64]),  // End of the curve at (20, 0)
         ];
 
         // Define a uniform clamped knot vector for a degree 2 B-spline
         let knots: [f64; 6] = [0., 0., 0., 1., 1., 1.];
 
         // Create the B-Spline
-        let curve: BSpline<PointN<f64, 2>, 6, 3, 2> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 2>, 6, 3, 2> = BSpline::new(knots, points).unwrap();
 
         assert!(curve.knot_kind == KnotVectorKind::Clamped);
 
@@ -1367,7 +1281,7 @@ mod tests {
         let mid = curve.eval(0.5).unwrap();
         assert_point_approx_equal(
             mid,
-            PointN::new([10.0, 5.0]),
+            ArrayPoint::new([10.0, 5.0]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
@@ -1377,16 +1291,16 @@ mod tests {
     fn degree_2_unclamped_construct_and_eval() {
         // Define the control points for a degree 2 B-Spline
         let points = [
-            PointN::new([0f64, 0f64]),   // Start of the line at origin
-            PointN::new([10f64, 10f64]), // End of the line at (10, 10)
-            PointN::new([20f64, 0f64]),  // End of the line at (20, 0)
+            ArrayPoint::new([0f64, 0f64]),   // Start of the line at origin
+            ArrayPoint::new([10f64, 10f64]), // End of the line at (10, 10)
+            ArrayPoint::new([20f64, 0f64]),  // End of the line at (20, 0)
         ];
 
         // Define a uniform unclamped knot vector for a degree 2 B-spline
         let knots: [f64; 6] = [0., 1., 2., 3., 4., 5.];
 
         // Create the B-Spline
-        let curve: BSpline<PointN<f64, 2>, 6, 3, 2> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 2>, 6, 3, 2> = BSpline::new(knots, points).unwrap();
 
         assert!(curve.knot_kind == KnotVectorKind::Unclamped);
 
@@ -1414,17 +1328,18 @@ mod tests {
     fn degree_3_clamped_construct_and_eval_endpoints() {
         // degree 3, 4 control points => 4+3+1=8 knots
         let points = [
-            PointN::new([0f64, 1.77f64]),
-            PointN::new([1.1f64, -1f64]),
-            PointN::new([4.3f64, 3f64]),
-            PointN::new([3.2f64, -4f64]),
-            PointN::new([2.3f64, 1.77f64]),
+            ArrayPoint::new([0f64, 1.77f64]),
+            ArrayPoint::new([1.1f64, -1f64]),
+            ArrayPoint::new([4.3f64, 3f64]),
+            ArrayPoint::new([3.2f64, -4f64]),
+            ArrayPoint::new([2.3f64, 1.77f64]),
         ];
         // clamped b-spline to it goes through the first and last control point
         let knots: [f64; 9] = [0., 0., 0., 0., 1., 2., 2., 2., 2.];
 
         // try to make a b-spline with the given parameters
-        let b: Result<BSpline<PointN<f64, 2>, 9, 5, 3>, BSplineError> = BSpline::new(knots, points);
+        let b: Result<BSpline<ArrayPoint<f64, 2>, 9, 5, 3>, BSplineError> =
+            BSpline::new(knots, points);
 
         let curve = match b {
             Err(e) => panic!("Error: {:?}", e),
@@ -1465,17 +1380,18 @@ mod tests {
     fn degree_3_unclamped_construct_and_eval() {
         // degree 3, 4 control points => 4+3+1=8 knots
         let points = [
-            PointN::new([0f64, 1.77f64]),
-            PointN::new([1.1f64, -1f64]),
-            PointN::new([4.3f64, 3f64]),
-            PointN::new([3.2f64, -4f64]),
-            PointN::new([2.3f64, 1.77f64]),
+            ArrayPoint::new([0f64, 1.77f64]),
+            ArrayPoint::new([1.1f64, -1f64]),
+            ArrayPoint::new([4.3f64, 3f64]),
+            ArrayPoint::new([3.2f64, -4f64]),
+            ArrayPoint::new([2.3f64, 1.77f64]),
         ];
         // unclamped b-spline (not necessarily going through the first and last control point)
         let knots: [f64; 9] = [0., 1., 2., 3., 4., 5., 6., 7., 8.];
 
         // try to make a b-spline with the given parameters
-        let b: Result<BSpline<PointN<f64, 2>, 9, 5, 3>, BSplineError> = BSpline::new(knots, points);
+        let b: Result<BSpline<ArrayPoint<f64, 2>, 9, 5, 3>, BSplineError> =
+            BSpline::new(knots, points);
 
         let curve = match b {
             Err(e) => panic!("Error: {:?}", e),
@@ -1515,14 +1431,14 @@ mod tests {
     #[test]
     fn clamped_quintic_matches_bezier() {
         let points = [
-            PointN::new([0.0, 0.0]),
-            PointN::new([0.5, 4.0]),
-            PointN::new([2.0, -3.0]),
-            PointN::new([3.0, 4.0]),
-            PointN::new([4.5, -2.0]),
-            PointN::new([5.0, 1.0]),
+            ArrayPoint::new([0.0, 0.0]),
+            ArrayPoint::new([0.5, 4.0]),
+            ArrayPoint::new([2.0, -3.0]),
+            ArrayPoint::new([3.0, 4.0]),
+            ArrayPoint::new([4.5, -2.0]),
+            ArrayPoint::new([5.0, 1.0]),
         ];
-        let spline = BSpline::<PointN<f64, 2>, 12, 6, 5>::new(
+        let spline = BSpline::<ArrayPoint<f64, 2>, 12, 6, 5>::new(
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
             points,
         )
@@ -1543,17 +1459,17 @@ mod tests {
     fn degree_4_clamped_construct_and_eval() {
         // degree 4, 5 control points => 5+4+1=10 knots
         let points = [
-            PointN::new([0f64, 1.77f64]),
-            PointN::new([1.1f64, -1f64]),
-            PointN::new([4.3f64, 3f64]),
-            PointN::new([3.2f64, -4f64]),
-            PointN::new([2.3f64, 1.77f64]),
+            ArrayPoint::new([0f64, 1.77f64]),
+            ArrayPoint::new([1.1f64, -1f64]),
+            ArrayPoint::new([4.3f64, 3f64]),
+            ArrayPoint::new([3.2f64, -4f64]),
+            ArrayPoint::new([2.3f64, 1.77f64]),
         ];
         // clamped b-spline (goes through the first and last control point)
         let knots: [f64; 10] = [0., 0., 0., 0., 0., 3., 3., 3., 3., 3.];
 
         // try to make a b-spline with the given parameters
-        let b: Result<BSpline<PointN<f64, 2>, 10, 5, 4>, BSplineError> =
+        let b: Result<BSpline<ArrayPoint<f64, 2>, 10, 5, 4>, BSplineError> =
             BSpline::new(knots, points);
 
         let curve = match b {
@@ -1596,18 +1512,18 @@ mod tests {
     fn degree_4_unclamped_construct_and_eval() {
         // degree 4, 5 control points => 5+4+1=10 knots
         let points = [
-            PointN::new([0f64, 1.77f64]),
-            PointN::new([1.1f64, -1f64]),
-            PointN::new([4.3f64, 3f64]),
-            PointN::new([3.2f64, -4f64]),
-            PointN::new([2.3f64, 1.77f64]),
-            PointN::new([0.0, 0.0]),
+            ArrayPoint::new([0f64, 1.77f64]),
+            ArrayPoint::new([1.1f64, -1f64]),
+            ArrayPoint::new([4.3f64, 3f64]),
+            ArrayPoint::new([3.2f64, -4f64]),
+            ArrayPoint::new([2.3f64, 1.77f64]),
+            ArrayPoint::new([0.0, 0.0]),
         ];
         // unclamped b-spline (not necessarily going through the first and last control point)
         let knots: [f64; 11] = [0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.];
 
         // try to make a b-spline with the given parameters
-        let b: Result<BSpline<PointN<f64, 2>, 11, 6, 4>, BSplineError> =
+        let b: Result<BSpline<ArrayPoint<f64, 2>, 11, 6, 4>, BSplineError> =
             BSpline::new(knots, points);
 
         let curve = match b {
@@ -1643,9 +1559,9 @@ mod tests {
 
     #[test]
     fn bspline_api_parity() {
-        let points = [PointN::new([0f64, 0f64]), PointN::new([2f64, 0f64])];
+        let points = [ArrayPoint::new([0f64, 0f64]), ArrayPoint::new([2f64, 0f64])];
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
         let (kmin, kmax) = curve.knot_domain();
         assert_eq!(curve.start().unwrap(), curve.eval(kmin).unwrap());
@@ -1666,14 +1582,14 @@ mod tests {
         assert!((t_mid - (kmin + kmax) * 0.5).abs() < 1e-3);
 
         let p_mid = curve.point_at_length(expected_len * 0.5, 1e-12).unwrap();
-        assert_point_approx_equal(p_mid, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
+        assert_point_approx_equal(p_mid, ArrayPoint::new([1.0, 0.0]), 1e-9, 1e-9);
     }
 
     #[test]
     fn basis_functions_linear() {
-        let points = [PointN::new([0f64]), PointN::new([2f64])];
+        let points = [ArrayPoint::new([0f64]), ArrayPoint::new([2f64])];
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
         let t = 0.25;
         let span = curve.knot_span(t).unwrap();
@@ -1694,11 +1610,11 @@ mod tests {
     fn bspline_curvature_nonzero() {
         let knots: [f64; 6] = [0.0, 0.0, 0.0, 1.0, 1.0, 1.0];
         let points = [
-            PointN::new([0.0, 0.0]),
-            PointN::new([1.0, 1.0]),
-            PointN::new([2.0, 0.0]),
+            ArrayPoint::new([0.0, 0.0]),
+            ArrayPoint::new([1.0, 1.0]),
+            ArrayPoint::new([2.0, 0.0]),
         ];
-        let curve: BSpline<PointN<f64, 2>, 6, 3, 2> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 2>, 6, 3, 2> = BSpline::new(knots, points).unwrap();
 
         let curvature = curve.curvature(0.5).unwrap();
         assert!(curvature > 0.0);
@@ -1709,9 +1625,9 @@ mod tests {
 
     #[test]
     fn root_newton_axis_linear() {
-        let points = [PointN::new([0f64]), PointN::new([2f64])];
+        let points = [ArrayPoint::new([0f64]), ArrayPoint::new([2f64])];
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
         let root = curve
             .root_newton_axis(1.0, 0, 0.25, None, Some(64))
@@ -1721,9 +1637,9 @@ mod tests {
 
     #[test]
     fn root_newton_axis_zero_derivative() {
-        let points = [PointN::new([1f64]), PointN::new([1f64])];
+        let points = [ArrayPoint::new([1f64]), ArrayPoint::new([1f64])];
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
         let result = curve.root_newton_axis(0.0, 0, 0.5, None, Some(8));
         assert!(matches!(result, Err(RootFindingError::ZeroDerivative)));
@@ -1731,26 +1647,26 @@ mod tests {
 
     #[test]
     fn derivative_reduces_knots_and_control_points() {
-        let points = [PointN::new([0f64]), PointN::new([2f64])];
+        let points = [ArrayPoint::new([0f64]), ArrayPoint::new([2f64])];
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let curve: BSpline<PointN<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 1>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
         let derivative = curve.derivative();
         assert_eq!(derivative.knots, [0.0, 1.0]);
-        assert_eq!(derivative.control_points, [PointN::new([2.0])]);
+        assert_eq!(derivative.control_points, [ArrayPoint::new([2.0])]);
     }
 
     #[test]
     fn bspline_bounding_box_contains_samples() {
         let knots: [f64; 8] = [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0];
         let points = [
-            PointN::new([0.0, 0.0]),
-            PointN::new([1.0, 2.0]),
-            PointN::new([2.0, -1.0]),
-            PointN::new([3.0, 1.5]),
-            PointN::new([4.0, 0.0]),
+            ArrayPoint::new([0.0, 0.0]),
+            ArrayPoint::new([1.0, 2.0]),
+            ArrayPoint::new([2.0, -1.0]),
+            ArrayPoint::new([3.0, 1.5]),
+            ArrayPoint::new([4.0, 0.0]),
         ];
-        let curve: BSpline<PointN<f64, 2>, 8, 5, 2> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 2>, 8, 5, 2> = BSpline::new(knots, points).unwrap();
         let bounds = curve.bounding_box();
         let (kmin, kmax) = curve.knot_domain();
         let steps = 200;
@@ -1771,9 +1687,9 @@ mod tests {
 
     #[test]
     fn domain_contains_matches_knot_domain() {
-        let points = [PointN::new([0f64, 0f64]), PointN::new([2f64, 0f64])];
+        let points = [ArrayPoint::new([0f64, 0f64]), ArrayPoint::new([2f64, 0f64])];
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let curve: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
+        let curve: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(knots, points).unwrap();
 
         let (kmin, kmax) = curve.knot_domain();
         assert!(curve.domain_contains(kmin));

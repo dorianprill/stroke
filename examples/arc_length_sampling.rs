@@ -1,11 +1,11 @@
-use stroke::{Bezier, PointN, PointNorm};
+use stroke::{ArrayPoint, Bezier, PointNorm};
 
 fn main() {
-    let curve = Bezier::<PointN<f64, 2>, 4>::new([
-        PointN::new([0.0, 0.0]),
-        PointN::new([1.0, 2.0]),
-        PointN::new([3.0, -1.0]),
-        PointN::new([4.0, 0.0]),
+    let curve = Bezier::<ArrayPoint<f64, 2>, 4>::new([
+        ArrayPoint::new([0.0, 0.0]),
+        ArrayPoint::new([1.0, 2.0]),
+        ArrayPoint::new([3.0, -1.0]),
+        ArrayPoint::new([4.0, 0.0]),
     ])
     .unwrap();
 
@@ -14,7 +14,7 @@ fn main() {
     let total = curve.arclen(accuracy).unwrap();
     println!("total length (approx): {:.5}", total);
 
-    let mut prev: Option<PointN<f64, 2>> = None;
+    let mut prev: Option<ArrayPoint<f64, 2>> = None;
     for i in 0..steps {
         let s = total * (i as f64 / (steps - 1) as f64);
         let t = curve.t_at_length(s, accuracy).unwrap();

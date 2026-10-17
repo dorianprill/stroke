@@ -16,20 +16,20 @@ use num_traits::{Float, NumCast};
 ///
 /// # Examples
 /// ```rust
-/// use stroke::{BezierPath, LineSegment, PointN};
+/// use stroke::{BezierPath, LineSegment, ArrayPoint};
 ///
-/// let mut path: BezierPath<PointN<f64, 2>, 2> = BezierPath::new();
+/// let mut path: BezierPath<ArrayPoint<f64, 2>, 2> = BezierPath::new();
 /// path.push_line(LineSegment::new(
-///     PointN::new([0.0, 0.0]),
-///     PointN::new([1.0, 0.0]),
+///     ArrayPoint::new([0.0, 0.0]),
+///     ArrayPoint::new([1.0, 0.0]),
 /// ).unwrap());
 /// path.push_line(LineSegment::new(
-///     PointN::new([1.0, 0.0]),
-///     PointN::new([2.0, 0.0]),
+///     ArrayPoint::new([1.0, 0.0]),
+///     ArrayPoint::new([2.0, 0.0]),
 /// ).unwrap());
 ///
-/// assert_eq!(path.start().unwrap(), PointN::new([0.0, 0.0]));
-/// assert_eq!(path.end().unwrap(), PointN::new([2.0, 0.0]));
+/// assert_eq!(path.start().unwrap(), ArrayPoint::new([0.0, 0.0]));
+/// assert_eq!(path.end().unwrap(), ArrayPoint::new([2.0, 0.0]));
 ///
 /// let t = path.t_at_length(1.0, 1e-12).unwrap().unwrap();
 /// let p = path.point_at_length(1.0, 1e-12).unwrap().unwrap();
@@ -407,7 +407,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PointN;
+    use crate::ArrayPoint;
     use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
 
     const ABSOLUTE_TOLERANCE: f64 = 1e-12;
@@ -415,17 +415,21 @@ mod tests {
 
     #[test]
     fn bezier_path_eval_segments() {
-        let mut path: BezierPath<PointN<f64, 2>, 4> = BezierPath::new();
-        path.push_line(LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])).unwrap());
-        path.push_line(LineSegment::new(PointN::new([1.0, 0.0]), PointN::new([1.0, 1.0])).unwrap());
+        let mut path: BezierPath<ArrayPoint<f64, 2>, 4> = BezierPath::new();
+        path.push_line(
+            LineSegment::new(ArrayPoint::new([0.0, 0.0]), ArrayPoint::new([1.0, 0.0])).unwrap(),
+        );
+        path.push_line(
+            LineSegment::new(ArrayPoint::new([1.0, 0.0]), ArrayPoint::new([1.0, 1.0])).unwrap(),
+        );
 
         let p0 = path.eval(0.0).unwrap();
-        assert_eq!(p0, PointN::new([0.0, 0.0]));
+        assert_eq!(p0, ArrayPoint::new([0.0, 0.0]));
 
         let p1 = path.eval(0.25).unwrap();
         assert_point_approx_equal(
             p1,
-            PointN::new([0.5, 0.0]),
+            ArrayPoint::new([0.5, 0.0]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
@@ -433,7 +437,7 @@ mod tests {
         let p2 = path.eval(0.75).unwrap();
         assert_point_approx_equal(
             p2,
-            PointN::new([1.0, 0.5]),
+            ArrayPoint::new([1.0, 0.5]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
@@ -441,9 +445,13 @@ mod tests {
 
     #[test]
     fn bezier_path_bounds_union() {
-        let mut path: BezierPath<PointN<f64, 2>, 4> = BezierPath::new();
-        path.push_line(LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])).unwrap());
-        path.push_line(LineSegment::new(PointN::new([1.0, 0.0]), PointN::new([1.0, 1.0])).unwrap());
+        let mut path: BezierPath<ArrayPoint<f64, 2>, 4> = BezierPath::new();
+        path.push_line(
+            LineSegment::new(ArrayPoint::new([0.0, 0.0]), ArrayPoint::new([1.0, 0.0])).unwrap(),
+        );
+        path.push_line(
+            LineSegment::new(ArrayPoint::new([1.0, 0.0]), ArrayPoint::new([1.0, 1.0])).unwrap(),
+        );
 
         let bounds = path.bounding_box().unwrap();
         assert_eq!(bounds[0], (0.0, 1.0));
@@ -452,24 +460,30 @@ mod tests {
 
     #[test]
     fn bezier_path_clamps_out_of_range() {
-        let mut path: BezierPath<PointN<f64, 2>, 2> = BezierPath::new();
-        path.push_line(LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])).unwrap());
-        path.push_line(LineSegment::new(PointN::new([1.0, 0.0]), PointN::new([1.0, 1.0])).unwrap());
+        let mut path: BezierPath<ArrayPoint<f64, 2>, 2> = BezierPath::new();
+        path.push_line(
+            LineSegment::new(ArrayPoint::new([0.0, 0.0]), ArrayPoint::new([1.0, 0.0])).unwrap(),
+        );
+        path.push_line(
+            LineSegment::new(ArrayPoint::new([1.0, 0.0]), ArrayPoint::new([1.0, 1.0])).unwrap(),
+        );
 
         let start = path.eval(-1.0).unwrap();
-        assert_eq!(start, PointN::new([0.0, 0.0]));
+        assert_eq!(start, ArrayPoint::new([0.0, 0.0]));
 
         let end = path.eval(2.0).unwrap();
-        assert_eq!(end, PointN::new([1.0, 1.0]));
+        assert_eq!(end, ArrayPoint::new([1.0, 1.0]));
     }
 
     #[test]
     fn bezier_path_capacity() {
-        let mut path: BezierPath<PointN<f64, 2>, 1> = BezierPath::new();
-        let first = path
-            .push_line(LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])).unwrap());
-        let second = path
-            .push_line(LineSegment::new(PointN::new([1.0, 0.0]), PointN::new([2.0, 0.0])).unwrap());
+        let mut path: BezierPath<ArrayPoint<f64, 2>, 1> = BezierPath::new();
+        let first = path.push_line(
+            LineSegment::new(ArrayPoint::new([0.0, 0.0]), ArrayPoint::new([1.0, 0.0])).unwrap(),
+        );
+        let second = path.push_line(
+            LineSegment::new(ArrayPoint::new([1.0, 0.0]), ArrayPoint::new([2.0, 0.0])).unwrap(),
+        );
 
         assert!(first);
         assert!(!second);
@@ -478,12 +492,16 @@ mod tests {
 
     #[test]
     fn bezier_path_api_parity() {
-        let mut path: BezierPath<PointN<f64, 2>, 2> = BezierPath::new();
-        path.push_line(LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])).unwrap());
-        path.push_line(LineSegment::new(PointN::new([1.0, 0.0]), PointN::new([2.0, 0.0])).unwrap());
+        let mut path: BezierPath<ArrayPoint<f64, 2>, 2> = BezierPath::new();
+        path.push_line(
+            LineSegment::new(ArrayPoint::new([0.0, 0.0]), ArrayPoint::new([1.0, 0.0])).unwrap(),
+        );
+        path.push_line(
+            LineSegment::new(ArrayPoint::new([1.0, 0.0]), ArrayPoint::new([2.0, 0.0])).unwrap(),
+        );
 
-        assert_eq!(path.start().unwrap(), PointN::new([0.0, 0.0]));
-        assert_eq!(path.end().unwrap(), PointN::new([2.0, 0.0]));
+        assert_eq!(path.start().unwrap(), ArrayPoint::new([0.0, 0.0]));
+        assert_eq!(path.end().unwrap(), ArrayPoint::new([2.0, 0.0]));
 
         let reversed = path.reverse();
         let p0 = path.eval(0.25).unwrap();
@@ -502,15 +520,15 @@ mod tests {
         assert!((t - 0.5).abs() < 1e-6);
 
         let p = path.point_at_length(1.0, 1e-12).unwrap().unwrap();
-        assert_point_approx_equal(p, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
+        assert_point_approx_equal(p, ArrayPoint::new([1.0, 0.0]), 1e-9, 1e-9);
     }
 
     #[test]
     fn small_scale_path_remains_non_degenerate() {
         let scale = 1e-20_f64;
-        let mut path: BezierPath<PointN<f64, 2>, 1> = BezierPath::new();
+        let mut path: BezierPath<ArrayPoint<f64, 2>, 1> = BezierPath::new();
         assert!(path.push_line(
-            LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([scale, 0.0]),).unwrap()
+            LineSegment::new(ArrayPoint::new([0.0, 0.0]), ArrayPoint::new([scale, 0.0]),).unwrap()
         ));
 
         assert_approx_equal(

@@ -13,32 +13,32 @@ use num_traits::{Float, NumCast};
 ///
 /// # Examples
 /// ```rust
-/// use stroke::{BSpline, BSplinePath, PointN};
+/// use stroke::{BSpline, BSplinePath, ArrayPoint};
 ///
 /// let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-/// let seg1: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(
+/// let seg1: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(
 ///     knots,
 ///     [
-///         PointN::new([0.0, 0.0]),
-///         PointN::new([1.0, 0.0]),
+///         ArrayPoint::new([0.0, 0.0]),
+///         ArrayPoint::new([1.0, 0.0]),
 ///     ],
 /// )
 /// .unwrap();
-/// let seg2: BSpline<PointN<f64, 2>, 4, 2, 1> = BSpline::new(
+/// let seg2: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(
 ///     knots,
 ///     [
-///         PointN::new([1.0, 0.0]),
-///         PointN::new([2.0, 0.0]),
+///         ArrayPoint::new([1.0, 0.0]),
+///         ArrayPoint::new([2.0, 0.0]),
 ///     ],
 /// )
 /// .unwrap();
 ///
-/// let mut path: BSplinePath<PointN<f64, 2>, 4, 2, 1, 2> = BSplinePath::new();
+/// let mut path: BSplinePath<ArrayPoint<f64, 2>, 4, 2, 1, 2> = BSplinePath::new();
 /// path.push(seg1);
 /// path.push(seg2);
 ///
-/// assert_eq!(path.start().unwrap(), PointN::new([0.0, 0.0]));
-/// assert_eq!(path.end().unwrap(), PointN::new([2.0, 0.0]));
+/// assert_eq!(path.start().unwrap(), ArrayPoint::new([0.0, 0.0]));
+/// assert_eq!(path.end().unwrap(), ArrayPoint::new([2.0, 0.0]));
 ///
 /// let t = path.t_at_length(1.0, 1e-12).unwrap().unwrap();
 /// let p = path.point_at_length(1.0, 1e-12).unwrap().unwrap();
@@ -224,12 +224,7 @@ where
     pub fn tangent(&self, t: P::Scalar) -> Option<P>
     where
         P: PointNorm,
-        [(); D - 1]: Sized,
-        [(); C - 1]: Sized,
-        [(); K - 2]: Sized,
-        [(); D]: Sized,
         [(); D + 1]: Sized,
-        [(); (D - 1) + 1]: Sized, // keep (D - 1) + 1; compiler doesn't normalize to D
     {
         let (index, local_t) = self.segment_parameter(t)?;
         let segment = &self.segments[index];
@@ -244,7 +239,6 @@ where
     where
         P: PointNorm + PointDot,
         [(); D + 1]: Sized,
-        [(); D - 2]: Sized,
     {
         let (index, local_t) = self.segment_parameter(t)?;
         let segment = &self.segments[index];
@@ -261,7 +255,6 @@ where
     where
         P: PointNorm + PointDot,
         [(); D + 1]: Sized,
-        [(); D - 2]: Sized,
     {
         let (index, local_t) = self.segment_parameter(t)?;
         let segment = &self.segments[index];
@@ -471,7 +464,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PointN;
+    use crate::ArrayPoint;
     use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
 
     const ABSOLUTE_TOLERANCE: f64 = 1e-12;
@@ -480,19 +473,25 @@ mod tests {
     #[test]
     fn bspline_path_eval_segments() {
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let s1: BSpline<PointN<f64, 2>, 4, 2, 1> =
-            BSpline::new(knots, [PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])]).unwrap();
-        let s2: BSpline<PointN<f64, 2>, 4, 2, 1> =
-            BSpline::new(knots, [PointN::new([1.0, 0.0]), PointN::new([1.0, 1.0])]).unwrap();
+        let s1: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(
+            knots,
+            [ArrayPoint::new([0.0, 0.0]), ArrayPoint::new([1.0, 0.0])],
+        )
+        .unwrap();
+        let s2: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(
+            knots,
+            [ArrayPoint::new([1.0, 0.0]), ArrayPoint::new([1.0, 1.0])],
+        )
+        .unwrap();
 
-        let mut path: BSplinePath<PointN<f64, 2>, 4, 2, 1, 4> = BSplinePath::new();
+        let mut path: BSplinePath<ArrayPoint<f64, 2>, 4, 2, 1, 4> = BSplinePath::new();
         path.push(s1);
         path.push(s2);
 
         let p1 = path.eval(0.25).unwrap();
         assert_point_approx_equal(
             p1,
-            PointN::new([0.5, 0.0]),
+            ArrayPoint::new([0.5, 0.0]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
@@ -500,7 +499,7 @@ mod tests {
         let p2 = path.eval(0.75).unwrap();
         assert_point_approx_equal(
             p2,
-            PointN::new([1.0, 0.5]),
+            ArrayPoint::new([1.0, 0.5]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
@@ -509,31 +508,43 @@ mod tests {
     #[test]
     fn bspline_path_clamps_out_of_range() {
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let s1: BSpline<PointN<f64, 2>, 4, 2, 1> =
-            BSpline::new(knots, [PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])]).unwrap();
-        let s2: BSpline<PointN<f64, 2>, 4, 2, 1> =
-            BSpline::new(knots, [PointN::new([1.0, 0.0]), PointN::new([1.0, 1.0])]).unwrap();
+        let s1: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(
+            knots,
+            [ArrayPoint::new([0.0, 0.0]), ArrayPoint::new([1.0, 0.0])],
+        )
+        .unwrap();
+        let s2: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(
+            knots,
+            [ArrayPoint::new([1.0, 0.0]), ArrayPoint::new([1.0, 1.0])],
+        )
+        .unwrap();
 
-        let mut path: BSplinePath<PointN<f64, 2>, 4, 2, 1, 4> = BSplinePath::new();
+        let mut path: BSplinePath<ArrayPoint<f64, 2>, 4, 2, 1, 4> = BSplinePath::new();
         path.push(s1);
         path.push(s2);
 
         let start = path.eval(-1.0).unwrap();
-        assert_eq!(start, PointN::new([0.0, 0.0]));
+        assert_eq!(start, ArrayPoint::new([0.0, 0.0]));
 
         let end = path.eval(2.0).unwrap();
-        assert_eq!(end, PointN::new([1.0, 1.0]));
+        assert_eq!(end, ArrayPoint::new([1.0, 1.0]));
     }
 
     #[test]
     fn bspline_path_bounds_control_points() {
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let s1: BSpline<PointN<f64, 2>, 4, 2, 1> =
-            BSpline::new(knots, [PointN::new([0.0, 2.0]), PointN::new([1.0, -1.0])]).unwrap();
-        let s2: BSpline<PointN<f64, 2>, 4, 2, 1> =
-            BSpline::new(knots, [PointN::new([-1.0, 0.5]), PointN::new([2.0, -2.0])]).unwrap();
+        let s1: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(
+            knots,
+            [ArrayPoint::new([0.0, 2.0]), ArrayPoint::new([1.0, -1.0])],
+        )
+        .unwrap();
+        let s2: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(
+            knots,
+            [ArrayPoint::new([-1.0, 0.5]), ArrayPoint::new([2.0, -2.0])],
+        )
+        .unwrap();
 
-        let mut path: BSplinePath<PointN<f64, 2>, 4, 2, 1, 4> = BSplinePath::new();
+        let mut path: BSplinePath<ArrayPoint<f64, 2>, 4, 2, 1, 4> = BSplinePath::new();
         path.push(s1);
         path.push(s2);
 
@@ -545,17 +556,23 @@ mod tests {
     #[test]
     fn bspline_path_api_parity() {
         let knots: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
-        let s1: BSpline<PointN<f64, 2>, 4, 2, 1> =
-            BSpline::new(knots, [PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])]).unwrap();
-        let s2: BSpline<PointN<f64, 2>, 4, 2, 1> =
-            BSpline::new(knots, [PointN::new([1.0, 0.0]), PointN::new([2.0, 0.0])]).unwrap();
+        let s1: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(
+            knots,
+            [ArrayPoint::new([0.0, 0.0]), ArrayPoint::new([1.0, 0.0])],
+        )
+        .unwrap();
+        let s2: BSpline<ArrayPoint<f64, 2>, 4, 2, 1> = BSpline::new(
+            knots,
+            [ArrayPoint::new([1.0, 0.0]), ArrayPoint::new([2.0, 0.0])],
+        )
+        .unwrap();
 
-        let mut path: BSplinePath<PointN<f64, 2>, 4, 2, 1, 2> = BSplinePath::new();
+        let mut path: BSplinePath<ArrayPoint<f64, 2>, 4, 2, 1, 2> = BSplinePath::new();
         path.push(s1);
         path.push(s2);
 
-        assert_eq!(path.start().unwrap(), PointN::new([0.0, 0.0]));
-        assert_eq!(path.end().unwrap(), PointN::new([2.0, 0.0]));
+        assert_eq!(path.start().unwrap(), ArrayPoint::new([0.0, 0.0]));
+        assert_eq!(path.end().unwrap(), ArrayPoint::new([2.0, 0.0]));
 
         let reversed = path.reverse();
         let p0 = path.eval(0.25).unwrap();
@@ -570,23 +587,23 @@ mod tests {
         assert!((t - 0.5).abs() < 1e-6);
 
         let p = path.point_at_length(1.0, 1e-12).unwrap().unwrap();
-        assert_point_approx_equal(p, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
+        assert_point_approx_equal(p, ArrayPoint::new([1.0, 0.0]), 1e-9, 1e-9);
     }
 
     #[test]
     fn bspline_path_curvature_nonzero() {
         let knots: [f64; 6] = [0.0, 0.0, 0.0, 1.0, 1.0, 1.0];
-        let seg: BSpline<PointN<f64, 2>, 6, 3, 2> = BSpline::new(
+        let seg: BSpline<ArrayPoint<f64, 2>, 6, 3, 2> = BSpline::new(
             knots,
             [
-                PointN::new([0.0, 0.0]),
-                PointN::new([1.0, 1.0]),
-                PointN::new([2.0, 0.0]),
+                ArrayPoint::new([0.0, 0.0]),
+                ArrayPoint::new([1.0, 1.0]),
+                ArrayPoint::new([2.0, 0.0]),
             ],
         )
         .unwrap();
 
-        let mut path: BSplinePath<PointN<f64, 2>, 6, 3, 2, 1> = BSplinePath::new();
+        let mut path: BSplinePath<ArrayPoint<f64, 2>, 6, 3, 2, 1> = BSplinePath::new();
         path.push(seg);
 
         let curvature = path.curvature(0.5).unwrap();
@@ -600,12 +617,12 @@ mod tests {
     fn small_scale_path_remains_non_degenerate() {
         let scale = 1e-20_f64;
         let knots = [0.0, 0.0, 1.0, 1.0];
-        let segment = BSpline::<PointN<f64, 1>, 4, 2, 1>::new(
+        let segment = BSpline::<ArrayPoint<f64, 1>, 4, 2, 1>::new(
             knots,
-            [PointN::new([0.0]), PointN::new([scale])],
+            [ArrayPoint::new([0.0]), ArrayPoint::new([scale])],
         )
         .unwrap();
-        let mut path: BSplinePath<PointN<f64, 1>, 4, 2, 1, 1> = BSplinePath::new();
+        let mut path: BSplinePath<ArrayPoint<f64, 1>, 4, 2, 1, 1> = BSplinePath::new();
         assert!(path.push(segment));
 
         assert_approx_equal(

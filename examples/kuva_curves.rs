@@ -10,9 +10,9 @@ use kuva::prelude::{
     Figure, Layout, LegendEntry, LegendPosition, LegendShape, LinePlot, MarkerShape, Plot,
     ScatterPlot, SvgBackend,
 };
-use stroke::{BSpline, Bezier, PointN};
+use stroke::{ArrayPoint, BSpline, Bezier};
 
-type Point = PointN<f64, 2>;
+type Point = ArrayPoint<f64, 2>;
 type Bounds = [(f64, f64); 2];
 
 const OUTPUT: &str = "curves.svg";
@@ -188,7 +188,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
     let (clamped_plots, clamped_layout) = panel(
-        "BSpline<PointN<f64, 2>, 12, 6, 5>",
+        "BSpline<ArrayPoint<f64, 2>, 12, 6, 5>",
         5,
         &clamped.control_points().copied().collect::<Vec<_>>(),
         clamped_samples,
@@ -206,7 +206,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         coordinates(spline_samples[STEPS]),
     ];
     let (mut spline_plots, spline_layout) = panel(
-        "BSpline<PointN<f64, 2>, 10, 6, 3>",
+        "BSpline<ArrayPoint<f64, 2>, 10, 6, 3>",
         3,
         &spline.control_points().copied().collect::<Vec<_>>(),
         spline_samples,
@@ -251,7 +251,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         .with_subtitle("Degree 3 · unclamped");
     let panels = vec![
         panel(
-            "Bezier<PointN<f64, 2>, 3>",
+            "Bezier<ArrayPoint<f64, 2>, 3>",
             2,
             &quadratic.into_control_points(),
             (0..=STEPS)
@@ -260,7 +260,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
             quadratic.bounding_box().into_axes(),
         ),
         panel(
-            "Bezier<PointN<f64, 2>, 4>",
+            "Bezier<ArrayPoint<f64, 2>, 4>",
             3,
             &cubic.into_control_points(),
             (0..=STEPS)

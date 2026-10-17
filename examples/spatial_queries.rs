@@ -1,13 +1,13 @@
 //! CAD/GIS-style candidate filtering with axis-aligned boxes.
 //! Box overlap is only a broad-phase test, not proof of curve intersection.
 
-use stroke::{BoundingBox, PointN, QuadraticBezier};
+use stroke::{ArrayPoint, BoundingBox, QuadraticBezier};
 
 fn main() -> Result<(), Box<dyn core::error::Error>> {
     let curve = QuadraticBezier::new(
-        PointN::from([0.0_f64, 0.0]),
-        PointN::from([2.0, 4.0]),
-        PointN::from([4.0, 0.0]),
+        ArrayPoint::from([0.0_f64, 0.0]),
+        ArrayPoint::from([2.0, 4.0]),
+        ArrayPoint::from([4.0, 0.0]),
     )?;
     let regions = [
         BoundingBox::new([1.0, 3.0], [3.0, 3.5]).unwrap(),

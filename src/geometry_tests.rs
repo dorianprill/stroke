@@ -4,7 +4,7 @@ use super::*;
 use crate::bspline::BSplineError;
 use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
 
-type P = PointN<f64, 2>;
+type P = ArrayPoint<f64, 2>;
 
 fn ph_cubic() -> CubicBezier<P> {
     // C(t) = (t - t^3/3, t^2), whose speed is exactly 1 + t^2.
@@ -24,7 +24,7 @@ fn stable_norm_preserves_representable_extreme_magnitudes() {
         assert_approx_equal(p.norm() / scale, 5.0, 1e-14, 1e-14);
     }
     for scale in [1e-30_f32, 1e30] {
-        let p = PointN::new([3.0 * scale, 4.0 * scale]);
+        let p = ArrayPoint::new([3.0 * scale, 4.0 * scale]);
         assert_approx_equal(p.norm() / scale, 5.0, 1e-5, 1e-5);
     }
     assert!(P::new([0.0, f64::NAN]).norm().is_nan());
@@ -91,9 +91,9 @@ fn analytic_cubic_length_inverse_and_partial_integral() {
 fn backtracking_and_non_dyadic_cusps_have_full_length() {
     // B(t) = 2t - 3t^2 has a turning point at t = 1/3.
     let curve = Bezier::new([
-        PointN::new([0.0_f64]),
-        PointN::new([1.0]),
-        PointN::new([-1.0]),
+        ArrayPoint::new([0.0_f64]),
+        ArrayPoint::new([1.0]),
+        ArrayPoint::new([-1.0]),
     ])
     .unwrap();
     assert_approx_equal(curve.arclen(1e-12).unwrap(), 5.0 / 3.0, 1e-12, 1e-12);
@@ -105,10 +105,10 @@ fn backtracking_and_non_dyadic_cusps_have_full_length() {
     );
 
     let cubic = Bezier::new([
-        PointN::new([0.0_f64]),
-        PointN::new([2.0]),
-        PointN::new([-1.0]),
-        PointN::new([0.0]),
+        ArrayPoint::new([0.0_f64]),
+        ArrayPoint::new([2.0]),
+        ArrayPoint::new([-1.0]),
+        ArrayPoint::new([0.0]),
     ])
     .unwrap();
     let a = (5.0 - 7.0_f64.sqrt()) / 9.0;
@@ -150,10 +150,10 @@ fn length_is_invariant_under_reverse_split_and_scale() {
 fn f32_quadrature_and_inverse_work_at_distinct_scales() {
     for scale in [1e-25_f32, 1.0, 1e25] {
         let curve = Bezier::new([
-            PointN::new([0.0, 0.0]),
-            PointN::new([scale / 3.0, 0.0]),
-            PointN::new([2.0 * scale / 3.0, scale / 3.0]),
-            PointN::new([2.0 * scale / 3.0, scale]),
+            ArrayPoint::new([0.0, 0.0]),
+            ArrayPoint::new([scale / 3.0, 0.0]),
+            ArrayPoint::new([2.0 * scale / 3.0, scale / 3.0]),
+            ArrayPoint::new([2.0 * scale / 3.0, scale]),
         ])
         .unwrap();
         let length = curve.arclen(scale * 1e-5).unwrap();
@@ -248,10 +248,10 @@ fn tight_boxes_exclude_off_curve_control_points() {
 fn tight_boxes_and_roots_remain_scale_independent() {
     for scale in [1e-150_f64, 1.0, 1e150] {
         let curve = Bezier::new([
-            PointN::new([0.0]),
-            PointN::new([4.0 * scale]),
-            PointN::new([-4.0 * scale]),
-            PointN::new([0.0]),
+            ArrayPoint::new([0.0]),
+            ArrayPoint::new([4.0 * scale]),
+            ArrayPoint::new([-4.0 * scale]),
+            ArrayPoint::new([0.0]),
         ])
         .unwrap();
         let bounds = curve.bounding_box();

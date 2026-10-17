@@ -13,8 +13,8 @@ The library makes heavy use of const-generics and `generic_const_exprs`, so the 
 This repo uses `nightly` via `rust-toolchain`.  
 Consumers using const-expression-based APIs (such as bounding boxes) must also
 enable `#![feature(generic_const_exprs)]` at their crate root on nightly.
-It comes with a const-generic N-dimensional Point type so you can use the library without any other dependencies.  
-`PointN<T, N>` uses your chosen scalar `T` (typically `f32`/`f64`) and keeps the dimension at compile time.  
+`ArrayPoint` supplies an array-backed implementation of `Point` for use without an external math library.
+`ArrayPoint<T, N>` uses your chosen scalar `T` (typically `f32`/`f64`) and keeps the dimension at compile time.
 Point scalar types must implement `num_traits::Float`; the library therefore currently targets floating-point numeric representations such as `f32` and `f64`.
 
 Should you want to integrate with types provided by another library, implement the small `Point` trait. Optional extension traits (`PointIndex`, `PointDot`, `PointNorm`) unlock component access and geometric helpers when needed.  
@@ -53,7 +53,7 @@ nalgebra = { version = "0.34", default-features = false, features = ["libm"] }
 - Provide generic Bézier curves and B-Splines. Due to their frequent usage, further provide lines, quadratic and cubic Bézier curves
 - Support no-std for all targets
 - Extensive unit testing and code coverage
-- Integration tests for other generic math libraries (TBD - maybe optimath, aljabar, micromath, nalgebra) since Point types are replicated in many libraries
+- Integration tests for other generic math libraries (currently only nalgebra)
 
 ## Non-Goals
 
@@ -65,7 +65,7 @@ These are the main supported features. Some further utility methods are exposed 
 
 ### Quadratic and Cubic Bézier Curves
 
-- [x] evaluation (De Casteljau, direct)
+- [x] evaluation (De Casteljau)
 - [x] split
 - [x] derivative
 - [x] tangent (unit)
@@ -106,89 +106,48 @@ These are the main supported features. Some further utility methods are exposed 
 - [x] bounding box
 - [x] tight axis-aligned bounding box and conservative control-point bounds
 
-### Arc length and bounds
+### General use
 
-Every curve, segment, and path provides `arclen(accuracy)`,
-`arclen_between(start, end, accuracy)`, `t_at_length(length, accuracy)`, and
-`point_at_length(length, accuracy)`. Length calculations use adaptive 8/16-point
-Gauss-Legendre quadrature, with explicit splits at stationary-point candidates
-and B-spline knots. Lines use their exact Euclidean length.
-
-`accuracy` is a finite, positive absolute length tolerance, subject to scalar
-roundoff. The quadrature error estimate controls subdivision; it is not an
-interval-arithmetic proof of the error. These methods return `Result`, reporting
-invalid inputs, non-finite arithmetic, or exhausted convergence budgets.
-`arclen_polyline(segments)` retains the cheaper sampling approximation, with a
-subdivision count per curve (per nonzero knot span for B-splines).
-
-Inverse lengths clamp finite distances to the endpoints and choose the start
-for zero-length curves. Paths return `Result<Option<_>, ArcLengthError>` for
-inverse length and point lookup: `Ok(None)` means the path is empty. Empty paths
-have length zero. Disconnected segments and full-multiplicity spline knots
-contribute the lengths of their pieces without an implicit connecting line;
-lookup at an interior boundary selects the piece on its right. Path parameters
-remain uniformly partitioned by segment; B-spline parameters use the standard
-active knot domain `[knots[D], knots[C]]`.
-Path evaluation and inverse-length lookup share the same representable segment
-boundaries. Point lookup retains the selected segment directly, avoiding loss
-of local precision through a normalized parameter round trip.
-
-`bounding_box()` returns a tight `BoundingBox<Scalar, DIM>`, with analytic extrema
-for quadratic/cubic curves and Bernstein convex-hull subdivision for generic
-Béziers and extracted B-spline spans. Tightness is subject to floating-point
-resolution. Generic bounds refine in local coordinates so a large translation
-does not inflate the stopping tolerance; the final bounds still round to the
-chosen scalar's coordinate precision. `control_box()` returns the axis-aligned box around the control
-points. Ordinary Bézier and B-spline curves lie inside their control-point convex
-hull, so these control bounds also enclose the curve, but are usually looser.
-The box supports `axis`, indexing, `contains`, `union`, and `into_axes`. Path
-boxes are `None` when empty.
-
-For example:
+`arclen(accuracy)`, `arclen_between(start, end, accuracy)`, and inverse-length
+queries use adaptive Gauss-Legendre quadrature. Choose a positive finite
+`accuracy` in coordinate units; subdivision follows an error estimate and is
+limited by scalar roundoff. These queries return errors for invalid input,
+non-finite arithmetic, or exhausted convergence budgets.
+`arclen_polyline(segments)` uses fixed subdivisions per curve or B-spline span.
 
 ```rust
-use stroke::{Bezier, PointN};
+use stroke::{ArrayPoint, Bezier};
 
 let curve = Bezier::new([
-    PointN::new([0.0_f64, 0.0]),
-    PointN::new([1.0, 2.0]),
-    PointN::new([2.0, 0.0]),
+    ArrayPoint::from([0.0_f64, 0.0]),
+    ArrayPoint::from([1.0, 2.0]),
+    ArrayPoint::from([2.0, 0.0]),
 ]).unwrap();
 let length = curve.arclen(1e-10).unwrap();
-let midpoint = curve.point_at_length(length * 0.5, 1e-10).unwrap();
-let tight = curve.bounding_box();
-let control = curve.control_box();
-assert!(tight[1].1 < control[1].1);
+let halfway = curve.point_at_length(length * 0.5, 1e-10).unwrap();
+let bounds = curve.bounding_box();
 ```
 
-`distance_to_point*` still uses sampling-based approximations; increase its step
-count for coverage, without a global-minimum or accuracy guarantee. Refinement
-retains the best candidate found; line distances use scaled projection. Non-finite
-query points produce NaN, and distances outside the scalar range are infinite.
-Newton root queries are local: `eps` is a positive finite absolute coordinate
-residual tolerance, not a parameter-step tolerance. Success checks the returned
-parameter's residual; stagnation or a failed search does not prove no root exists.
-General B-spline splitting into two fixed-size B-spline
-values is not currently provided; use `bezier_spans()` for decomposition.
+Bézier parameters lie in `[0, 1]`; paths divide that interval uniformly among
+segments. B-splines use `[knots[D], knots[C]]`. `derivative_at(t)` and `speed(t)`
+use these parameter units. At a boundary, evaluation selects the piece on the
+right, except at the final endpoint. Gaps contribute no arc length.
 
-### Convenience APIs
+Inverse lookups clamp finite distances to the endpoints; zero-length curves
+select their start. Empty paths have length zero, `Ok(None)` for inverse
+lookups, and `None` for boxes. `bounding_box()` gives tight bounds to floating-point
+resolution; the cheaper `control_box()` encloses the control points and curve.
 
-- `PointN` converts to/from arrays, exposes `as_array()`/`into_array()`, and supports borrowed iteration.
-- Curves expose borrowed `control_points()` iterators and owned `into_control_points()` arrays. Use `set_control_points()` for atomic validated replacement or `try_map_control_points()` for validated mapping; mapping controls represents a geometric transform only for affine maps. Generic Bézier controls no longer support mutable iteration.
-- Lines, quadratic/cubic Béziers, and equivalent generic Béziers convert losslessly with `From`/`Into`.
-- `BSpline::new_clamped_uniform(points)` builds a fully clamped uniform knot vector on `[0, 1]`; it shapes a curve from controls, not an interpolant through every control point.
-- `derivative_at(t)` and `speed(t)` avoid constructing derivative curves. They are measured per unit of the curve's parameter: native knot units for B-splines, normalized path units for paths. At interior boundaries they use the right-hand piece, at the final endpoint the left; no differentiability across a jump is implied.
-- Bézier curves and segments provide checked `subcurve(start..end)`, reparameterized to `[0, 1]`, and `split_at_length(length, accuracy)`. Equal subcurve endpoints produce a constant curve; invalid ranges are rejected.
-- Paths provide `try_push()` (returning the segment on overflow), `capacity()`, `remaining_capacity()`, `pop()`, and `clear()` for reusable fixed-capacity storage. Existing boolean `push` methods remain available.
-- Boxes expose `min()`, `max()`, `center()`, `extent()`, `intersects()`, and `intersection()`. Touching boundaries count as intersection; box overlap alone does not prove curve intersection. Finite bounds can have an overflowing extent.
+Clamped uniform B-splines interpolate their endpoint controls; interior
+controls shape the curve. Use `bezier_spans()` to extract their polynomial
+pieces. Mapping control points transforms the whole curve geometrically when
+the map is affine.
 
-For migration from 0.3: constructors are fallible; replace sampling-based
-`arclen(steps)` with `arclen_polyline(steps)` or accuracy-controlled `arclen(accuracy)?`.
-Inverse-length methods now take an accuracy target and return `Result`; boxes
-use `into_axes()` for raw arrays. For copied controls use `into_control_points()`
-or `control_points().copied()`, and use checked replacement instead of mutable
-Bézier iteration. Error types implement `core::error::Error` and are exported at
-the crate root.
+Curved `distance_to_point*` queries use sampling and local refinement, with no
+global accuracy guarantee. Non-finite query points produce NaN.
+Newton root queries use `eps` as an absolute coordinate residual tolerance;
+a failed local search can miss existing roots. At stationary points,
+tangent and curvature return zero and normal returns `None`.
 
 ## Examples
 
@@ -197,7 +156,7 @@ the crate root.
 - `bspline_signal_1d`: 1D signal interpolation with a cubic B-spline; run `cargo run --example bspline_signal_1d`.
 - `bezier_quarter_circle`: cubic Bezier quarter-circle approximation; run `cargo run --example bezier_quarter_circle`.
 - `arc_length_sampling`: equal-arc-length sampling along a Bezier curve; run `cargo run --example arc_length_sampling`.
-- `motion_3d`: constant-path-speed sampling of a 3D robot/tool trajectory, producing CSV positions and velocities; this is not an acceleration-limited motion planner. Run `cargo run --example motion_3d`.
+- `motion_3d`: sample a 3D tool trajectory at a fixed feed rate; CSV includes time, position, velocity, and curvature. Run `cargo run --example motion_3d`.
 - `spatial_queries`: CAD/GIS broad-phase filtering with tight versus control boxes, overlap queries, and trimmed curve bounds. Run `cargo run --example spatial_queries`.
 - `animation_envelope`: scalar B-spline value and rate over a native time domain, producing CSV output. Run `cargo run --example animation_envelope`.
 - `tangent_normal_curvature`: sample tangent/normal/curvature; run `cargo run --example tangent_normal_curvature`.
@@ -246,5 +205,7 @@ be scoped to the relevant item and explain why it applies.
 If you're looking for a published crate for rendering with gpu support you should check out [Lyon](https://github.com/nical/lyon) from which I draw some inspiration, it's really good. It features lines, quadratic and cubic Béziers, in addition to arcs, triangles, and other geometric objects but no general Bézier curves or B-Splines. It also does seem to support wasm.  
 
 Also, there's [Twinklebear/bspline](https://github.com/Twinklebear/bspline) which is a very clean and useful library for just bsplines. However, it depends on std and its simple Interpolate trait defines no way to access the individual dimensions of the points and hence implements no derivatives in the library.  
+
+[Kurbo](https://github.com/linebender/kurbo) provides 2D curves and vector paths using `f64`, with a focus on accuracy and efficient high-precision queries.
 
 This clear online book [A Primer on Bézier Curves](https://pomax.github.io/bezierinfo/) helped me with a lot of the algorithms involved.

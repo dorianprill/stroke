@@ -1,12 +1,12 @@
 //! Regressions for residual-checked roots and scale-safe distance queries.
 
-use stroke::{BSpline, Bezier, CubicBezier, LineSegment, PointN, QuadraticBezier};
+use stroke::{ArrayPoint, BSpline, Bezier, CubicBezier, LineSegment, QuadraticBezier};
 
 macro_rules! numeric_queries {
     ($root:ident, $candidates:ident, $line:ident, $scalar:ty, $large:expr, $small:expr, $eps:expr) => {
         #[test]
         fn $root() {
-            type P = PointN<$scalar, 1>;
+            type P = ArrayPoint<$scalar, 1>;
             let points = [P::from([0.0]), P::from([0.0]), P::from([1e12])];
             let curve = Bezier::new(points).unwrap();
             let spline = BSpline::<P, 6, 3, 2>::new_clamped_uniform(points).unwrap();
@@ -35,7 +35,7 @@ macro_rules! numeric_queries {
 
         #[test]
         fn $candidates() {
-            type P = PointN<$scalar, 2>;
+            type P = ArrayPoint<$scalar, 2>;
             let quadratic = QuadraticBezier::new(
                 P::from([0.0, 0.0]),
                 P::from([1.0, 0.0]),
@@ -73,7 +73,7 @@ macro_rules! numeric_queries {
 
         #[test]
         fn $line() {
-            type P = PointN<$scalar, 2>;
+            type P = ArrayPoint<$scalar, 2>;
             for scale in [$large, $small, 1.0] {
                 let segment = LineSegment::new(P::from([0.0, 0.0]), P::from([scale, 0.0])).unwrap();
                 for line in [segment, segment.reverse()] {

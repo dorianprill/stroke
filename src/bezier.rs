@@ -84,9 +84,9 @@ where
     /// Replace all control points atomically, leaving the curve unchanged on error.
     /// Mutable control-point iteration is deliberately unavailable:
     /// ```compile_fail
-    /// use stroke::{Bezier, PointN};
-    /// let mut curve = Bezier::new([PointN::new([0.0_f64]), PointN::new([1.0])]).unwrap();
-    /// for point in &mut curve { *point = PointN::new([f64::NAN]); }
+    /// use stroke::{Bezier, ArrayPoint};
+    /// let mut curve = Bezier::new([ArrayPoint::new([0.0_f64]), ArrayPoint::new([1.0])]).unwrap();
+    /// for point in &mut curve { *point = ArrayPoint::new([f64::NAN]); }
     /// ```
     pub fn set_control_points(&mut self, points: [P; N]) -> Result<(), CurveConstructionError> {
         *self = Self::new(points)?;
@@ -276,7 +276,19 @@ where
     /// original weights as n(wi+1 - wi). So for a 3rd degree curve, with four weights,
     /// the derivative has three new weights:
     ///     w0 = 3(w1-w0), w'1 = 3(w2-w1) and w'2 = 3(w3-w2).
-    pub fn derivative(&self) -> Bezier<P, { N - 1 }> {
+    /// Requires at least two control points. For constant curves use
+    /// [`Self::derivative_at`], which returns zero.
+    /// ```compile_fail
+    /// #![feature(generic_const_exprs)]
+    /// #![allow(incomplete_features)]
+    /// use stroke::{ArrayPoint, Bezier};
+    /// let constant = Bezier::new([ArrayPoint::from([1.0_f64])]).unwrap();
+    /// let _ = constant.derivative();
+    /// ```
+    pub fn derivative(&self) -> Bezier<P, { N - 1 }>
+    where
+        [(); N - 2]: Sized,
+    {
         let scale = <P::Scalar as NumCast>::from((N - 1) as f64).unwrap();
         let new_points: [P; N - 1] =
             core::array::from_fn(|i| (self.control_points[i + 1] - self.control_points[i]) * scale);
@@ -289,48 +301,16 @@ where
     pub fn tangent(&self, t: P::Scalar) -> P
     where
         P: PointNorm,
-        [(); N - 1]: Sized,
     {
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let dir = self.velocity(t);
-        let len = dir.norm();
-        if len == zero { dir } else { dir * (one / len) }
+        crate::differential::Differential::bezier(self.control_points, t, false).tangent()
     }
 
     /// Return the curvature magnitude at `t`.
     pub fn curvature(&self, t: P::Scalar) -> P::Scalar
     where
-        P: PointNorm + PointDot,
-        [(); N - 1]: Sized,
-        [(); N - 2]: Sized,
-        [(); (N - 1) - 1]: Sized,
+        P: PointNorm,
     {
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let first = self.derivative();
-        let v = first.eval(t);
-        let a = if N < 3 {
-            // N < 3 has no second derivative; use a typed zero vector.
-            v * zero
-        } else {
-            first.derivative().eval(t)
-        };
-        let v2 = v.squared_norm();
-        if v2 == zero {
-            return zero;
-        }
-        let a2 = a.squared_norm();
-        let dot = PointDot::dot(&v, &a);
-        let mut num = v2 * a2 - dot * dot;
-        if num < zero {
-            num = zero;
-        }
-        let denom = v2 * v2.sqrt();
-        if denom == zero {
-            zero
-        } else {
-            num.sqrt() / denom
-        }
+        crate::differential::Differential::bezier(self.control_points, t, true).curvature()
     }
 
     /// Return the principal normal direction at `t`.
@@ -338,33 +318,9 @@ where
     /// Returns `None` if the velocity is zero or curvature is undefined.
     pub fn normal(&self, t: P::Scalar) -> Option<P>
     where
-        P: PointNorm + PointDot,
-        [(); N - 1]: Sized,
-        [(); N - 2]: Sized,
-        [(); (N - 1) - 1]: Sized,
+        P: PointNorm,
     {
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let first = self.derivative();
-        let v = first.eval(t);
-        let v2 = v.squared_norm();
-        if v2 == zero {
-            return None;
-        }
-        let a = if N < 3 {
-            // N < 3 has no second derivative; use a typed zero vector.
-            let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-            v * zero
-        } else {
-            first.derivative().eval(t)
-        };
-        let dot = PointDot::dot(&v, &a);
-        let a_perp = a - v * (dot / v2);
-        let n2 = a_perp.squared_norm();
-        if n2 == zero {
-            return None;
-        }
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        Some(a_perp * (one / n2.sqrt()))
+        crate::differential::Differential::bezier(self.control_points, t, true).normal()
     }
 
     /// Approximate the arc length by flattening the curve into `segments` lines.
@@ -515,22 +471,7 @@ where
     }
 
     fn velocity(&self, t: P::Scalar) -> P {
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        if N < 2 {
-            return self.control_points[0] * zero;
-        }
-        let degree = <P::Scalar as NumCast>::from(N - 1).unwrap();
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let mut points = self.control_points;
-        for (i, point) in points.iter_mut().enumerate().take(N - 1) {
-            *point = (self.control_points[i + 1] - self.control_points[i]) * degree;
-        }
-        for level in 1..N - 1 {
-            for i in 0..N - 1 - level {
-                points[i] = points[i] * (one - t) + points[i + 1] * t;
-            }
-        }
-        points[0]
+        crate::differential::Differential::bezier(self.control_points, t, false).derivative()
     }
 
     /// Find isolated derivative zeros in `(0, 1)` for a coordinate axis.
@@ -776,8 +717,8 @@ mod tests {
     use super::CubicBezier;
     use super::QuadraticBezier;
     use super::*;
+    use crate::ArrayPoint;
     use crate::CurveConstructionError;
-    use crate::PointN;
     use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
 
     const ABSOLUTE_TOLERANCE: f64 = 1e-12;
@@ -785,16 +726,16 @@ mod tests {
 
     #[test]
     fn rejects_invalid_control_points() {
-        let empty = Bezier::<PointN<f64, 1>, 0>::new([]);
+        let empty = Bezier::<ArrayPoint<f64, 1>, 0>::new([]);
         assert!(matches!(
             empty,
             Err(CurveConstructionError::NoControlPoints)
         ));
 
         let non_finite = Bezier::new([
-            PointN::new([0.0_f64]),
-            PointN::new([f64::NAN]),
-            PointN::new([f64::INFINITY]),
+            ArrayPoint::new([0.0_f64]),
+            ArrayPoint::new([f64::NAN]),
+            ArrayPoint::new([f64::INFINITY]),
         ]);
         assert!(matches!(
             non_finite,
@@ -806,15 +747,15 @@ mod tests {
     #[test]
     fn eval_endpoints() {
         let points = [
-            PointN::new([0f64, 1.77f64]),
-            PointN::new([1.1f64, -1f64]),
-            PointN::new([4.3f64, 3f64]),
-            PointN::new([3.2f64, -4f64]),
-            PointN::new([7.3f64, 2.7f64]),
-            PointN::new([8.9f64, 1.7f64]),
+            ArrayPoint::new([0f64, 1.77f64]),
+            ArrayPoint::new([1.1f64, -1f64]),
+            ArrayPoint::new([4.3f64, 3f64]),
+            ArrayPoint::new([3.2f64, -4f64]),
+            ArrayPoint::new([7.3f64, 2.7f64]),
+            ArrayPoint::new([8.9f64, 1.7f64]),
         ];
 
-        let curve: Bezier<PointN<f64, 2>, 6> = Bezier::new(points).unwrap();
+        let curve: Bezier<ArrayPoint<f64, 2>, 6> = Bezier::new(points).unwrap();
 
         // check if start/end points match
         let start = curve.eval(0.0);
@@ -834,22 +775,22 @@ mod tests {
         // chose some arbitrary control points and construct a cubic bezier
         let bezier = Bezier {
             control_points: [
-                PointN::new([0f64, 1.77f64]),
-                PointN::new([2.9f64, 0f64]),
-                PointN::new([4.3f64, 3f64]),
-                PointN::new([3.2f64, -4f64]),
+                ArrayPoint::new([0f64, 1.77f64]),
+                ArrayPoint::new([2.9f64, 0f64]),
+                ArrayPoint::new([4.3f64, 3f64]),
+                ArrayPoint::new([3.2f64, -4f64]),
             ],
         };
         assert!(
-            bezier.distance_to_point(PointN::new([-5.1, -5.6]))
-                > bezier.distance_to_point(PointN::new([5.1, 5.6]))
+            bezier.distance_to_point(ArrayPoint::new([-5.1, -5.6]))
+                > bezier.distance_to_point(ArrayPoint::new([5.1, 5.6]))
         );
     }
 
     #[test]
     fn arclen_line_approx() {
-        let bezier: Bezier<PointN<f64, 2>, 2> =
-            Bezier::new([PointN::new([0.0, 0.0]), PointN::new([10.0, 0.0])]).unwrap();
+        let bezier: Bezier<ArrayPoint<f64, 2>, 2> =
+            Bezier::new([ArrayPoint::new([0.0, 0.0]), ArrayPoint::new([10.0, 0.0])]).unwrap();
         let expected = (bezier.eval(1.0) - bezier.eval(0.0)).squared_norm().sqrt();
         let length = bezier.arclen_polyline(32);
         let tolerance = expected * 0.05;
@@ -861,10 +802,10 @@ mod tests {
         // chose some arbitrary control points and construct a cubic bezier
         let bezier = Bezier {
             control_points: [
-                PointN::new([0f64, 1.77f64]),
-                PointN::new([2.9f64, 0f64]),
-                PointN::new([4.3f64, 3f64]),
-                PointN::new([3.2f64, -4f64]),
+                ArrayPoint::new([0f64, 1.77f64]),
+                ArrayPoint::new([2.9f64, 0f64]),
+                ArrayPoint::new([4.3f64, 3f64]),
+                ArrayPoint::new([3.2f64, -4f64]),
             ],
         };
         // split it at an arbitrary point
@@ -897,19 +838,19 @@ mod tests {
     /// equivalent to the specialized cubic implementation
     fn equivalence_cubic_specialization() {
         let cubic_bezier = CubicBezier::new(
-            PointN::new([0f64, 1.77f64]),
-            PointN::new([1.1f64, -1f64]),
-            PointN::new([4.3f64, 3f64]),
-            PointN::new([3.2f64, -4f64]),
+            ArrayPoint::new([0f64, 1.77f64]),
+            ArrayPoint::new([1.1f64, -1f64]),
+            ArrayPoint::new([4.3f64, 3f64]),
+            ArrayPoint::new([3.2f64, -4f64]),
         )
         .unwrap();
 
         let generic_bezier = Bezier {
             control_points: [
-                PointN::new([0f64, 1.77f64]),
-                PointN::new([1.1f64, -1f64]),
-                PointN::new([4.3f64, 3f64]),
-                PointN::new([3.2f64, -4f64]),
+                ArrayPoint::new([0f64, 1.77f64]),
+                ArrayPoint::new([1.1f64, -1f64]),
+                ArrayPoint::new([4.3f64, 3f64]),
+                ArrayPoint::new([3.2f64, -4f64]),
             ],
         };
 
@@ -930,17 +871,17 @@ mod tests {
     /// equivalent to the specialized quadratic implementation
     fn equivalence_quadratic_specialization() {
         let quadratic_bezier = QuadraticBezier::new(
-            PointN::new([0f64, 1.77f64]),
-            PointN::new([1.1f64, -1f64]),
-            PointN::new([3.2f64, -4f64]),
+            ArrayPoint::new([0f64, 1.77f64]),
+            ArrayPoint::new([1.1f64, -1f64]),
+            ArrayPoint::new([3.2f64, -4f64]),
         )
         .unwrap();
 
         let generic_bezier = Bezier {
             control_points: [
-                PointN::new([0f64, 1.77f64]),
-                PointN::new([1.1f64, -1f64]),
-                PointN::new([3.2f64, -4f64]),
+                ArrayPoint::new([0f64, 1.77f64]),
+                ArrayPoint::new([1.1f64, -1f64]),
+                ArrayPoint::new([3.2f64, -4f64]),
             ],
         };
 
@@ -960,9 +901,9 @@ mod tests {
     fn derivative_root_quadratic_1d() {
         let bezier = Bezier {
             control_points: [
-                PointN::new([0f64]),
-                PointN::new([1f64]),
-                PointN::new([0f64]),
+                ArrayPoint::new([0f64]),
+                ArrayPoint::new([1f64]),
+                ArrayPoint::new([0f64]),
             ],
         };
 
@@ -975,10 +916,10 @@ mod tests {
     fn derivative_roots_cubic_two_roots() {
         let bezier = Bezier {
             control_points: [
-                PointN::new([0f64]),
-                PointN::new([4f64]),
-                PointN::new([-4f64]),
-                PointN::new([0f64]),
+                ArrayPoint::new([0f64]),
+                ArrayPoint::new([4f64]),
+                ArrayPoint::new([-4f64]),
+                ArrayPoint::new([0f64]),
             ],
         };
 
@@ -997,9 +938,9 @@ mod tests {
     fn derivative_roots_no_roots() {
         let bezier = Bezier {
             control_points: [
-                PointN::new([0f64]),
-                PointN::new([1f64]),
-                PointN::new([2f64]),
+                ArrayPoint::new([0f64]),
+                ArrayPoint::new([1f64]),
+                ArrayPoint::new([2f64]),
             ],
         };
 
@@ -1011,10 +952,10 @@ mod tests {
     fn bounding_box_cubic_1d_extrema() {
         let bezier = Bezier {
             control_points: [
-                PointN::new([0f64]),
-                PointN::new([4f64]),
-                PointN::new([-4f64]),
-                PointN::new([0f64]),
+                ArrayPoint::new([0f64]),
+                ArrayPoint::new([4f64]),
+                ArrayPoint::new([-4f64]),
+                ArrayPoint::new([0f64]),
             ],
         };
 
@@ -1034,7 +975,7 @@ mod tests {
     #[test]
     fn root_newton_axis_linear() {
         let bezier = Bezier {
-            control_points: [PointN::new([0f64]), PointN::new([2f64])],
+            control_points: [ArrayPoint::new([0f64]), ArrayPoint::new([2f64])],
         };
 
         let root = bezier
@@ -1046,7 +987,7 @@ mod tests {
     #[test]
     fn root_newton_axis_zero_derivative() {
         let bezier = Bezier {
-            control_points: [PointN::new([1f64]), PointN::new([1f64])],
+            control_points: [ArrayPoint::new([1f64]), ArrayPoint::new([1f64])],
         };
 
         let result = bezier.root_newton_axis(0.0, 0, 0.5, None, Some(8));
@@ -1057,17 +998,17 @@ mod tests {
     fn bounding_box_matches_cubic_specialization() {
         let generic_bezier = Bezier {
             control_points: [
-                PointN::new([0f64, 1.77f64]),
-                PointN::new([1.1f64, -1f64]),
-                PointN::new([4.3f64, 3f64]),
-                PointN::new([3.2f64, -4f64]),
+                ArrayPoint::new([0f64, 1.77f64]),
+                ArrayPoint::new([1.1f64, -1f64]),
+                ArrayPoint::new([4.3f64, 3f64]),
+                ArrayPoint::new([3.2f64, -4f64]),
             ],
         };
         let cubic_bezier = CubicBezier::new(
-            PointN::new([0f64, 1.77f64]),
-            PointN::new([1.1f64, -1f64]),
-            PointN::new([4.3f64, 3f64]),
-            PointN::new([3.2f64, -4f64]),
+            ArrayPoint::new([0f64, 1.77f64]),
+            ArrayPoint::new([1.1f64, -1f64]),
+            ArrayPoint::new([4.3f64, 3f64]),
+            ArrayPoint::new([3.2f64, -4f64]),
         )
         .unwrap();
 
@@ -1082,9 +1023,9 @@ mod tests {
 
     #[test]
     fn bezier_api_parity() {
-        let bezier = Bezier::<PointN<f64, 2>, 2>::new([
-            PointN::new([0f64, 0f64]),
-            PointN::new([2f64, 0f64]),
+        let bezier = Bezier::<ArrayPoint<f64, 2>, 2>::new([
+            ArrayPoint::new([0f64, 0f64]),
+            ArrayPoint::new([2f64, 0f64]),
         ])
         .unwrap();
 
@@ -1108,19 +1049,21 @@ mod tests {
         assert!((t - 0.5).abs() < 1e-3);
 
         let p = bezier.point_at_length(1.0, 1e-12).unwrap();
-        assert_point_approx_equal(p, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
+        assert_point_approx_equal(p, ArrayPoint::new([1.0, 0.0]), 1e-9, 1e-9);
     }
 
     #[test]
     fn small_scale_bezier_remains_non_degenerate() {
         let scale = 1e-20_f64;
-        let bezier =
-            Bezier::<PointN<f64, 2>, 2>::new([PointN::new([0.0, 0.0]), PointN::new([scale, 0.0])])
-                .unwrap();
+        let bezier = Bezier::<ArrayPoint<f64, 2>, 2>::new([
+            ArrayPoint::new([0.0, 0.0]),
+            ArrayPoint::new([scale, 0.0]),
+        ])
+        .unwrap();
 
         assert_point_approx_equal(
             bezier.tangent(0.5),
-            PointN::new([1.0, 0.0]),
+            ArrayPoint::new([1.0, 0.0]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );

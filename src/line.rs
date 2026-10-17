@@ -258,15 +258,11 @@ where
     }
 
     /// Return the unit tangent direction at `t`.
-    pub fn tangent(&self, _t: P::Scalar) -> P
+    pub fn tangent(&self, t: P::Scalar) -> P
     where
         P: PointNorm,
     {
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let dir = self.derivative();
-        let len = dir.norm();
-        if len == zero { dir } else { dir * (one / len) }
+        crate::Bezier::from(*self).tangent(t)
     }
 
     /// Return the curvature magnitude at `t`.
@@ -427,8 +423,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ArrayPoint;
     use crate::CurveConstructionError;
-    use crate::PointN;
     use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
 
     const ABSOLUTE_TOLERANCE: f64 = 1e-12;
@@ -437,8 +433,8 @@ mod tests {
     #[test]
     fn rejects_non_finite_control_points() {
         let result = LineSegment::new(
-            PointN::new([0.0_f64, 0.0]),
-            PointN::new([f64::INFINITY, 0.0]),
+            ArrayPoint::new([0.0_f64, 0.0]),
+            ArrayPoint::new([f64::INFINITY, 0.0]),
         );
 
         assert_eq!(
@@ -452,8 +448,8 @@ mod tests {
     #[test]
     fn line_segment_interpolation() {
         let line = LineSegment {
-            start: PointN::new([0f64, 1.77f64]),
-            end: PointN::new([4.3f64, 3f64]),
+            start: ArrayPoint::new([0f64, 1.77f64]),
+            end: ArrayPoint::new([4.3f64, 3f64]),
         };
 
         let mid = line.eval(0.5);
@@ -470,11 +466,11 @@ mod tests {
     fn line_segment_distance_to_point() {
         // 3D cause why not
         let line = LineSegment {
-            start: PointN::new([0f64, 1f64, 0f64]),
-            end: PointN::new([3f64, 1f64, 0f64]),
+            start: ArrayPoint::new([0f64, 1f64, 0f64]),
+            end: ArrayPoint::new([3f64, 1f64, 0f64]),
         };
         // dist to start should be 4; dist to end should be 5
-        let p1 = PointN::new([0f64, 5f64, 0f64]);
+        let p1 = ArrayPoint::new([0f64, 5f64, 0f64]);
         assert_approx_equal(
             line.distance_to_point(p1),
             4.0,
@@ -494,7 +490,7 @@ mod tests {
             RELATIVE_TOLERANCE,
         );
         // dist to midpoint (t=0.5) should be 1
-        let p2 = PointN::new([1.5f64, 2f64, 0f64]);
+        let p2 = ArrayPoint::new([1.5f64, 2f64, 0f64]);
         assert_approx_equal(
             (p2 - line.eval(0.5)).squared_norm().sqrt(),
             1.0,
@@ -506,24 +502,24 @@ mod tests {
     #[test]
     fn line_segment_split_midpoint() {
         let line = LineSegment {
-            start: PointN::new([0f64, 0f64]),
-            end: PointN::new([4f64, 0f64]),
+            start: ArrayPoint::new([0f64, 0f64]),
+            end: ArrayPoint::new([4f64, 0f64]),
         };
 
         let (left, right) = line.split(0.5);
-        assert_eq!(left.start, PointN::new([0.0, 0.0]));
-        assert_eq!(left.end, PointN::new([2.0, 0.0]));
-        assert_eq!(right.start, PointN::new([2.0, 0.0]));
-        assert_eq!(right.end, PointN::new([4.0, 0.0]));
+        assert_eq!(left.start, ArrayPoint::new([0.0, 0.0]));
+        assert_eq!(left.end, ArrayPoint::new([2.0, 0.0]));
+        assert_eq!(right.start, ArrayPoint::new([2.0, 0.0]));
+        assert_eq!(right.end, ArrayPoint::new([4.0, 0.0]));
     }
 
     #[test]
     fn line_segment_distance_to_point_after_end() {
         let line = LineSegment {
-            start: PointN::new([0f64, 0f64]),
-            end: PointN::new([1f64, 0f64]),
+            start: ArrayPoint::new([0f64, 0f64]),
+            end: ArrayPoint::new([1f64, 0f64]),
         };
-        let p = PointN::new([2f64, 0f64]);
+        let p = ArrayPoint::new([2f64, 0f64]);
         assert_approx_equal(
             line.distance_to_point(p),
             1.0,
@@ -535,11 +531,12 @@ mod tests {
     #[test]
     fn small_scale_line_remains_non_degenerate() {
         let scale = 1e-20_f64;
-        let line = LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([scale, 0.0])).unwrap();
+        let line =
+            LineSegment::new(ArrayPoint::new([0.0, 0.0]), ArrayPoint::new([scale, 0.0])).unwrap();
 
         assert_point_approx_equal(
             line.tangent(0.5),
-            PointN::new([1.0, 0.0]),
+            ArrayPoint::new([1.0, 0.0]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
@@ -550,7 +547,7 @@ mod tests {
             RELATIVE_TOLERANCE,
         );
         assert_approx_equal(
-            line.distance_to_point(PointN::new([scale * 0.5, scale])),
+            line.distance_to_point(ArrayPoint::new([scale * 0.5, scale])),
             scale,
             1e-32,
             1e-12,
@@ -559,7 +556,7 @@ mod tests {
 
     #[test]
     fn line_root_is_scale_invariant() {
-        let line = LineSegment::new(PointN::new([0.0_f64]), PointN::new([1.0])).unwrap();
+        let line = LineSegment::new(ArrayPoint::new([0.0_f64]), ArrayPoint::new([1.0])).unwrap();
         let roots = line.root(1e-30, -5e-31);
 
         assert_eq!(roots.len(), 1);
@@ -568,7 +565,8 @@ mod tests {
 
     #[test]
     fn line_segment_api_parity() {
-        let line = LineSegment::new(PointN::new([0.0_f64, 0.0]), PointN::new([2.0, 0.0])).unwrap();
+        let line =
+            LineSegment::new(ArrayPoint::new([0.0_f64, 0.0]), ArrayPoint::new([2.0, 0.0])).unwrap();
 
         assert_eq!(line.start(), line.eval(0.0));
         assert_eq!(line.end(), line.eval(1.0));
@@ -591,7 +589,7 @@ mod tests {
         let p = line.point_at_length(1.0, 1e-12).unwrap();
         assert_point_approx_equal(
             p,
-            PointN::new([1.0, 0.0]),
+            ArrayPoint::new([1.0, 0.0]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );

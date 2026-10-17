@@ -5,6 +5,25 @@ use num_traits::{Float, NumCast, Zero};
 
 const LOCAL_SEARCH_ITERS: usize = 16;
 
+/// Coincidence relative to the first control point, without squaring distances.
+pub(crate) fn is_a_point<P: PointNorm>(points: &[P], tolerance: P::Scalar) -> bool {
+    if !tolerance.is_finite() {
+        return false;
+    }
+    let tolerance = tolerance.abs();
+    let first = points[0];
+    points.iter().all(|&point| {
+        if !first.is_finite() || !point.is_finite() {
+            return false;
+        }
+        if tolerance == P::Scalar::zero() {
+            (0..P::DIM).all(|axis| first[axis] == point[axis])
+        } else {
+            between(first, point) <= tolerance
+        }
+    })
+}
+
 /// Stable coordinate-wise norm without squaring large or tiny differences.
 /// Infinite results represent distances outside the scalar range; non-finite
 /// input points produce NaN rather than being hidden by minimum operations.

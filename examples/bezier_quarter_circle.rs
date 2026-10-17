@@ -1,13 +1,13 @@
-use stroke::{Bezier, PointN};
+use stroke::{ArrayPoint, Bezier};
 
 fn main() {
     // Classic cubic Bezier approximation of a quarter circle.
     let kappa = 4.0 / 3.0 * (2.0_f64.sqrt() - 1.0);
-    let curve = Bezier::<PointN<f64, 2>, 4>::new([
-        PointN::new([1.0, 0.0]),
-        PointN::new([1.0, kappa]),
-        PointN::new([kappa, 1.0]),
-        PointN::new([0.0, 1.0]),
+    let curve = Bezier::<ArrayPoint<f64, 2>, 4>::new([
+        ArrayPoint::new([1.0, 0.0]),
+        ArrayPoint::new([1.0, kappa]),
+        ArrayPoint::new([kappa, 1.0]),
+        ArrayPoint::new([0.0, 1.0]),
     ])
     .unwrap();
 

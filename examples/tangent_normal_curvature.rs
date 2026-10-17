@@ -1,11 +1,11 @@
-use stroke::{Bezier, PointN};
+use stroke::{ArrayPoint, Bezier};
 
 fn main() {
-    let curve = Bezier::<PointN<f64, 2>, 4>::new([
-        PointN::new([-1.0, 0.0]),
-        PointN::new([-0.5, 1.5]),
-        PointN::new([0.5, -1.5]),
-        PointN::new([1.0, 0.0]),
+    let curve = Bezier::<ArrayPoint<f64, 2>, 4>::new([
+        ArrayPoint::new([-1.0, 0.0]),
+        ArrayPoint::new([-0.5, 1.5]),
+        ArrayPoint::new([0.5, -1.5]),
+        ArrayPoint::new([1.0, 0.0]),
     ])
     .unwrap();
 

@@ -2,10 +2,10 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-use stroke::{BSpline, Bezier, BezierPath, CubicBezier, PointN, RootFindingError};
+use stroke::{ArrayPoint, BSpline, Bezier, BezierPath, CubicBezier, RootFindingError};
 
 fn main() -> Result<(), Box<dyn core::error::Error>> {
-    type P = PointN<f64, 2>;
+    type P = ArrayPoint<f64, 2>;
     let points = [
         P::from([0.0, 0.0]),
         P::from([1.0, 2.0]),

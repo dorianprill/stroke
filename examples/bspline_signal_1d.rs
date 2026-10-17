@@ -1,4 +1,4 @@
-use stroke::{BSpline, PointN};
+use stroke::{ArrayPoint, BSpline};
 
 const DEGREE: usize = 3;
 const CONTROL_POINTS: usize = 8;
@@ -17,10 +17,10 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
     // We solve a basis-function collocation system to recover control points that force the
     // spline to pass through the sample values at uniform parameter steps.
     let control = interpolate_cubic_uniform(&samples)?;
-    let control_points: [PointN<f64, 1>; CONTROL_POINTS] =
-        core::array::from_fn(|i| PointN::new([control[i]]));
+    let control_points: [ArrayPoint<f64, 1>; CONTROL_POINTS] =
+        core::array::from_fn(|i| ArrayPoint::new([control[i]]));
     // Use a clamped uniform knot vector so the spline starts/ends at the samples.
-    let spline: BSpline<PointN<f64, 1>, KNOTS, CONTROL_POINTS, DEGREE> =
+    let spline: BSpline<ArrayPoint<f64, 1>, KNOTS, CONTROL_POINTS, DEGREE> =
         BSpline::new_clamped_uniform(control_points)?;
 
     // Verify the example actually interpolates every sample, not just the endpoints.
@@ -97,8 +97,8 @@ fn interpolate_cubic_uniform(
     samples: &[f64; CONTROL_POINTS],
 ) -> Result<[f64; CONTROL_POINTS], Box<dyn core::error::Error>> {
     let basis_curve =
-        BSpline::<PointN<f64, 1>, KNOTS, CONTROL_POINTS, DEGREE>::new_clamped_uniform(
-            [PointN::new([0.0]); CONTROL_POINTS],
+        BSpline::<ArrayPoint<f64, 1>, KNOTS, CONTROL_POINTS, DEGREE>::new_clamped_uniform(
+            [ArrayPoint::new([0.0]); CONTROL_POINTS],
         )?;
     let mut a = [[0.0; CONTROL_POINTS + 1]; CONTROL_POINTS];
     for (i, row) in a.iter_mut().enumerate() {
@@ -171,8 +171,8 @@ mod tests {
         ] {
             let control = interpolate_cubic_uniform(&samples).unwrap();
             let curve =
-                BSpline::<PointN<f64, 1>, KNOTS, CONTROL_POINTS, DEGREE>::new_clamped_uniform(
-                    control.map(|value| PointN::new([value])),
+                BSpline::<ArrayPoint<f64, 1>, KNOTS, CONTROL_POINTS, DEGREE>::new_clamped_uniform(
+                    control.map(|value| ArrayPoint::new([value])),
                 )
                 .unwrap();
             for (i, expected) in samples.iter().enumerate() {
