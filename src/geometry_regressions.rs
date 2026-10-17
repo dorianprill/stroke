@@ -1,13 +1,13 @@
 //! Regression coverage for representable path boundaries and coordinate ranges.
 
 use crate::test_support::assert_approx_equal;
-use crate::{ArcLengthError, BSpline, BSplinePath, Bezier, BezierPath, LineSegment, PointN};
+use crate::{ArcLengthError, ArrayPoint, BSpline, BSplinePath, Bezier, BezierPath, LineSegment};
 
 macro_rules! path_boundary_test {
     ($name:ident, $scalar:ty, $accuracy:expr) => {
         #[test]
         fn $name() {
-            type P = PointN<$scalar, 1>;
+            type P = ArrayPoint<$scalar, 1>;
             for count in 2..=32 {
                 let mut path = BezierPath::<P, 32>::new();
                 let mut bspline_path = BSplinePath::<P, 4, 2, 1, 32>::new();
@@ -95,12 +95,12 @@ macro_rules! translated_box_test {
                     // Quadratic B(t) = origin + 2*scale*t*(1-t).
                     // Its exact maximum at t=1/2 remains representable here.
                     let points = [
-                        PointN::new([origin]),
-                        PointN::new([origin + scale]),
-                        PointN::new([origin]),
+                        ArrayPoint::new([origin]),
+                        ArrayPoint::new([origin + scale]),
+                        ArrayPoint::new([origin]),
                     ];
                     let curve = Bezier::new(points).unwrap();
-                    let spline = BSpline::<PointN<$scalar, 1>, 6, 3, 2>::new(
+                    let spline = BSpline::<ArrayPoint<$scalar, 1>, 6, 3, 2>::new(
                         [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
                         points,
                     )
@@ -108,25 +108,25 @@ macro_rules! translated_box_test {
                     let expected = [(origin, origin + scale * 0.5)];
                     assert_eq!(curve.bounding_box().into_axes(), expected);
                     assert_eq!(spline.bounding_box().into_axes(), expected);
-                    let mut path = BSplinePath::<PointN<$scalar, 1>, 6, 3, 2, 1>::new();
+                    let mut path = BSplinePath::<ArrayPoint<$scalar, 1>, 6, 3, 2, 1>::new();
                     assert!(path.push(spline));
                     assert_eq!(path.bounding_box().unwrap().into_axes(), expected);
                     assert_eq!(curve.control_box()[0].1, origin + scale);
                 }
                 // Translation invariance also covers two non-dyadic extrema.
                 let base = Bezier::new([
-                    PointN::new([0.0 as $scalar]),
-                    PointN::new([3.0]),
-                    PointN::new([-2.0]),
-                    PointN::new([0.0]),
+                    ArrayPoint::new([0.0 as $scalar]),
+                    ArrayPoint::new([3.0]),
+                    ArrayPoint::new([-2.0]),
+                    ArrayPoint::new([0.0]),
                 ])
                 .unwrap()
                 .bounding_box();
                 let translated = Bezier::new([
-                    PointN::new([origin]),
-                    PointN::new([origin + 3.0]),
-                    PointN::new([origin - 2.0]),
-                    PointN::new([origin]),
+                    ArrayPoint::new([origin]),
+                    ArrayPoint::new([origin + 3.0]),
+                    ArrayPoint::new([origin - 2.0]),
+                    ArrayPoint::new([origin]),
                 ])
                 .unwrap()
                 .bounding_box();
@@ -147,7 +147,7 @@ macro_rules! partial_line_test {
     ($name:ident, $scalar:ty, $large:expr, $accuracy:expr, $relative:expr) => {
         #[test]
         fn $name() {
-            type P = PointN<$scalar, 2>;
+            type P = ArrayPoint<$scalar, 2>;
             let large: $scalar = $large;
             let line = LineSegment::new(P::new([-large, -large]), P::new([large, large])).unwrap();
             assert_eq!(
@@ -168,7 +168,8 @@ macro_rules! partial_line_test {
             for t in [0.0, 0.5, 1.0] {
                 assert_eq!(line.arclen_between(t, t, $accuracy), Ok(0.0));
             }
-            let one_axis = LineSegment::new(PointN::new([-large]), PointN::new([large])).unwrap();
+            let one_axis =
+                LineSegment::new(ArrayPoint::new([-large]), ArrayPoint::new([large])).unwrap();
             assert_approx_equal(
                 one_axis.arclen_between(0.25, 0.75, $accuracy).unwrap() / large,
                 1.0,
@@ -227,14 +228,14 @@ partial_line_test!(
 fn recentered_boxes_preserve_endpoints_of_mixed_coordinate_scales() {
     for points in [
         [
-            PointN::new([1e15_f64]),
-            PointN::new([0.0]),
-            PointN::new([-0.01]),
+            ArrayPoint::new([1e15_f64]),
+            ArrayPoint::new([0.0]),
+            ArrayPoint::new([-0.01]),
         ],
         [
-            PointN::new([-1e15]),
-            PointN::new([0.0]),
-            PointN::new([0.01]),
+            ArrayPoint::new([-1e15]),
+            ArrayPoint::new([0.0]),
+            ArrayPoint::new([0.01]),
         ],
     ] {
         let curve = Bezier::new(points).unwrap();
@@ -247,7 +248,7 @@ fn recentered_boxes_preserve_endpoints_of_mixed_coordinate_scales() {
 
 #[test]
 fn length_lookup_skips_zero_length_segments_without_losing_boundaries() {
-    type P = PointN<f64, 1>;
+    type P = ArrayPoint<f64, 1>;
     let mut path = BezierPath::<P, 6>::new();
     let mut bspline_path = BSplinePath::<P, 4, 2, 1, 6>::new();
     for (i, length) in [0.0, 1.0, 0.0, 0.0, 2.0, 0.0].into_iter().enumerate() {

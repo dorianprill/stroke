@@ -1,12 +1,12 @@
 //! Input contracts and edge cases for local root and distance queries.
 
 use stroke::{
-    BSpline, Bezier, CubicBezier, FindRoot, LineSegment, PointN, PointNorm, RootFindingError,
+    ArrayPoint, BSpline, Bezier, CubicBezier, FindRoot, LineSegment, PointNorm, RootFindingError,
 };
 
 #[test]
 fn newton_validates_inputs_and_checks_the_last_update() {
-    type P = PointN<f64, 1>;
+    type P = ArrayPoint<f64, 1>;
     let curve = Bezier::new([P::from([0.0]), P::from([1.0])]).unwrap();
     let spline = BSpline::<P, 4, 2, 1>::new_clamped_uniform(curve.into_control_points()).unwrap();
     for accuracy in [0.0, -1.0, f64::NAN, f64::INFINITY] {
@@ -88,7 +88,7 @@ fn newton_validates_inputs_and_checks_the_last_update() {
 
 #[test]
 fn newton_keeps_coordinate_and_derivative_units_separate() {
-    type P = PointN<f64, 1>;
+    type P = ArrayPoint<f64, 1>;
     let curve = Bezier::new([P::from([0.0]), P::from([1e-12])]).unwrap();
     let spline = BSpline::<P, 4, 2, 1>::new(
         [2.0, 2.0, 1000002.0, 1000002.0],
@@ -130,7 +130,7 @@ fn newton_keeps_coordinate_and_derivative_units_separate() {
 
 #[test]
 fn newton_stagnation_and_discontinuities_cannot_fake_a_root() {
-    type P = PointN<f64, 1>;
+    type P = ArrayPoint<f64, 1>;
     let curve = Bezier::new([P::from([1.0]), P::from([1e20])]).unwrap();
     assert_eq!(
         curve.root_newton_axis(0.0, 0, 0.0, Some(1e-12), None),
@@ -154,7 +154,7 @@ fn newton_stagnation_and_discontinuities_cannot_fake_a_root() {
 
 #[test]
 fn refinement_never_worsens_the_best_coarse_candidate() {
-    type P = PointN<f64, 2>;
+    type P = ArrayPoint<f64, 2>;
     let curve = Bezier::new([
         P::from([0.0, 0.0]),
         P::from([4.0, 5.0]),
@@ -188,7 +188,7 @@ macro_rules! projection_edges {
     ($name:ident, $scalar:ty, $accuracy:expr) => {
         #[test]
         fn $name() {
-            type P = PointN<$scalar, 2>;
+            type P = ArrayPoint<$scalar, 2>;
             let max = <$scalar>::MAX;
             let line = LineSegment::new(P::from([-max, -max]), P::from([max, max])).unwrap();
             assert_eq!(line.distance_to_point(P::from([1.0, 1.0])), 0.0);
@@ -225,7 +225,7 @@ projection_edges!(projection_edges_f64, f64, 2e-14_f64);
 
 #[test]
 fn projection_matches_reference_geometry_at_multiple_scales() {
-    type P = PointN<f64, 3>;
+    type P = ArrayPoint<f64, 3>;
     let a = P::from([-3.25, 1.5, 4.0]);
     let b = P::from([7.75, 3.5, -2.0]);
     let direction = b - a;

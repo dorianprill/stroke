@@ -23,12 +23,12 @@
 //!
 //! # Examples
 //! ```rust
-//! use stroke::{Bezier, PointN};
+//! use stroke::{Bezier, ArrayPoint};
 //!
-//! let curve = Bezier::<PointN<f32, 2>, 3>::new([
-//!     PointN::new([0.0, 0.0]),
-//!     PointN::new([1.0, 0.0]),
-//!     PointN::new([1.0, 1.0]),
+//! let curve = Bezier::<ArrayPoint<f32, 2>, 3>::new([
+//!     ArrayPoint::new([0.0, 0.0]),
+//!     ArrayPoint::new([1.0, 0.0]),
+//!     ArrayPoint::new([1.0, 1.0]),
 //! ]).unwrap();
 //!
 //! let mid = curve.eval(0.5);
@@ -49,9 +49,9 @@ pub mod error;
 pub mod line;
 pub mod quadratic_bezier;
 // generic types
+pub mod array_point;
 pub mod bezier;
 pub mod bspline;
-pub mod point_generic;
 
 // Traits
 pub mod bspline_path;
@@ -61,6 +61,7 @@ pub mod point;
 
 mod arc_length;
 mod conversions;
+mod differential;
 mod distance;
 mod numeric;
 mod path_parameter;
@@ -80,6 +81,7 @@ mod adapters;
 
 // export common types at crate root
 pub use arc_length::ArcLengthError;
+pub use array_point::ArrayPoint;
 pub use bezier::Bezier;
 pub use bezier_segment::BezierSegment;
 pub use bounding_box::BoundingBox;
@@ -92,6 +94,5 @@ pub use line::LineSegment;
 pub use path::BezierPath;
 pub use point::Point;
 pub use point::{PointDot, PointIndex, PointNorm};
-pub use point_generic::PointN;
 pub use quadratic_bezier::QuadraticBezier;
 pub use roots::RootFindingError;

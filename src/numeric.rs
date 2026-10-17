@@ -1,5 +1,82 @@
 use num_traits::{Float, NumCast, One, Zero};
 
+/// A scalar with a separate binary exponent for intermediate knot arithmetic.
+/// The mantissa retains the scalar's precision; the exponent extends its range.
+#[derive(Clone, Copy)]
+pub(crate) struct Scaled<T> {
+    fraction: T,
+    exponent: i32,
+}
+
+impl<T: Float> Scaled<T> {
+    pub(crate) fn new(value: T) -> Self {
+        Self::normalize(value, 0)
+    }
+
+    fn normalize(value: T, exponent: i32) -> Self {
+        if value == T::zero() || !value.is_finite() {
+            return Self {
+                fraction: value,
+                exponent: 0,
+            };
+        }
+        let (mantissa, power, sign) = value.integer_decode();
+        let bits = (u64::BITS - 1 - mantissa.leading_zeros()) as i32;
+        let two = T::one() + T::one();
+        let fraction = <T as NumCast>::from(mantissa).unwrap() * two.powi(-bits);
+        Self {
+            fraction: if sign < 0 { -fraction } else { fraction },
+            exponent: exponent + power as i32 + bits,
+        }
+    }
+
+    pub(crate) fn sum(self, other: Self) -> Self {
+        if self.fraction == T::zero() {
+            return other;
+        }
+        if other.fraction == T::zero() {
+            return self;
+        }
+        let (large, small) = if self.exponent >= other.exponent {
+            (self, other)
+        } else {
+            (other, self)
+        };
+        let two = T::one() + T::one();
+        Self::normalize(
+            large.fraction + small.fraction * two.powi(small.exponent - large.exponent),
+            large.exponent,
+        )
+    }
+
+    pub(crate) fn difference(self, other: Self) -> Self {
+        self.sum(Self {
+            fraction: -other.fraction,
+            exponent: other.exponent,
+        })
+    }
+
+    pub(crate) fn product(self, other: Self) -> Self {
+        Self::normalize(
+            self.fraction * other.fraction,
+            self.exponent + other.exponent,
+        )
+    }
+
+    pub(crate) fn quotient(self, other: Self) -> Self {
+        Self::normalize(
+            self.fraction / other.fraction,
+            self.exponent - other.exponent,
+        )
+    }
+
+    pub(crate) fn value(self) -> T {
+        let two = T::one() + T::one();
+        let first = self.exponent / 2;
+        (self.fraction * two.powi(first)) * two.powi(self.exponent - first)
+    }
+}
+
 /// Restore a short product/quotient without overflowing or underflowing its
 /// scale factors first. `Float::integer_decode` specifies a binary decomposition;
 /// this uses that trait contract, not an IEEE layout or a concrete scalar type.

@@ -1,12 +1,14 @@
-//! A scalar animation/control envelope whose native parameter is time in seconds.
-//! Interior control values shape the envelope; they are not interpolated keyframes.
+//! Sample a scalar cubic B-spline envelope over five seconds at 0.25 s intervals.
+//! Fourfold endpoint knots fix the initial and final values at zero. The simple
+//! knot at 2 s joins two polynomial pieces with continuous first/second derivatives.
+//! CSV reports the envelope value and its native-time derivative in units/s.
 
-use stroke::{BSpline, PointN};
+use stroke::{ArrayPoint, BSpline};
 
 fn main() -> Result<(), Box<dyn core::error::Error>> {
-    let envelope = BSpline::<PointN<f64, 1>, 9, 5, 3>::new(
+    let envelope = BSpline::<ArrayPoint<f64, 1>, 9, 5, 3>::new(
         [0.0, 0.0, 0.0, 0.0, 2.0, 5.0, 5.0, 5.0, 5.0],
-        [0.0, 0.25, 1.2, 0.6, 0.0].map(|value| PointN::from([value])),
+        [0.0, 0.25, 1.2, 0.6, 0.0].map(|value| ArrayPoint::from([value])),
     )?;
     println!("seconds,value,rate_per_second");
     for i in 0..=20 {

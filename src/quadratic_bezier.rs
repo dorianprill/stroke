@@ -1,8 +1,6 @@
 //! Quadratic Bezier curve specialization.
 
-use super::{
-    ArcLengthError, ArrayVec, BoundingBox, LineSegment, Point, PointDot, PointIndex, PointNorm,
-};
+use super::{ArcLengthError, ArrayVec, BoundingBox, LineSegment, Point, PointIndex, PointNorm};
 use crate::error::{CurveConstructionError, validate_control_points};
 use crate::numeric::is_negligible;
 use num_traits::{Float, NumCast};
@@ -35,26 +33,14 @@ where
         Ok(QuadraticBezier { start, ctrl, end })
     }
 
-    /// Evaluates the quadratic bezier curve at 't' using direct evaluation, which may not be numerically stable
+    /// Evaluate at `t` using endpoint-preserving de Casteljau interpolation.
     pub fn eval(&self, t: P::Scalar) -> P {
-        let t2 = t * t;
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let one_t = one - t;
-        let one_t2 = one_t * one_t;
-
-        self.start * one_t2
-            + self.ctrl * <P::Scalar as NumCast>::from(2.0).unwrap() * one_t * t
-            + self.end * t2
+        crate::Bezier::from(*self).eval(t)
     }
 
     /// Evaluates the quadratic bezier curve at t using the numerically stable De Casteljau algorithm
     pub fn eval_casteljau(&self, t: P::Scalar) -> P {
-        // unrolled de casteljau algorithm
-        // _1ab is the first iteration from first (a) to second (b) control point and so on
-        let ctrl_1ab = self.start + (self.ctrl - self.start) * t;
-        let ctrl_1bc = self.ctrl + (self.end - self.ctrl) * t;
-        // second iteration, return final point on the curve ctrl_2ab
-        ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t
+        self.eval(t)
     }
 
     /// Borrow the control points in curve order.
@@ -141,25 +127,8 @@ where
 
     /// Split the curve at `t` into two sub-curves.
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
-        // unrolled de casteljau algorithm
-        // _1ab is the first iteration from first (a) to second (b) control point and so on
-        let ctrl_1ab = self.start + (self.ctrl - self.start) * t;
-        let ctrl_1bc = self.ctrl + (self.end - self.ctrl) * t;
-        // second iteration
-        let ctrl_2ab = ctrl_1ab + (ctrl_1bc - ctrl_1ab) * t;
-
-        (
-            QuadraticBezier {
-                start: self.start,
-                ctrl: ctrl_1ab,
-                end: ctrl_2ab,
-            },
-            QuadraticBezier {
-                start: ctrl_2ab,
-                ctrl: ctrl_1bc,
-                end: self.end,
-            },
-        )
+        let (left, right) = crate::Bezier::from(*self).split(t);
+        (Self::from(left), Self::from(right))
     }
 
     /// Return the derivative curve.
@@ -179,37 +148,15 @@ where
     where
         P: PointNorm,
     {
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let dir = self.derivative().eval(t);
-        let len = dir.norm();
-        if len == zero { dir } else { dir * (one / len) }
+        crate::Bezier::from(*self).tangent(t)
     }
 
     /// Return the curvature magnitude at `t`.
     pub fn curvature(&self, t: P::Scalar) -> P::Scalar
     where
-        P: PointNorm + PointDot,
+        P: PointNorm,
     {
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let v = self.derivative().eval(t);
-        let a = self.derivative().derivative();
-        let v2 = v.squared_norm();
-        if v2 == zero {
-            return zero;
-        }
-        let a2 = a.squared_norm();
-        let dot = PointDot::dot(&v, &a);
-        let mut num = v2 * a2 - dot * dot;
-        if num < zero {
-            num = zero;
-        }
-        let denom = v2 * v2.sqrt();
-        if denom == zero {
-            zero
-        } else {
-            num.sqrt() / denom
-        }
+        crate::Bezier::from(*self).curvature(t)
     }
 
     /// Return the principal normal direction at `t`.
@@ -217,45 +164,9 @@ where
     /// Returns `None` if the velocity is zero or curvature is undefined.
     pub fn normal(&self, t: P::Scalar) -> Option<P>
     where
-        P: PointNorm + PointDot,
+        P: PointNorm,
     {
-        let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
-        let v = self.derivative().eval(t);
-        let v2 = v.squared_norm();
-        if v2 == zero {
-            return None;
-        }
-        let a = self.derivative().derivative();
-        let dot = PointDot::dot(&v, &a);
-        let a_perp = a - v * (dot / v2);
-        let n2 = a_perp.squared_norm();
-        if n2 == zero {
-            return None;
-        }
-        let one = <P::Scalar as NumCast>::from(1.0).unwrap();
-        Some(a_perp * (one / n2.sqrt()))
-    }
-
-    /// Direct Derivative - Sample the axis coordinate at 'axis' of the curve's derivative at t
-    /// without creating a new curve. This is a convenience function for `.derivative().eval(t)[n]`.
-    /// Parameters:
-    ///   t: the sampling parameter on the curve interval [0..1]
-    ///   axis: the index of the coordinate axis [0..N]
-    /// Returns:
-    ///   Scalar value of the points own type type F  
-    /// May be deprecated in the future.  
-    /// This function can cause out of bounds panic when axis is larger than dimension of P
-    pub fn dd(&self, t: P::Scalar, axis: usize) -> P::Scalar
-    where
-        P: PointIndex,
-    {
-        let two = <P::Scalar as NumCast>::from(2.0).unwrap();
-        let four = <P::Scalar as NumCast>::from(4.0).unwrap();
-        let c0 = t * two - two;
-        let c1 = two - four * t;
-        let c2 = two * t;
-
-        self.start[axis] * c0 + self.ctrl[axis] * c1 + self.end[axis] * c2
+        crate::Bezier::from(*self).normal(t)
     }
 
     /// Approximate the arc length by flattening the curve into `segments` lines.
@@ -408,16 +319,15 @@ where
     }
 
     /// Checks if, given some tolerance, the curve can be considered equal to a line segment
+    /// Non-finite tolerances return false; negative finite tolerances use their absolute value.
     pub fn is_linear(&self, tolerance: P::Scalar) -> bool
     where
         P: PointNorm,
     {
         let tolerance = tolerance.abs();
-        if (self.start - self.end).squared_norm() <= tolerance * tolerance {
-            return false;
-        }
-        // else check if ctrl points lie on baseline i.e. all points are colinear
-        self.are_points_colinear(tolerance)
+        tolerance.is_finite()
+            && crate::distance::between(self.start, self.end) > tolerance
+            && self.are_points_colinear(tolerance)
     }
 
     /// Determines if, given some tolerance, all of the control points are colinear
@@ -430,17 +340,13 @@ where
         line.distance_to_point(self.ctrl) <= tolerance
     }
 
-    /// Determines if, given some tolerance, the control points of the curve can be considered equal.
-    /// If true, the curve is just a singular point
+    /// Whether every control point is within `abs(tolerance)` of the start.
+    /// Zero tolerance requires exact coordinate equality; non-finite tolerances return false.
     pub fn is_a_point(&self, tolerance: P::Scalar) -> bool
     where
         P: PointNorm,
     {
-        let tolerance = tolerance.abs();
-        let tolerance_squared = tolerance * tolerance;
-        // Use <= so that tolerance can be zero.
-        (self.start - self.end).squared_norm() <= tolerance_squared
-            && (self.start - self.ctrl).squared_norm() <= tolerance_squared
+        crate::distance::is_a_point(&[self.start, self.ctrl, self.end], tolerance)
     }
 
     /// Solves the quadratic bezier function given a particular coordinate axis value
@@ -543,8 +449,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ArrayPoint;
     use crate::CurveConstructionError;
-    use crate::PointN;
     use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
 
     const ABSOLUTE_TOLERANCE: f64 = 1e-12;
@@ -553,9 +459,9 @@ mod tests {
     #[test]
     fn rejects_non_finite_control_points() {
         let result = QuadraticBezier::new(
-            PointN::new([0.0_f64]),
-            PointN::new([f64::NAN]),
-            PointN::new([f64::INFINITY]),
+            ArrayPoint::new([0.0_f64]),
+            ArrayPoint::new([f64::NAN]),
+            ArrayPoint::new([f64::INFINITY]),
         );
 
         assert_eq!(
@@ -567,22 +473,22 @@ mod tests {
     #[test]
     fn eval_endpoints() {
         let bezier = QuadraticBezier::new(
-            PointN::new([0f64, 0f64]),
-            PointN::new([1f64, 1f64]),
-            PointN::new([2f64, 0f64]),
+            ArrayPoint::new([0f64, 0f64]),
+            ArrayPoint::new([1f64, 1f64]),
+            ArrayPoint::new([2f64, 0f64]),
         )
         .unwrap();
 
-        assert_eq!(bezier.eval(0.0), PointN::new([0.0, 0.0]));
-        assert_eq!(bezier.eval(1.0), PointN::new([2.0, 0.0]));
+        assert_eq!(bezier.eval(0.0), ArrayPoint::new([0.0, 0.0]));
+        assert_eq!(bezier.eval(1.0), ArrayPoint::new([2.0, 0.0]));
     }
 
     #[test]
     fn arclen_line_approx() {
         let bezier = QuadraticBezier::new(
-            PointN::new([0f64, 0f64]),
-            PointN::new([1f64, 0f64]),
-            PointN::new([2f64, 0f64]),
+            ArrayPoint::new([0f64, 0f64]),
+            ArrayPoint::new([1f64, 0f64]),
+            ArrayPoint::new([2f64, 0f64]),
         )
         .unwrap();
         let length = bezier.arclen_polyline(32);
@@ -594,9 +500,9 @@ mod tests {
         // all eval methods should be approximately equivalent for well defined test cases
         // and not equivalent where numerical stability becomes an issue for normal eval
         let bezier = QuadraticBezier::new(
-            PointN::new([0f64, 1.77f64]),
-            PointN::new([4.3f64, 3f64]),
-            PointN::new([3.2f64, -4f64]),
+            ArrayPoint::new([0f64, 1.77f64]),
+            ArrayPoint::new([4.3f64, 3f64]),
+            ArrayPoint::new([3.2f64, -4f64]),
         )
         .unwrap();
 
@@ -612,9 +518,9 @@ mod tests {
     #[test]
     fn eval_equivalence_f32() {
         let bezier = QuadraticBezier::new(
-            PointN::new([0.0_f32, 1.77]),
-            PointN::new([4.3, 3.0]),
-            PointN::new([3.2, -4.0]),
+            ArrayPoint::new([0.0_f32, 1.77]),
+            ArrayPoint::new([4.3, 3.0]),
+            ArrayPoint::new([3.2, -4.0]),
         )
         .unwrap();
 
@@ -629,9 +535,9 @@ mod tests {
     fn split_equivalence() {
         // chose some arbitrary control points and construct a cubic bezier
         let bezier = QuadraticBezier {
-            start: PointN::new([0f64, 1.77f64]),
-            ctrl: PointN::new([4.3f64, 3f64]),
-            end: PointN::new([3.2f64, -4f64]),
+            start: ArrayPoint::new([0f64, 1.77f64]),
+            ctrl: ArrayPoint::new([4.3f64, 3f64]),
+            end: ArrayPoint::new([3.2f64, -4f64]),
         };
         // split it at an arbitrary point
         let at = 0.5;
@@ -662,9 +568,9 @@ mod tests {
     fn bounding_box_contains() {
         // check if bounding box for a curve contains all points (with some approximation error)
         let bezier = QuadraticBezier {
-            start: PointN::new([0f64, 1.77f64]),
-            ctrl: PointN::new([4.3f64, -3f64]),
-            end: PointN::new([3.2f64, 4f64]),
+            start: ArrayPoint::new([0f64, 1.77f64]),
+            ctrl: ArrayPoint::new([4.3f64, -3f64]),
+            end: ArrayPoint::new([3.2f64, 4f64]),
         };
 
         let bounds = bezier.bounding_box();
@@ -686,22 +592,22 @@ mod tests {
     fn distance_to_point() {
         // degree 3, 4 control points => 4+3+1=8 knots
         let curve = QuadraticBezier {
-            start: PointN::new([0f64, 1.77f64]),
-            ctrl: PointN::new([4.3f64, 3f64]),
-            end: PointN::new([3.2f64, -4f64]),
+            start: ArrayPoint::new([0f64, 1.77f64]),
+            ctrl: ArrayPoint::new([4.3f64, 3f64]),
+            end: ArrayPoint::new([3.2f64, -4f64]),
         };
         assert!(
-            curve.distance_to_point(PointN::new([-5.1, -5.6]))
-                > curve.distance_to_point(PointN::new([5.1, 5.6]))
+            curve.distance_to_point(ArrayPoint::new([-5.1, -5.6]))
+                > curve.distance_to_point(ArrayPoint::new([5.1, 5.6]))
         );
     }
 
     #[test]
     fn quadratic_api_parity() {
         let bezier = QuadraticBezier::new(
-            PointN::new([0f64, 0f64]),
-            PointN::new([1f64, 0f64]),
-            PointN::new([2f64, 0f64]),
+            ArrayPoint::new([0f64, 0f64]),
+            ArrayPoint::new([1f64, 0f64]),
+            ArrayPoint::new([2f64, 0f64]),
         )
         .unwrap();
 
@@ -725,15 +631,15 @@ mod tests {
         assert!((t - 0.5).abs() < 1e-6);
 
         let p = bezier.point_at_length(1.0, 1e-12).unwrap();
-        assert_point_approx_equal(p, PointN::new([1.0, 0.0]), 1e-9, 1e-9);
+        assert_point_approx_equal(p, ArrayPoint::new([1.0, 0.0]), 1e-9, 1e-9);
     }
 
     #[test]
     fn quadratic_curvature_nonzero() {
         let bezier = QuadraticBezier::new(
-            PointN::new([0f64, 0f64]),
-            PointN::new([1f64, 1f64]),
-            PointN::new([2f64, 0f64]),
+            ArrayPoint::new([0f64, 0f64]),
+            ArrayPoint::new([1f64, 1f64]),
+            ArrayPoint::new([2f64, 0f64]),
         )
         .unwrap();
 
@@ -748,16 +654,16 @@ mod tests {
     fn small_scale_quadratic_remains_linear_with_unit_tangent() {
         let scale = 1e-20_f64;
         let bezier = QuadraticBezier::new(
-            PointN::new([0.0, 0.0]),
-            PointN::new([scale * 0.5, 0.0]),
-            PointN::new([scale, 0.0]),
+            ArrayPoint::new([0.0, 0.0]),
+            ArrayPoint::new([scale * 0.5, 0.0]),
+            ArrayPoint::new([scale, 0.0]),
         )
         .unwrap();
 
         assert!(bezier.is_linear(scale * 1e-6));
         assert_point_approx_equal(
             bezier.tangent(0.5),
-            PointN::new([1.0, 0.0]),
+            ArrayPoint::new([1.0, 0.0]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
@@ -766,9 +672,9 @@ mod tests {
     #[test]
     fn quadratic_roots_are_scale_invariant() {
         let bezier = QuadraticBezier::new(
-            PointN::new([0.0_f64]),
-            PointN::new([0.0]),
-            PointN::new([0.0]),
+            ArrayPoint::new([0.0_f64]),
+            ArrayPoint::new([0.0]),
+            ArrayPoint::new([0.0]),
         )
         .unwrap();
         let roots = bezier.real_roots(1e-30, -3e-30, 2e-30);

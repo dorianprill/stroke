@@ -1,10 +1,12 @@
-//! Constant-path-speed position sampling for a 3D tool or robot trajectory.
-//! This is geometry, not an acceleration/jerk-limited or collision-safe motion planner.
+//! Sample a cubic 3D tool trajectory at a feed rate of 0.5 coordinate units/s.
+//! Arc-length inversion maps elapsed time to knot parameters. CSV output
+//! contains positions, velocity vectors, and curvature at 21 uniformly spaced times.
+//! Feed starts and stops instantaneously; acceleration and jerk are unconstrained.
 
-use stroke::{BSpline, PointN};
+use stroke::{ArrayPoint, BSpline};
 
 fn main() -> Result<(), Box<dyn core::error::Error>> {
-    type P = PointN<f64, 3>;
+    type P = ArrayPoint<f64, 3>;
     let curve = BSpline::<P, 10, 6, 3>::new_clamped_uniform([
         P::from([0.0, 0.0, 0.0]),
         P::from([1.0, 0.0, 0.5]),
@@ -24,8 +26,8 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         let distance = seconds * feed_rate;
         let t = curve.t_at_length(distance, accuracy)?;
         let point = curve.point_at_length(distance, accuracy)?;
-        // Native parameter speed is not physical speed. The unit tangent times
-        // the chosen feed rate gives the physical velocity on this regular curve.
+        // With s = feed_rate * seconds, velocity = (dP/ds) * feed_rate.
+        // This curve has nonzero speed throughout, so dP/ds is its unit tangent.
         let velocity = curve.tangent(t)? * feed_rate;
         println!(
             "{seconds:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}",

@@ -1,13 +1,13 @@
 //! Consumer-facing tests: public imports, trait bounds, and cross-representation behavior.
 
 use stroke::{
-    ArcLengthError, BSpline, BSplineError, BSplinePath, Bezier, BezierPath, BezierSegment,
-    BoundingBox, CubicBezier, CurveConstructionError, CurveParameterError, FindRoot, LineSegment,
-    Point, PointN, PointNorm, QuadraticBezier, RootFindingError,
+    ArcLengthError, ArrayPoint, BSpline, BSplineError, BSplinePath, Bezier, BezierPath,
+    BezierSegment, BoundingBox, CubicBezier, CurveConstructionError, CurveParameterError, FindRoot,
+    LineSegment, Point, PointNorm, QuadraticBezier, RootFindingError,
 };
 
-type P = PointN<f64, 2>;
-type S = PointN<f64, 1>;
+type P = ArrayPoint<f64, 2>;
+type S = ArrayPoint<f64, 1>;
 
 // No Default, Debug, component indexing, or PartialEq: evaluation conveniences
 // must remain usable with only the core Point abstraction.
@@ -74,7 +74,7 @@ fn point_near(actual: P, expected: P) {
 
 #[test]
 fn points_convert_and_borrow_without_copy_bounds() {
-    let point = PointN::from([String::from("x"), String::from("y")]);
+    let point = ArrayPoint::from([String::from("x"), String::from("y")]);
     assert!(core::ptr::eq(point.as_array(), point.as_ref()));
     assert_eq!(
         (&point).into_iter().map(String::as_str).collect::<Vec<_>>(),
@@ -82,7 +82,7 @@ fn points_convert_and_borrow_without_copy_bounds() {
     );
     let array: [String; 2] = point.into();
     assert_eq!(array, ["x", "y"]);
-    let empty = PointN::<u8, 0>::from([]);
+    let empty = ArrayPoint::<u8, 0>::from([]);
     assert_eq!((&empty).into_iter().count(), 0);
     assert_eq!(empty.into_array(), []);
 }
@@ -551,7 +551,7 @@ macro_rules! scalar_conveniences {
     ($name:ident, $scalar:ty, $accuracy:expr) => {
         #[test]
         fn $name() {
-            type P = PointN<$scalar, 2>;
+            type P = ArrayPoint<$scalar, 2>;
             let points = [
                 P::from([0.0, 0.0]),
                 P::from([1.0, 2.0]),
@@ -607,9 +607,9 @@ macro_rules! scalar_conveniences {
                 [0.0, large]
             );
             let tiny = <$scalar>::from_bits(1);
-            let spline = BSpline::<PointN<$scalar, 1>, 4, 2, 1>::new(
+            let spline = BSpline::<ArrayPoint<$scalar, 1>, 4, 2, 1>::new(
                 [0.0, 0.0, tiny, tiny],
-                [PointN::from([0.0]), PointN::from([tiny])],
+                [ArrayPoint::from([0.0]), ArrayPoint::from([tiny])],
             )
             .unwrap();
             assert!((spline.derivative_at(0.0).unwrap()[0] - 1.0).abs() <= $accuracy);

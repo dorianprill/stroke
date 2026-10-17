@@ -1,25 +1,27 @@
-use stroke::{BezierPath, CubicBezier, LineSegment, PointN, QuadraticBezier};
+use stroke::{ArrayPoint, BezierPath, CubicBezier, LineSegment, QuadraticBezier};
 
 fn main() {
-    let mut path: BezierPath<PointN<f64, 2>, 8> = BezierPath::new();
+    let mut path: BezierPath<ArrayPoint<f64, 2>, 8> = BezierPath::new();
 
-    path.push_line(LineSegment::new(PointN::new([0.0, 0.0]), PointN::new([1.0, 0.0])).unwrap());
+    path.push_line(
+        LineSegment::new(ArrayPoint::new([0.0, 0.0]), ArrayPoint::new([1.0, 0.0])).unwrap(),
+    );
 
     path.push_quadratic(
         QuadraticBezier::new(
-            PointN::new([1.0, 0.0]),
-            PointN::new([1.5, 0.8]),
-            PointN::new([2.0, 0.0]),
+            ArrayPoint::new([1.0, 0.0]),
+            ArrayPoint::new([1.5, 0.8]),
+            ArrayPoint::new([2.0, 0.0]),
         )
         .unwrap(),
     );
 
     path.push_cubic(
         CubicBezier::new(
-            PointN::new([2.0, 0.0]),
-            PointN::new([2.5, -0.6]),
-            PointN::new([3.0, 0.8]),
-            PointN::new([3.5, 0.0]),
+            ArrayPoint::new([2.0, 0.0]),
+            ArrayPoint::new([2.5, -0.6]),
+            ArrayPoint::new([3.0, 0.8]),
+            ArrayPoint::new([3.5, 0.0]),
         )
         .unwrap(),
     );

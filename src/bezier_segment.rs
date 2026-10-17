@@ -345,7 +345,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PointN;
+    use crate::ArrayPoint;
     use crate::test_support::{assert_approx_equal, assert_point_approx_equal};
 
     const ABSOLUTE_TOLERANCE: f64 = 1e-12;
@@ -353,7 +353,8 @@ mod tests {
 
     #[test]
     fn bezier_segment_api_parity() {
-        let line = LineSegment::new(PointN::new([0f64, 0f64]), PointN::new([2f64, 0f64])).unwrap();
+        let line =
+            LineSegment::new(ArrayPoint::new([0f64, 0f64]), ArrayPoint::new([2f64, 0f64])).unwrap();
         let segment = BezierSegment::from(line);
 
         assert_eq!(segment.start(), segment.eval(0.0));
@@ -378,7 +379,7 @@ mod tests {
         let p = segment.point_at_length(1.0, 1e-12).unwrap();
         assert_point_approx_equal(
             p,
-            PointN::new([1.0, 0.0]),
+            ArrayPoint::new([1.0, 0.0]),
             ABSOLUTE_TOLERANCE,
             RELATIVE_TOLERANCE,
         );
