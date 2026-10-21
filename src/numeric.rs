@@ -1,6 +1,6 @@
 use num_traits::{Float, NumCast, One, Zero};
 
-/// A scalar with a separate binary exponent for intermediate knot arithmetic.
+/// A scalar with a separate binary exponent for intermediate curve arithmetic.
 /// The mantissa retains the scalar's precision; the exponent extends its range.
 #[derive(Clone, Copy)]
 pub(crate) struct Scaled<T> {

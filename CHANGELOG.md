@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Added `kuva_basis` and a second README figure comparing cubic Bernstein and clamped B-spline basis weights, with interior knot guides.
+- Added allocation-free Bernstein `basis_functions(t)` and `basis_functions_with_derivatives::<R>(t)` queries for generic, quadratic and cubic Béziers and line segments. Finite parameters may extrapolate; derivative orders above the degree return zero. `BezierBasisError` reports non-finite parameters or unrepresentable results. Existing curve evaluation and B-spline APIs are unchanged.
+
 ## [0.4.0] - 2026-10-17
 
 ### Breaking changes

@@ -13,6 +13,11 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         P::from([3.0, 0.0]),
     ];
     let curve = Bezier::new(points)?;
+    assert_eq!(curve.basis_functions(0.5)?, [0.125, 0.375, 0.375, 0.125]);
+    assert_eq!(
+        curve.basis_functions_with_derivatives::<4>(1.5)?[4],
+        [0.0; 4]
+    );
     let cubic = CubicBezier::from(curve);
     let mut path = BezierPath::<P, 2>::new();
     path.try_push(cubic.into()).expect("available capacity");

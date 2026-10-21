@@ -1,4 +1,4 @@
-//! Errors shared by curve constructors.
+//! Errors shared by curve construction, parameter queries and Bezier bases.
 
 use core::fmt;
 
@@ -50,6 +50,26 @@ impl fmt::Display for CurveParameterError {
 }
 
 impl core::error::Error for CurveParameterError {}
+
+/// Failure to evaluate Bernstein basis values or their parameter derivatives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BezierBasisError {
+    /// The parameter is NaN or infinite. Finite extrapolation is allowed.
+    NonFiniteParameter,
+    /// A requested basis value or derivative is not representable as a finite scalar.
+    NonFiniteComputation,
+}
+
+impl fmt::Display for BezierBasisError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::NonFiniteParameter => "the Bezier basis parameter must be finite",
+            Self::NonFiniteComputation => "Bezier basis arithmetic produced a non-finite value",
+        })
+    }
+}
+
+impl core::error::Error for BezierBasisError {}
 
 pub(crate) fn validate_control_points<P: Point>(
     points: &[P],

@@ -120,6 +120,69 @@ where
         Bezier { control_points }
     }
 
+    /// Return the `N` Bernstein basis weights in control-point order.
+    ///
+    /// For degree `n = N - 1`, weight `i` is `binomial(n, i) * t^i * (1-t)^(n-i)`.
+    /// The recurrence uses no factorials and allocates no heap storage.
+    /// Finite parameters outside `[0, 1]` extrapolate the polynomial; weights
+    /// there need not be positive. In `[0, 1]` they are nonnegative and sum to
+    /// one, up to roundoff. Endpoint weights are exact.
+    ///
+    /// Underflow may round small weights to zero. Extrapolation can magnify
+    /// rounding errors, especially at high degrees. To evaluate a curve point,
+    /// prefer [`Self::eval`]; summing weighted controls can overflow or lose
+    /// precision even when de Casteljau evaluation remains usable.
+    ///
+    /// # Errors
+    ///
+    /// Return [`crate::BezierBasisError::NonFiniteParameter`] for NaN or infinity,
+    /// or [`crate::BezierBasisError::NonFiniteComputation`] if a weight cannot
+    /// be represented as a finite scalar.
+    ///
+    /// ```
+    /// use stroke::{ArrayPoint, Bezier};
+    /// let curve = Bezier::new([0.0_f64, 2.0, 4.0].map(|x| ArrayPoint::from([x])))?;
+    /// assert_eq!(curve.basis_functions(0.5)?, [0.25, 0.5, 0.25]);
+    /// assert_eq!(curve.basis_functions(2.0)?, [1.0, -4.0, 4.0]);
+    /// # Ok::<(), Box<dyn core::error::Error>>(())
+    /// ```
+    pub fn basis_functions(&self, t: P::Scalar) -> Result<[P::Scalar; N], crate::BezierBasisError> {
+        Ok(crate::bernstein::basis::<_, N, 0>(t)?[0])
+    }
+
+    /// Return Bernstein basis values and parameter derivatives through order `R`.
+    ///
+    /// Entry `[r][i]` is the `r`th derivative of weight `i` with respect to `t`.
+    /// Row zero matches [`Self::basis_functions`]. Orders above the degree are
+    /// exactly zero, including all positive orders for a constant curve.
+    /// Parameter derivatives use the same `[0, 1]` units as [`Self::derivative_at`].
+    ///
+    /// Finite extrapolation, roundoff and errors follow [`Self::basis_functions`].
+    /// Any unrepresentable requested derivative returns
+    /// [`crate::BezierBasisError::NonFiniteComputation`]. Workspace uses
+    /// `O(N * (R + 1))` stack storage, with no heap allocation.
+    ///
+    /// ```
+    /// #![allow(incomplete_features)]
+    /// #![feature(generic_const_exprs)]
+    /// use stroke::{ArrayPoint, Bezier};
+    /// let curve = Bezier::new([0.0_f64, 2.0, 4.0].map(|x| ArrayPoint::from([x])))?;
+    /// let basis = curve.basis_functions_with_derivatives::<3>(0.5)?;
+    /// assert_eq!(basis[1], [-1.0, 0.0, 1.0]);
+    /// assert_eq!(basis[2], [2.0, -4.0, 2.0]);
+    /// assert_eq!(basis[3], [0.0; 3]);
+    /// # Ok::<(), Box<dyn core::error::Error>>(())
+    /// ```
+    pub fn basis_functions_with_derivatives<const R: usize>(
+        &self,
+        t: P::Scalar,
+    ) -> Result<[[P::Scalar; N]; R + 1], crate::BezierBasisError>
+    where
+        [(); R + 1]: Sized,
+    {
+        crate::bernstein::basis::<_, N, R>(t)
+    }
+
     /// Evaluate a point on the curve at point 't' which should be in the interval \[0, 1\] (unchecked!)
     /// This is implemented using De Casteljau's algorithm (over a temporary array with const generic sizing)
     pub fn eval(&self, t: P::Scalar) -> P {
