@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added `kuva_basis` and a second README figure comparing cubic Bernstein and clamped B-spline basis weights, with interior knot guides.
+- Added allocation-free Bernstein `basis_functions(t)` and `basis_functions_with_derivatives::<R>(t)` queries for generic, quadratic and cubic Béziers and line segments. Finite parameters may extrapolate; derivative orders above the degree return zero. `BezierBasisError` reports non-finite parameters or unrepresentable results. Existing curve evaluation and B-spline APIs are unchanged.
 - Added `bounding_box_oriented_approx()` and `_with_budget(n)` to generic Bézier and B-spline curves. Both return `OrientedBoundingBox` with containment and coordinate methods, or `OrientedBoundingBoxError`. The shared search uses subdivision and plane rotations without allocation or new dependencies. B-splines include every nonzero span and both limits at jumps.
 - Added `OrientedBoundingBoxDiagnostics` and `diagnostics()` to report model work, error estimates and subdivision limits. Larger budgets retain the best earlier box. Documented the method, references and stack usage. The search has no global-optimality or approximation-ratio guarantee, and its floating-point bounds are not certified.
 - Added `oriented_box_study` for Bézier and B-spline accuracy and timings in 2D, 3D and 4D. It writes CSV diagnostics and checks faces against polynomial extrema. Tests also cover known minimum boxes, jumps, extreme scales and higher dimensions. Reference orientations are numerical results, not certified optima.

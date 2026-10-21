@@ -42,12 +42,21 @@ impl Point for Minimal {
 #[test]
 fn basic_conveniences_do_not_strengthen_point_requirements() {
     let generic = Bezier::new([Minimal(0.0), Minimal(1.0), Minimal(3.0)]).unwrap();
+    assert_eq!(generic.basis_functions(0.5).unwrap(), [0.25, 0.5, 0.25]);
+    assert_eq!(
+        generic.basis_functions_with_derivatives::<1>(0.5).unwrap()[1],
+        [-1.0, 0.0, 1.0]
+    );
     near(generic.derivative_at(0.5).0, 3.0);
     near(
         generic.subcurve(0.25..0.75).unwrap().eval(0.5).0,
         generic.eval(0.5).0,
     );
     let specialized = QuadraticBezier::from(generic);
+    assert_eq!(
+        specialized.basis_functions(0.5),
+        generic.basis_functions(0.5)
+    );
     near(specialized.derivative_at(0.5).0, 3.0);
     let spline =
         BSpline::<Minimal, 6, 3, 2>::new_clamped_uniform(generic.into_control_points()).unwrap();

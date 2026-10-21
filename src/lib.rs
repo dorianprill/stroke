@@ -68,6 +68,7 @@ pub mod path;
 pub mod point;
 
 mod arc_length;
+mod bernstein;
 mod conversions;
 mod differential;
 mod distance;
@@ -95,7 +96,7 @@ pub use bounding_box::BoundingBox;
 pub use bspline::{BSpline, BSplineError};
 pub use bspline_path::BSplinePath;
 pub use cubic_bezier::CubicBezier;
-pub use error::{CurveConstructionError, CurveParameterError};
+pub use error::{BezierBasisError, CurveConstructionError, CurveParameterError};
 pub use find_root::FindRoot;
 pub use line::LineSegment;
 pub use oriented_bounding_box::{

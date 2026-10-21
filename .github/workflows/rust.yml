@@ -32,7 +32,9 @@ jobs:
     - name: Verify release package
       run: cargo package --locked
     - name: Render curve examples
-      run: cargo run --example kuva_curves
+      run: |
+        cargo run --example kuva_curves
+        cargo run --example kuva_basis
     - name: Build docs
       run: cargo rustdoc --all-features --lib -- -D warnings
     - name: Run tests

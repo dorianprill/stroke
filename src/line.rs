@@ -34,6 +34,31 @@ where
         Ok(LineSegment { start, end })
     }
 
+    /// Return the 2 Bernstein basis weights in control-point order.
+    ///
+    /// Finite parameters outside `[0, 1]` extrapolate the polynomial.
+    /// See [`Bezier::basis_functions`](crate::Bezier::basis_functions) for
+    /// numerical limits and [`BezierBasisError`](crate::BezierBasisError).
+    pub fn basis_functions(&self, t: P::Scalar) -> Result<[P::Scalar; 2], crate::BezierBasisError> {
+        Ok(crate::bernstein::basis::<_, 2, 0>(t)?[0])
+    }
+
+    /// Return basis values and parameter derivatives through order `R`.
+    ///
+    /// Entry `[r][i]` corresponds to derivative order `r` and control `i`.
+    /// Orders above 1 are zero. Finite parameters may extrapolate.
+    /// See [`Bezier::basis_functions_with_derivatives`](crate::Bezier::basis_functions_with_derivatives)
+    /// for numerical limits, errors and workspace requirements.
+    pub fn basis_functions_with_derivatives<const R: usize>(
+        &self,
+        t: P::Scalar,
+    ) -> Result<[[P::Scalar; 2]; R + 1], crate::BezierBasisError>
+    where
+        [(); R + 1]: Sized,
+    {
+        crate::bernstein::basis::<_, 2, R>(t)
+    }
+
     /// Borrow the control points in curve order.
     pub fn control_points(&self) -> core::array::IntoIter<&P, 2> {
         [&self.start, &self.end].into_iter()

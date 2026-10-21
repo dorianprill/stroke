@@ -80,10 +80,50 @@ These are the main supported features. Some further utility methods are exposed 
 | tight axis-aligned bounding box and conservative control-point bounds | ☑ | ☑ | ☑ | ☑ |
 | approximate oriented bounding box (heuristic orientation search) | ☐ | ☐ | ☑ | ☑ |
 | Bézier span extraction (`bezier_spans`, without allocation) | — | — | — | ☑ |
-| basis functions (and derivatives) | ☐ | ☐ | ☐ | ☑ |
+| basis functions (and derivatives) | ☑ | ☑ | ☑ | ☑ |
 
 Béziers use de Casteljau evaluation; B-splines use de Boor. Polyline arc length
 uses `segments` intervals per Bézier curve or per nonzero B-spline knot span.
+
+## Basis functions
+
+Each color shows one control point's weight in curve evaluation. Both sets of
+weights sum to one on `[0, 1]`; dashed lines mark the B-spline's interior knots.
+
+![Cubic Bézier and B-spline basis weights in two side-by-side panels](https://raw.githubusercontent.com/dorianprill/stroke/main/basis.svg)
+
+For a cubic Bézier with controls $P_0,\ldots,P_3$, the Bernstein weights are
+
+$$
+\begin{aligned}
+B_0^3(t)&=(1-t)^3, & B_1^3(t)&=3t(1-t)^2,\\
+B_2^3(t)&=3t^2(1-t), & B_3^3(t)&=t^3.
+\end{aligned}
+$$
+
+The curve point is $C(t)=\sum_{i=0}^{3}B_i^3(t)P_i$.
+
+A cubic B-spline uses $C(t)=\sum_i N_{i,3}(t)P_i$, with at most four nonzero
+weights at each parameter. Given knots $u_i$, start with $N_{i,0}(t)=1$ on
+$[u_i,u_{i+1})$ and zero elsewhere, then apply the Cox-de Boor recurrence for
+$p=1,2,3$:
+
+$$
+N_{i,p}(t)=\frac{t-u_i}{u_{i+p}-u_i}N_{i,p-1}(t)
++\frac{u_{i+p+1}-t}{u_{i+p+1}-u_{i+1}}N_{i+1,p-1}(t).
+$$
+
+A term with a zero denominator contributes zero. At the final domain endpoint,
+use the left-hand limit. The plot uses clamped knots
+`[0, 0, 0, 0, 0.25, 0.5, 0.75, 1, 1, 1, 1]`.
+
+Béziers and line segments expose Bernstein weights through `basis_functions(t)`
+and `basis_functions_with_derivatives::<R>(t)`. Values follow control-point order;
+derivative row `r` is with respect to `t`, and orders above the degree are zero.
+Finite parameters outside `[0, 1]` extrapolate. Non-finite inputs or results
+return `BezierBasisError`. Use `eval(t)` when only a curve point is needed.
+
+Regenerate the figure with `cargo run --example kuva_basis`.
 
 ## General use
 
@@ -158,6 +198,8 @@ options shown below.
 - `animation_envelope` evaluates a scalar B-spline and its rate of change over
   a time domain, with CSV output.
 - `tangent_normal_curvature` samples those geometric quantities.
+- `kuva_basis` writes `basis.svg`, comparing cubic Bernstein and clamped
+  B-spline basis weights, with interior knot guides.
 - `kuva_curves` writes `curves.svg`, with curve boxes, control boxes, labeled
   controls and knot markers. It needs no system font libraries.
 - `oriented_box_study` checks oriented bounds against polynomial extrema and
