@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.4.1] - Unreleased
+## [0.4.1] - 2026-10-21
 
 ### Added
 
@@ -12,7 +12,7 @@
 
 ### Changed
 
-- Excluded the generated `curves.svg` from the crates.io package; the README loads the image from GitHub.
+- Excluded the generated `curves.svg` and `basis.svg` from the crates.io package; the README loads both images from GitHub.
 - Show tight curve boxes and dashed control boxes together in the plotting example and README figure.
 - Rewrote the README, API comments and example explanations. Clarified parameter units, trait requirements and numerical limits.
 
