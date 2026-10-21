@@ -1,4 +1,4 @@
-//! Public-API regressions for the final 0.4.0 numerical/API pass.
+//! Regression tests for the 0.4.0 numerical fixes and public methods.
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 

@@ -39,8 +39,8 @@ macro_rules! path_boundary_test {
                         assert_eq!(path.eval(t), Some(expected));
                         assert_eq!(bspline_path.eval(t), Some(expected));
                     }
-                    // The adjacent representable parameters must stay on their
-                    // own sides of the discontinuity; there is no epsilon snap.
+                    // The nearest representable parameters on each side must
+                    // stay on that side of the jump.
                     let left_min = (index - 1) as $scalar * 100.0;
                     for point in [
                         path.eval(boundary.next_down()),
@@ -56,8 +56,8 @@ macro_rules! path_boundary_test {
                         let x = point.unwrap()[0];
                         assert!(x >= expected[0] && x <= expected[0] + 1.0);
                     }
-                    // Direct length lookup must also preserve segment ownership
-                    // when a normalized scalar parameter loses local precision.
+                    // Direct length lookup must select the same segment even
+                    // when the path parameter loses segment-local precision.
                     for distance in [s.next_down(), s.next_up()] {
                         let segment_start = if distance < s { left_min } else { expected[0] };
                         for point in [

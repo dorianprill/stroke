@@ -1,7 +1,7 @@
-//! Sample a scalar cubic B-spline envelope over five seconds at 0.25 s intervals.
-//! Fourfold endpoint knots fix the initial and final values at zero. The simple
-//! knot at 2 s joins two polynomial pieces with continuous first/second derivatives.
-//! CSV reports the envelope value and its native-time derivative in units/s.
+//! Sample a scalar cubic B-spline over five seconds at 0.25-second intervals.
+//! Four copies of each endpoint knot make both endpoint values zero. A single
+//! interior knot at 2 seconds joins pieces with continuous first and second derivatives.
+//! The parameter is time in seconds. CSV output gives the value and its rate per second.
 
 use stroke::{ArrayPoint, BSpline};
 

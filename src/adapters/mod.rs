@@ -1,7 +1,6 @@
 //! Optional adapters for external math libraries.
 //!
-//! Enable feature flags (e.g. `nalgebra`) to add `Point` impls for
-//! external vector types.
+//! The `nalgebra` feature implements `Point` for nalgebra vectors.
 
 #[cfg(feature = "nalgebra")]
 pub mod nalgebra;

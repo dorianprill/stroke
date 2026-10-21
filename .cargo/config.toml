@@ -3,7 +3,7 @@ lint = "clippy --all-targets --all-features -- -D warnings"
 lint-default = "clippy --all-targets --no-default-features -- -D warnings"
 
 [build]
-# generic_const_exprs needs the compatible solver on current nightly. Keep
-# local builds, Clippy, doctests, and CI consistent without manual env setup.
+# Use the trait solver compatible with generic_const_exprs for builds,
+# Clippy, doctests and rustdoc.
 rustflags = ["-Znext-solver=coherence"]
 rustdocflags = ["-Znext-solver=coherence"]

@@ -10,18 +10,19 @@ use num_traits::{Float, NumCast};
 
 const DEFAULT_DISTANCE_STEPS: usize = 64;
 
-/// Cubic Bezier curve defined by four points: start, two control points, and end.
+/// A cubic Bezier curve with endpoint controls `start` and `end`
+/// and interior controls `ctrl1` and `ctrl2`.
 ///
-/// The curve is defined by:
+/// For `t` in `[0, 1]`, the curve is
 /// ```text
-/// ∀ t ∈ [0..1], P(t) = (1 - t)³ * start
+/// P(t) = (1 - t)³ * start
 ///            + 3 * (1 - t)² * t * ctrl1
 ///            + 3 * t² * (1 - t) * ctrl2
 ///            + t³ * end
 /// ```
 ///
-/// Methods that need component access or norms add `PointIndex`/`PointNorm`
-/// bounds as required.
+/// Bounding boxes require `PointIndex`. Distance and differential geometry
+/// methods require `PointNorm`.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct CubicBezier<P> {
     pub(crate) start: P,
@@ -55,7 +56,7 @@ where
         crate::Bezier::from(*self).eval(t)
     }
 
-    /// Evaluate a `CubicBezier` curve at t using the numerically stable De Casteljau algorithm
+    /// Evaluate at `t` using de Casteljau interpolation, as in [`Self::eval`].
     pub fn eval_casteljau(&self, t: P::Scalar) -> P {
         self.eval(t)
     }
@@ -90,19 +91,19 @@ where
         [&self.start, &self.ctrl1, &self.ctrl2, &self.end].into_iter()
     }
 
-    /// Consume the curve, returning its control-point array.
+    /// Return the control-point array, consuming the curve.
     pub fn into_control_points(self) -> [P; 4] {
         [self.start, self.ctrl1, self.ctrl2, self.end]
     }
 
-    /// Replace all control points atomically, leaving this curve unchanged on error.
+    /// Replace all control points. Leave the curve unchanged if validation fails.
     pub fn set_control_points(&mut self, points: [P; 4]) -> Result<(), CurveConstructionError> {
         *self = Self::new(points[0], points[1], points[2], points[3])?;
         Ok(())
     }
 
-    /// Map control points and validate the result without modifying this curve.
-    /// This maps the entire curve geometrically only when `map` is affine.
+    /// Return a curve with mapped control points. Reject non-finite results.
+    /// Affine maps, such as translations, also map every point of the curve.
     pub fn try_map_control_points(
         &self,
         map: impl FnMut(P) -> P,
@@ -111,12 +112,12 @@ where
         Self::new(points[0], points[1], points[2], points[3])
     }
 
-    /// Evaluate the derivative with respect to the unit-domain parameter.
+    /// Evaluate the derivative with respect to `t` in `[0, 1]`.
     pub fn derivative_at(&self, t: P::Scalar) -> P {
         crate::Bezier::from(*self).derivative_at(t)
     }
 
-    /// Return the derivative magnitude with respect to the unit-domain parameter.
+    /// Return the speed, the magnitude of the derivative with respect to `t`.
     pub fn speed(&self, t: P::Scalar) -> P::Scalar
     where
         P: PointNorm,
@@ -124,8 +125,8 @@ where
         self.derivative_at(t).norm()
     }
 
-    /// Extract a finite ordered range in `[0, 1]`, reparameterized to `[0, 1]`.
-    /// Equal range endpoints yield a constant curve.
+    /// Extract `start..end` and give the result a new parameter range `[0, 1]`.
+    /// Requires finite `0 <= start <= end <= 1`. Equal endpoints give a constant curve.
     pub fn subcurve(
         &self,
         range: core::ops::Range<P::Scalar>,
@@ -168,7 +169,7 @@ where
         }
     }
 
-    /// Approximate the arc length by flattening the curve into `segments` lines.
+    /// Approximate arc length with `segments` straight lines at equal parameter steps.
     pub fn arclen_polyline(&self, segments: usize) -> P::Scalar
     where
         P: PointNorm,
@@ -195,7 +196,7 @@ where
     }
 
     /// Integrate arc length over `start..end`, where `0 <= start <= end <= 1`.
-    /// The positive finite `accuracy` is an absolute length tolerance.
+    /// `accuracy` must be finite and positive, in the same units as the coordinates.
     pub fn arclen_between(
         &self,
         start: P::Scalar,
@@ -217,9 +218,8 @@ where
         (Self::from(left), Self::from(right))
     }
 
-    /// Return the derivative curve.
-    /// The derivative is also a bezier curve but of degree n-1 (cubic->quadratic)
-    /// Since it returns the derivative function, `eval()` needs to be called separately
+    /// Return the derivative as a quadratic Bezier curve.
+    /// Evaluate it with `derivative().eval(t)` or use [`Self::derivative_at`].
     pub fn derivative(&self) -> QuadraticBezier<P> {
         let three = <P::Scalar as NumCast>::from(3.0).unwrap();
         QuadraticBezier {
@@ -255,12 +255,11 @@ where
         crate::Bezier::from(*self).normal(t)
     }
 
-    /// Approximate the minimum distance between given `point` and the curve.
-    /// Uses a coarse sampling pass over the full domain and a local search around
-    /// the best sample. `nsteps` counts coarse subdivisions (at least one).
-    /// Every sampled/refined candidate is retained if better; the search has no
-    /// global-minimum or accuracy guarantee. Non-finite query points return NaN;
-    /// distances outside the scalar range are infinite.
+    /// Estimate the minimum distance to `point`.
+    /// Sample at `nsteps` equal parameter intervals, then refine near the closest
+    /// sample. Use at least one interval and retain the best distance found.
+    /// This local search can miss a closer point and has no error bound.
+    /// Non-finite query points return NaN. Distances outside the scalar range are infinite.
     pub fn distance_to_point_approx(&self, point: P, nsteps: usize) -> P::Scalar
     where
         P: PointNorm,
@@ -268,8 +267,7 @@ where
         crate::Bezier::from(*self).distance_to_point_approx(point, nsteps)
     }
 
-    /// Approximate the minimum distance between given `point` and the curve using
-    /// a default sampling resolution.
+    /// Estimate the minimum distance using the default number of parameter intervals.
     pub fn distance_to_point(&self, point: P) -> P::Scalar
     where
         P: PointNorm,
@@ -301,7 +299,7 @@ where
         Ok(self.eval_casteljau(self.t_at_length(s, accuracy)?))
     }
 
-    /// Returns the line segment formed by the curve's start and end points.
+    /// Return the line joining the curve's endpoints.
     pub fn baseline(&self) -> LineSegment<P> {
         LineSegment {
             start: self.start,
@@ -309,8 +307,9 @@ where
         }
     }
 
-    /// Checks whether, given some tolerance, the curve can be considered linear.
-    /// Non-finite tolerances return false; negative finite tolerances use their absolute value.
+    /// Return whether the controls lie within `abs(tolerance)` of the endpoint segment.
+    /// The endpoints must be farther apart than the tolerance.
+    /// Non-finite tolerances return `false`. Negative tolerances use their absolute value.
     pub fn is_linear(&self, tolerance: P::Scalar) -> bool
     where
         P: PointNorm,
@@ -330,8 +329,8 @@ where
             && line.distance_to_point(self.ctrl2) <= tolerance
     }
 
-    /// Whether every control point is within `abs(tolerance)` of the start.
-    /// Zero tolerance requires exact coordinate equality; non-finite tolerances return false.
+    /// Return whether every control point is within `abs(tolerance)` of the start.
+    /// Zero requires equal coordinates. Non-finite tolerances return `false`.
     pub fn is_a_point(&self, tolerance: P::Scalar) -> bool
     where
         P: PointNorm,
@@ -339,11 +338,10 @@ where
         crate::distance::is_a_point(&[self.start, self.ctrl1, self.ctrl2, self.end], tolerance)
     }
 
-    /// Compute the real roots of the cubic bezier function with
-    /// parameters of the form a*t^3 + b*t^2 + c*t + d for each dimension
-    /// using cardano's algorithm (code adapted from github.com/nical/lyon)
-    /// returns an `ArrayVec` of the present roots (max 3)
-    #[allow(clippy::many_single_char_names)] // this is math, get over it
+    /// Return up to three real roots of `a*t^3 + b*t^2 + c*t + d`.
+    /// Uses Cardano's method, adapted from [Lyon](https://github.com/nical/lyon).
+    /// Call once for each coordinate.
+    #[allow(clippy::many_single_char_names)] // Match the polynomial's coefficient names.
     pub(crate) fn real_roots(
         &self,
         a: P::Scalar,
@@ -365,18 +363,16 @@ where
         let fifty_four = <P::Scalar as NumCast>::from(54.0).unwrap();
         let coefficient_scale = a.abs().max(b.abs()).max(c.abs()).max(d.abs());
 
-        // check if can be handled below cubic order
+        // Treat negligible leading coefficients as lower-degree polynomials.
         if is_negligible(a, coefficient_scale) {
             if is_negligible(b, coefficient_scale) {
                 if is_negligible(c, coefficient_scale) {
-                    // no solutions
+                    // The polynomial is constant and has no isolated roots.
                     return result;
                 }
-                // is linear equation
                 result.push(-d / c);
                 return result;
             }
-            // is quadratic equation
             let c_squared = c * c;
             let four_bd = b * d * four;
             let delta = c_squared - four_bd;
@@ -390,7 +386,7 @@ where
             return result;
         }
 
-        // is cubic equation -> use cardano's algorithm
+        // Solve the cubic with Cardano's method.
         let frac_1_3 = <P::Scalar as NumCast>::from(1.0 / 3.0).unwrap();
 
         let bn = b / a;
@@ -429,12 +425,8 @@ where
         result
     }
 
-    /// Solves the cubic bezier function given a particular coordinate axis value
-    /// by solving the roots for the axis functions
-    /// Parameters:
-    /// value: the coordinate value on the particular axis
-    /// axis: the index of the axis
-    /// Returns those roots of the function that are in the interval [0.0, 1.0].
+    /// Return parameters in `[0, 1]` where coordinate `axis` equals `value`.
+    /// Solve the coordinate polynomial analytically.
     #[allow(dead_code)]
     fn solve_t_for_axis(&self, value: P::Scalar, axis: usize) -> ArrayVec<[P::Scalar; 3]>
     where
@@ -442,7 +434,7 @@ where
         [P::Scalar; 3]: tinyvec::Array<Item = P::Scalar>,
     {
         let mut result = ArrayVec::new();
-        // check if all points are the same or if the curve is really just a line
+        // Handle coincident controls and linear curves before the cubic solver.
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         if self.is_a_point(zero)
             || (self.are_points_colinear(zero) && (self.start - self.end).squared_norm() == zero)
@@ -476,18 +468,11 @@ where
         [P::Scalar; 3]: tinyvec::Array<Item = P::Scalar>,
         [P::Scalar; 4]: tinyvec::Array<Item = P::Scalar>,
     {
-        // calculate coefficients for the derivative: at^2 + bt + c
-        // from the expansion of the cubic bezier curve: sum_i=0_to_3( binomial(3, i) * t^i * (1-t)^(n-i) )
-        // yields coeffcients
-        // po: [1, -2,  1]
-        // p1: [0,  2, -2]
-        // p2: [0,  0,  1]
-        //      c   b   a
+        // Write the quadratic derivative in the power basis, a*t^2 + b*t + c.
         let zero = <P::Scalar as NumCast>::from(0.0).unwrap();
         let one = <P::Scalar as NumCast>::from(1.0).unwrap();
         let mut bounds = [(zero, zero); P::DIM];
         let derivative = self.derivative();
-        // calculate coefficients for derivative
         let two = <P::Scalar as NumCast>::from(2.0).unwrap();
         let a: P = derivative.start + derivative.ctrl * -two + derivative.end;
         let b: P = derivative.start * -two + derivative.ctrl * two;
@@ -499,9 +484,7 @@ where
             .bounding_box();
         }
 
-        // calculate roots for t over x axis and plug them into the bezier function
-        //  to get x,y values (make vec 2 bigger for t=0,t=1 values)
-        // loop over any of the points dimensions (they're all the same)
+        // Coordinate extrema occur at derivative roots or curve endpoints.
         for dim in 0..P::DIM {
             let mut extrema: ArrayVec<[P::Scalar; 4]> = ArrayVec::new();
             extrema.extend(
@@ -510,24 +493,49 @@ where
                     .iter()
                     .copied(),
             );
-            // only retain roots for which t is in [0..1]
             extrema.retain(|root| -> bool { *root > zero && *root < one });
-            // evaluates roots in original function
             for t in extrema.iter_mut() {
                 *t = self.eval_casteljau(*t)[dim];
             }
-            // add y-values for start and end point as candidates
+            // Include both endpoints as bounds candidates.
             extrema.push(self.start[dim]);
             extrema.push(self.end[dim]);
-            // sort to get min and max values for bounding box
             extrema.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
 
-            // determine xmin, xmax, ymin, ymax, from the set {B(xroots), B(yroots), B(0), B(1)}
-            // (Intermediate control points can't form a boundary)
-            // .unwrap() is ok as it can never be empty as it always at least contains the endpoints
+            // The candidate set contains both endpoints, so it is nonempty.
             bounds[dim] = (extrema[0], *extrema.last().unwrap());
         }
         BoundingBox::from_axes_unchecked(bounds)
+    }
+
+    /// Fit an oriented box around the curve on `[0, 1]`, testing up to 256 orientations.
+    ///
+    /// Delegates to the generic Bézier search without degree-specific optimizations.
+    /// The heuristic search guarantees neither a local nor a global minimum.
+    /// See [`Bezier::bounding_box_oriented_approx`](crate::Bezier::bounding_box_oriented_approx)
+    /// for numerical limits and errors.
+    pub fn bounding_box_oriented_approx(
+        &self,
+    ) -> Result<crate::OrientedBoundingBox<P::Scalar, { P::DIM }>, crate::OrientedBoundingBoxError>
+    where
+        P: PointIndex,
+    {
+        crate::Bezier::from(*self).bounding_box_oriented_approx()
+    }
+
+    /// Fit an oriented box with at most `max_evaluations` full-curve trials.
+    ///
+    /// Delegates to the generic Bézier search. See
+    /// [`Bezier::bounding_box_oriented_approx_with_budget`](crate::Bezier::bounding_box_oriented_approx_with_budget)
+    /// for work limits, stack usage and errors. The budget does not bound volume error.
+    pub fn bounding_box_oriented_approx_with_budget(
+        &self,
+        max_evaluations: usize,
+    ) -> Result<crate::OrientedBoundingBox<P::Scalar, { P::DIM }>, crate::OrientedBoundingBoxError>
+    where
+        P: PointIndex,
+    {
+        crate::Bezier::from(*self).bounding_box_oriented_approx_with_budget(max_evaluations)
     }
 
     /// Return a conservative box around the control points.
@@ -566,15 +574,12 @@ mod tests {
     }
     #[test]
     fn circle_approximation_error() {
-        // define closure for unit circle
         let circle = |p: ArrayPoint<f64, 2>| -> f64 {
             p.into_iter().map(|x| x * x).sum::<f64>().sqrt() - 1f64
         };
 
-        // define control points for 4 bezier segments
-        // control points are chosen for minimum radial distance error
-        // according to: http://spencermortensen.com/articles/bezier-circle/
-        // TODO don't hardcode values
+        // Use Mortensen's quarter-circle controls to minimize radial error.
+        // Reference: http://spencermortensen.com/articles/bezier-circle/
         let c = 0.551915024494;
         let max_drift_perc = 0.019608; // radial drift percent
         let max_error = max_drift_perc * 0.01; // absolute max radial error
@@ -627,12 +632,9 @@ mod tests {
 
     #[test]
     fn circle_circumference_approximation() {
-        // define control points for 4 cubic bezier segments to best approximate a unit circle
-        // control points are chosen for minimum radial distance error, see circle_approximation_error() in this file
-        // given this, the circumference will also be close to 2*pi
-        // (remember arclen also works by linear approximation, not the true integral, so we have to accept error)!
-        // This approximation is unfeasable if desired accuracy is greater than ~2 decimal places (at 1000 steps)
-        // TODO don't hardcode values, solve for them
+        // Approximate a unit circle with four cubic curves. Measure each with
+        // 1,000 polyline segments. The comparison includes both curve-fitting
+        // error and the polyline length error.
         let c = 0.551915024494;
         let max_error = 1e-2;
         let nsteps = 1e3 as usize;
@@ -667,15 +669,12 @@ mod tests {
             + bezier_quadrant_2.arclen_polyline(nsteps)
             + bezier_quadrant_3.arclen_polyline(nsteps)
             + bezier_quadrant_4.arclen_polyline(nsteps);
-        //dbg!(circumference);
-        //dbg!(tau);
         assert!(((tau + max_error) > circumference) && ((tau - max_error) < circumference));
     }
 
     #[test]
     fn eval_equivalence_casteljau() {
-        // all eval methods should be approximately equivalent for well defined test cases
-        // and not equivalent where numerical stability becomes an issue for normal eval
+        // Both evaluation entry points use de Casteljau interpolation.
         let bezier = CubicBezier::new(
             ArrayPoint::new([0f64, 1.77f64]),
             ArrayPoint::new([1.1f64, -1f64]),
@@ -695,29 +694,24 @@ mod tests {
 
     #[test]
     fn split_equivalence() {
-        // chose some arbitrary control points and construct a cubic bezier
         let bezier = CubicBezier {
             start: ArrayPoint::new([0f64, 1.77f64]),
             ctrl1: ArrayPoint::new([2.9f64, 0f64]),
             ctrl2: ArrayPoint::new([4.3f64, 3f64]),
             end: ArrayPoint::new([3.2f64, -4f64]),
         };
-        // split it at an arbitrary point
         let at = 0.5;
         let (left, right) = bezier.split(at);
-        // compare left and right subcurves with parent curve
-        // take the difference of the two points which must not exceed the absolute error
+        // Each subcurve must match the corresponding parameter range of the original.
         let nsteps: usize = 1000;
         for t in 0..=nsteps {
             let t = t as f64 * 1f64 / (nsteps as f64);
-            // left
             assert_point_approx_equal(
                 bezier.eval(t / 2.0),
                 left.eval(t),
                 ABSOLUTE_TOLERANCE,
                 RELATIVE_TOLERANCE,
             );
-            // right
             assert_point_approx_equal(
                 bezier.eval((t * 0.5) + 0.5),
                 right.eval(t),
@@ -762,7 +756,7 @@ mod tests {
 
     #[test]
     fn bounding_box_contains() {
-        // check if bounding box for a curve contains all points (with some approximation error)
+        // Allow for floating-point error when comparing samples with the box.
         let bezier = CubicBezier {
             start: ArrayPoint::new([0f64, 1.77f64]),
             ctrl1: ArrayPoint::new([2.9f64, 0f64]),
@@ -778,9 +772,6 @@ mod tests {
         for t in 0..=nsteps {
             let t = t as f64 * 1f64 / (nsteps as f64);
             let p = bezier.eval_casteljau(t);
-            //dbg!(t);
-            //dbg!(p);
-            //dbg!(xmin-max_err, ymin-max_err, xmax+max_err, ymax+max_err);
             for (idx, axis) in p.into_iter().enumerate() {
                 assert!((axis >= (bounds[idx].0 - max_err)) && (axis <= (bounds[idx].1 + max_err)))
             }
@@ -827,7 +818,7 @@ mod tests {
 
     #[test]
     fn distance_to_point() {
-        // degree 3, 4 control points => 4+3+1=8 knots
+        // A cubic with four controls requires eight knots.
         let curve = CubicBezier {
             start: ArrayPoint::new([0f64, 1.77f64]),
             ctrl1: ArrayPoint::new([1.1f64, -1f64]),

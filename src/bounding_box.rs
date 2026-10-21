@@ -7,7 +7,8 @@ use num_traits::Float;
 
 /// An axis-aligned bounding box in `D` dimensions.
 ///
-/// Tightness relative to a curve depends on how the box was constructed.
+/// `bounding_box()` on a curve bounds its coordinate extrema. `control_box()`
+/// uses its controls instead. Both methods return this type.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BoundingBox<T, const D: usize> {
     axes: [(T, T); D],
@@ -48,7 +49,8 @@ impl<T: Copy, const D: usize> BoundingBox<T, D> {
         (0..D).all(|i| self.axes[i].0 <= other.axes[i].1 && other.axes[i].0 <= self.axes[i].1)
     }
 
-    /// Return the overlap, including zero-width intersections, or `None` if disjoint.
+    /// Return the overlapping region, or `None` if the boxes are disjoint.
+    /// Touching boundaries give a zero-width intersection.
     pub fn intersection(&self, other: &Self) -> Option<Self>
     where
         T: PartialOrd,

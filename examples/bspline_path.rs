@@ -1,3 +1,5 @@
+//! Build an L-shaped path from two linear B-splines and print a sample and its bounds.
+
 use stroke::{ArrayPoint, BSpline, BSplinePath};
 
 fn main() {

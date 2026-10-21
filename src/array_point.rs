@@ -8,8 +8,8 @@ use super::Point;
 use num_traits::Float;
 
 /// A point backed by `[T; N]`.
-/// This type implements [`Point`] and `Index<usize>` so it
-/// can be used with component-aware helpers like bounding boxes.
+/// Implements [`Point`] and coordinate indexing, including the bounds methods
+/// that require `PointIndex`.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct ArrayPoint<T, const N: usize>([T; N]);
 
@@ -56,7 +56,7 @@ impl<'a, T, const N: usize> IntoIterator for &'a ArrayPoint<T, N> {
     }
 }
 
-/// Initialize with the Default value for the underlying type
+/// Fill the coordinates with `T::default()`.
 impl<T: Default + Copy, const N: usize> Default for ArrayPoint<T, N> {
     fn default() -> Self {
         ArrayPoint([T::default(); N])
@@ -78,8 +78,7 @@ where
     }
 }
 
-/// This is not required by the Point trait or library but
-/// convenient if you want to use the type externally
+/// Add a scalar to each coordinate.
 impl<T, const N: usize> Add<T> for ArrayPoint<T, N>
 where
     T: Add<Output = T> + Copy,
@@ -106,8 +105,7 @@ where
     }
 }
 
-/// This is not required by the Point trait or library but
-/// convenient if you want to use the type externally
+/// Subtract a scalar from each coordinate.
 impl<T, const N: usize> Sub<T> for ArrayPoint<T, N>
 where
     T: Sub<Output = T> + Copy,

@@ -1,4 +1,4 @@
-//! Mixed Bezier path utilities.
+//! Fixed-capacity paths of line, quadratic and cubic segments.
 
 use crate::arc_length::validate_accuracy;
 use crate::{ArcLengthError, BoundingBox};
@@ -10,11 +10,15 @@ use super::{
 use crate::bezier_segment::BezierSegment;
 use num_traits::{Float, NumCast};
 
-/// A path composed of mixed Bezier segments (line/quadratic/cubic).
+/// A path of up to `N` line, quadratic or cubic segments.
 ///
-/// Component-aware helpers (e.g. bounding boxes) require `PointIndex`.
+/// The path parameter spans `[0, 1]`, divided equally among the stored segments.
+/// Segments may be disconnected. Gaps add no arc length.
+///
+/// Bounding-box methods require coordinate access through `PointIndex`.
 ///
 /// # Examples
+///
 /// ```rust
 /// use stroke::{BezierPath, LineSegment, ArrayPoint};
 ///
@@ -77,7 +81,7 @@ where
         }
     }
 
-    /// Return the number of segments currently stored.
+    /// Return the number of segments.
     pub fn len(&self) -> usize {
         self.segments.len()
     }
@@ -143,7 +147,7 @@ where
     }
 
     /// Evaluate a point along the path for `t` in `[0, 1]`.
-    /// Values outside the range are clamped. Returns None for empty paths.
+    /// Clamp values outside the range. Return `None` for an empty path.
     pub fn eval(&self, t: P::Scalar) -> Option<P> {
         let (index, local_t) = self.segment_parameter(t)?;
         Some(self.segments[index].eval(local_t))
@@ -170,11 +174,11 @@ where
         reversed
     }
 
-    /// Evaluate the derivative with respect to the normalized path parameter.
-    /// Values outside `[0, 1]` are clamped before taking the selected piece's
-    /// derivative. Interior boundaries select the right-hand piece; the final
-    /// endpoint selects the left. No derivative across a jump is implied.
-    /// Returns `None` for an empty path or NaN parameter.
+    /// Evaluate the derivative with respect to the path parameter in `[0, 1]`.
+    /// Multiply the segment derivative by the number of stored segments.
+    /// Clamp parameters outside `[0, 1]`. At a segment boundary, use the piece
+    /// to the right, except at the final endpoint. Derivatives across jumps are undefined.
+    /// Return `None` for an empty path or NaN parameter.
     pub fn derivative_at(&self, t: P::Scalar) -> Option<P> {
         let (index, local) = self.segment_parameter(t)?;
         let start = crate::path_parameter::boundary::<P::Scalar>(index, self.len());
@@ -185,7 +189,7 @@ where
         ))
     }
 
-    /// Return the selected piece's speed per unit of normalized path parameter.
+    /// Return speed per unit of path parameter, the magnitude of `derivative_at(t)`.
     pub fn speed(&self, t: P::Scalar) -> Option<P::Scalar>
     where
         P: PointNorm,
@@ -225,7 +229,8 @@ where
     /// Return the sum of segment lengths using adaptive Gauss-Legendre quadrature.
     ///
     /// Empty paths have length zero. Gaps between segments do not add length.
-    /// The positive finite `accuracy` is an absolute tolerance shared across segments.
+    /// `accuracy` must be finite and positive, in coordinate units.
+    /// Divide this tolerance among the segments.
     pub fn arclen(&self, accuracy: P::Scalar) -> Result<P::Scalar, ArcLengthError>
     where
         P: PointNorm,
@@ -236,7 +241,7 @@ where
     }
 
     /// Integrate length over `start..end` in the normalized path domain `[0, 1]`.
-    /// Gaps do not contribute length; an empty path returns zero.
+    /// Gaps add no length. An empty path returns zero.
     pub fn arclen_between(
         &self,
         start: P::Scalar,
@@ -271,8 +276,8 @@ where
         }
     }
 
-    /// Approximate length using `segments` lines per curve (per knot span for B-splines).
-    /// Disconnected pieces contribute only their own lengths.
+    /// Approximate length with `segments` straight lines per path segment.
+    /// Gaps between segments add no length.
     pub fn arclen_polyline(&self, segments: usize) -> P::Scalar
     where
         P: PointNorm,
@@ -284,8 +289,8 @@ where
     }
 
     /// Return a path parameter at length `s`, clamped to the endpoints.
-    /// Returns `Ok(None)` for an empty path. At a discontinuity the returned
-    /// representable parameter retains the selected segment's ownership.
+    /// Return `Ok(None)` for an empty path. At a jump, choose a representable
+    /// parameter that evaluates to the selected segment.
     pub fn t_at_length(
         &self,
         s: P::Scalar,

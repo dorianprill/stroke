@@ -1,3 +1,6 @@
+//! Print position, unit tangent and curvature at six parameters on a cubic curve.
+//! Each ASCII arrow shows the principal normal's direction at that sample.
+
 use stroke::{ArrayPoint, Bezier};
 
 fn main() {

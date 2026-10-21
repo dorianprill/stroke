@@ -1,10 +1,10 @@
-//! Scaled differential geometry, independent of the native parameter's units.
+//! Tangents, normals and curvature with scaled derivative arithmetic.
 
 use crate::{Point, PointNorm};
 use num_traits::{Float, NumCast, One, Zero};
 
-/// Differences are evaluated before degree/scale factors are restored. This
-/// keeps directions and curvature usable when the derivative itself overflows.
+/// Compute control-point differences before restoring degree and scale factors.
+/// Directions and curvature can then remain finite when the derivative overflows.
 pub(crate) struct Differential<P: Point> {
     velocity: P,
     acceleration: P,
@@ -63,8 +63,9 @@ impl<P: PointNorm> Differential<P> {
         }
         let v = crate::numeric::divide(self.velocity, vscale);
         let a = crate::numeric::divide(self.acceleration, ascale);
-        // The norm of the exterior product avoids subtracting nearly equal
-        // Gram products. This costs O(DIM^2), with no dimension-specific types.
+        // Accumulate the 2x2 determinants with hypot to get the exterior-product
+        // norm. This avoids cancellation between nearly equal Gram products
+        // and works in any dimension, with O(DIM^2) work.
         let mut wedge = zero;
         for i in 0..P::DIM {
             for j in i + 1..P::DIM {
@@ -88,7 +89,7 @@ impl<P: PointNorm> Differential<P> {
         }
         let direction = crate::numeric::divide(self.velocity, vscale);
         let a = crate::numeric::divide(self.acceleration, ascale);
-        // The wedge detects exact collinearity without a squared-norm cutoff.
+        // A zero exterior product means the vectors are collinear.
         if (0..P::DIM).all(|i| {
             (i + 1..P::DIM)
                 .all(|j| difference_of_products(direction[i], a[j], direction[j], a[i]) == zero)

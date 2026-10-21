@@ -1,4 +1,4 @@
-//! Shared arc-length integration support.
+//! Adaptive Gauss-Legendre integration and inverse arc-length lookup.
 
 use core::fmt;
 
@@ -16,9 +16,9 @@ pub enum ArcLengthError {
     InvalidParameter,
     /// Curve arithmetic produced a non-finite speed or integral.
     NonFiniteComputation,
-    /// Adaptive subdivision exhausted its bounded work budget.
+    /// Subdivision reached its work limit before meeting the error estimate.
     FailedToConverge,
-    /// Evaluation unexpectedly failed inside a curve's valid domain.
+    /// A curve evaluation failed within the requested parameter range.
     CurveEvaluationFailed,
 }
 

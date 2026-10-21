@@ -1,4 +1,4 @@
-//! Shared Euclidean distance and heuristic sampled/local-refinement queries.
+//! Euclidean distances and nearest-point estimates from sampling and local search.
 
 use crate::PointNorm;
 use num_traits::{Float, NumCast, Zero};
@@ -24,9 +24,9 @@ pub(crate) fn is_a_point<P: PointNorm>(points: &[P], tolerance: P::Scalar) -> bo
     })
 }
 
-/// Stable coordinate-wise norm without squaring large or tiny differences.
-/// Infinite results represent distances outside the scalar range; non-finite
-/// input points produce NaN rather than being hidden by minimum operations.
+/// Compute Euclidean distance with repeated `hypot` calls.
+/// Return infinity for a distance outside the scalar range, or NaN if either
+/// point has a non-finite coordinate.
 pub(crate) fn between<P: PointNorm>(a: P, b: P) -> P::Scalar {
     if !a.is_finite() || !b.is_finite() {
         return P::Scalar::nan();
@@ -38,9 +38,9 @@ pub(crate) fn between<P: PointNorm>(a: P, b: P) -> P::Scalar {
     distance
 }
 
-/// Preserve the best candidate throughout the existing sampled/ternary search.
-/// The caller maps the unit parameter to its own domain. This remains a local
-/// heuristic, not a guaranteed global or accuracy-controlled nearest query.
+/// Sample the unit interval, then use ternary search near the closest sample.
+/// Retain the best distance found. The caller maps the unit parameter to its
+/// curve's domain. This estimate has no global-minimum or error guarantee.
 pub(crate) fn approximate<P: PointNorm, E>(
     point: P,
     segments: usize,

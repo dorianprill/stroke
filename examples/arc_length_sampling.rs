@@ -1,3 +1,6 @@
+//! Place six samples at equal arc-length intervals along a cubic Bezier curve.
+//! The printed gaps are straight-line distances, which can differ as the curve bends.
+
 use stroke::{ArrayPoint, Bezier, PointNorm};
 
 fn main() {

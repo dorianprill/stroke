@@ -1,5 +1,6 @@
-//! CAD/GIS-style candidate filtering with axis-aligned boxes.
-//! Box overlap is only a broad-phase test, not proof of curve intersection.
+//! Filter curve candidates by overlap with rectangular regions.
+//! Compare the control box with the tighter curve box, then bound a trimmed curve.
+//! Overlapping boxes still need a separate curve-intersection test.
 
 use stroke::{ArrayPoint, BoundingBox, QuadraticBezier};
 

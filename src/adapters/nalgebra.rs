@@ -1,4 +1,4 @@
-//! Nalgebra adapter implementations.
+//! Use nalgebra vectors as curve points.
 //!
 //! Enable this adapter with the `nalgebra` feature to use `nalgebra::SVector<T, D>`
 //! as a `Point`. Add `nalgebra` as a direct dependency to construct the vectors
@@ -19,8 +19,8 @@
 //! # let _ = mid;
 //! ```
 //!
-//! The scalar type must satisfy `nalgebra::RealField` and `num_traits::Float`
-//! (e.g. `f32` or `f64`).
+//! The scalar type must implement `nalgebra::RealField` and `num_traits::Float`,
+//! as `f32` and `f64` do.
 
 use nalgebra::{RealField, SVector};
 use num_traits::Float;

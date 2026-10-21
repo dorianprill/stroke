@@ -1,4 +1,4 @@
-//! Consumer-facing tests: public imports, trait bounds, and cross-representation behavior.
+//! Check public imports, required traits and equivalent curve representations.
 
 use stroke::{
     ArcLengthError, ArrayPoint, BSpline, BSplineError, BSplinePath, Bezier, BezierPath,
@@ -9,8 +9,8 @@ use stroke::{
 type P = ArrayPoint<f64, 2>;
 type S = ArrayPoint<f64, 1>;
 
-// No Default, Debug, component indexing, or PartialEq: evaluation conveniences
-// must remain usable with only the core Point abstraction.
+// This point implements only the arithmetic required by Point. Evaluation
+// must work without Default, Debug, coordinate indexing or PartialEq.
 #[derive(Clone, Copy)]
 struct Minimal(f64);
 impl core::ops::Add for Minimal {

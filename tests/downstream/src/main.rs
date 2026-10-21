@@ -2,7 +2,9 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-use stroke::{ArrayPoint, BSpline, Bezier, BezierPath, CubicBezier, RootFindingError};
+use stroke::{
+    ArrayPoint, BSpline, Bezier, BezierPath, CubicBezier, QuadraticBezier, RootFindingError,
+};
 
 fn main() -> Result<(), Box<dyn core::error::Error>> {
     type P = ArrayPoint<f64, 2>;
@@ -19,6 +21,27 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         [0.0; 4]
     );
     let cubic = CubicBezier::from(curve);
+    let quadratic = QuadraticBezier::new(points[0], points[1], points[2])?;
+    assert!(
+        cubic
+            .bounding_box_oriented_approx()?
+            .contains(&cubic.eval(0.5))
+    );
+    assert!(
+        cubic
+            .bounding_box_oriented_approx_with_budget(8)?
+            .contains(&cubic.eval(0.5))
+    );
+    assert!(
+        quadratic
+            .bounding_box_oriented_approx()?
+            .contains(&quadratic.eval(0.5))
+    );
+    assert!(
+        quadratic
+            .bounding_box_oriented_approx_with_budget(8)?
+            .contains(&quadratic.eval(0.5))
+    );
     let mut path = BezierPath::<P, 2>::new();
     path.try_push(cubic.into()).expect("available capacity");
     assert!(path.speed(0.5).unwrap().is_finite());
@@ -26,6 +49,11 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
     assert!(curve.bounding_box().intersects(&cubic.control_box()));
     let spline = BSpline::<P, 8, 4, 3>::new_clamped_uniform(points)?;
     assert!(spline.speed(0.5)?.is_finite());
+    assert!(
+        spline
+            .bounding_box_oriented_approx_with_budget(64)?
+            .contains(&spline.eval(0.5)?)
+    );
     let _: Option<RootFindingError> = None;
     #[cfg(feature = "nalgebra")]
     {
