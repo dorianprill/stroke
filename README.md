@@ -78,8 +78,7 @@ These are the main supported features. Some further utility methods are exposed 
 | Frenet-Serret frame / torsion | ☐ | ☐ | ☐ | ☐ |
 | bounding box | ☑ | ☑ | ☑ | ☑ |
 | tight axis-aligned bounding box and conservative control-point bounds | ☑ | ☑ | ☑ | ☑ |
-| approximate oriented bounding box (heuristic orientation search) | ☐ | ☐ | ☑ | ☑ |
-| Bézier span extraction (`bezier_spans`, without allocation) | — | — | — | ☑ |
+| approximate oriented bounding box (heuristic orientation search) | ☑ | ☑ | ☑ | ☑ |
 | basis functions (and derivatives) | ☑ | ☑ | ☑ | ☑ |
 
 Béziers use de Casteljau evaluation; B-splines use de Boor. Polyline arc length
@@ -166,9 +165,9 @@ resolution. `control_box()` bounds the controls and curve, usually with less wor
 `bounding_box_oriented_approx()` searches for a smaller box with rotated axes,
 using up to 256 full-curve trials. Its `_with_budget(n)` variant limits trials.
 Neither the runtime nor volume error is fixed by that budget. Larger budgets
-retain earlier improvements. The search has no guarantee of finding a minimum
-or a fixed-factor approximation. `diagnostics()` reports model work and error
-estimates. B-splines include every nonzero span and both limits at jumps.
+retain earlier improvements. The search may stop before reaching even a local
+minimum and has no fixed-factor approximation guarantee. `diagnostics()` reports
+model work and error estimates. B-splines include every nonzero span and both limits at jumps.
 Their stack storage grows with control count and degree.
 
 Clamped uniform B-splines pass through their endpoint controls. Interior controls

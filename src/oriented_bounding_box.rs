@@ -3,6 +3,7 @@
 //! A box's frame is its set of perpendicular unit axes. The fitter searches
 //! for a frame with small box volume, using curve subdivision and plane rotations.
 //! It uses fixed stack storage and needs no PCA or eigensolver.
+//! This is a heuristic local search; it guarantees neither a local nor a global minimum.
 //!
 //! # Method and references
 //!

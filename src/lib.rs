@@ -22,10 +22,10 @@
 //! budgets return [`ArcLengthError`].
 //!
 //! `bounding_box()` bounds the curve along the coordinate axes. `control_box()`
-//! bounds its control points and may be larger. Generic Beziers and B-splines
+//! bounds its control points and may be larger. Beziers and B-splines
 //! also have approximate oriented boxes through
 //! [`Bezier::bounding_box_oriented_approx`] and [`BSpline::bounding_box_oriented_approx`].
-//! Their rotation search has no guarantee of finding a minimum-volume box.
+//! Their heuristic rotation search guarantees neither a local nor a global minimum.
 //!
 //! # Examples
 //!

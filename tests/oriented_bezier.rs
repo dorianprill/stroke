@@ -6,7 +6,78 @@ mod reference;
 
 use core::array;
 use reference::{dot, identity, random, rotated};
-use stroke::{ArrayPoint, Bezier, OrientedBoundingBoxError, Point};
+use stroke::{
+    ArrayPoint, Bezier, CubicBezier, OrientedBoundingBoxError, Point, PointIndex, QuadraticBezier,
+};
+
+fn check_specialized<P: PointIndex>(controls: [P; 4])
+where
+    P::Scalar: core::fmt::Debug,
+    [(); P::DIM]: Sized,
+{
+    let generic_quadratic = Bezier::new([controls[0], controls[1], controls[2]]).unwrap();
+    let generic_cubic = Bezier::new(controls).unwrap();
+    let quadratic = QuadraticBezier::from(generic_quadratic);
+    let cubic = CubicBezier::from(generic_cubic);
+    assert_eq!(
+        quadratic.bounding_box_oriented_approx(),
+        generic_quadratic.bounding_box_oriented_approx()
+    );
+    assert_eq!(
+        cubic.bounding_box_oriented_approx(),
+        generic_cubic.bounding_box_oriented_approx()
+    );
+    for budget in [0, 1, 8, 64, 256] {
+        assert_eq!(
+            quadratic.bounding_box_oriented_approx_with_budget(budget),
+            generic_quadratic.bounding_box_oriented_approx_with_budget(budget)
+        );
+        assert_eq!(
+            cubic.bounding_box_oriented_approx_with_budget(budget),
+            generic_cubic.bounding_box_oriented_approx_with_budget(budget)
+        );
+    }
+}
+
+#[test]
+fn specialized_beziers_match_generic_boxes_and_diagnostics() {
+    check_specialized([[0.0_f32, 0.0], [1.0, 3.0], [4.0, -2.0], [5.0, 1.0]].map(ArrayPoint::from));
+    check_specialized(
+        [
+            [0.0_f64; 3],
+            [1.0, 3.0, 2.0],
+            [4.0, -2.0, 1.0],
+            [5.0, 1.0, 4.0],
+        ]
+        .map(ArrayPoint::from),
+    );
+    check_specialized(
+        [
+            [0.0_f64; 4],
+            [1.0, 3.0, 2.0, 4.0],
+            [4.0, -2.0, 1.0, -1.0],
+            [5.0, 1.0, 4.0, 2.0],
+        ]
+        .map(ArrayPoint::from),
+    );
+    check_specialized([[-2.0_f64], [3.0], [1.0], [0.0]].map(ArrayPoint::from));
+    check_specialized([ArrayPoint::from([2.0_f64, -3.0, 4.0]); 4]);
+}
+
+#[test]
+fn specialized_beziers_forward_generic_errors() {
+    check_specialized([ArrayPoint::<f64, 0>::from([]); 4]);
+    let sub = f64::from_bits(1);
+    let controls =
+        [[1e300_f64, 0.0], [1e300, sub], [1e300, 0.0], [1e300, sub]].map(ArrayPoint::from);
+    assert_eq!(
+        Bezier::new(controls)
+            .unwrap()
+            .bounding_box_oriented_approx(),
+        Err(OrientedBoundingBoxError::NonFiniteComputation)
+    );
+    check_specialized(controls);
+}
 
 fn check_faces<const D: usize, const N: usize>(controls: [[f64; D]; N])
 where
@@ -308,4 +379,5 @@ fn nalgebra_points_use_the_same_generic_search() {
     for i in 0..=128 {
         assert!(fit.contains(&curve.eval(i as f64 / 128.0)));
     }
+    check_specialized(curve.into_control_points());
 }

@@ -508,6 +508,36 @@ where
         BoundingBox::from_axes_unchecked(bounds)
     }
 
+    /// Fit an oriented box around the curve on `[0, 1]`, testing up to 256 orientations.
+    ///
+    /// Delegates to the generic Bézier search without degree-specific optimizations.
+    /// The heuristic search guarantees neither a local nor a global minimum.
+    /// See [`Bezier::bounding_box_oriented_approx`](crate::Bezier::bounding_box_oriented_approx)
+    /// for numerical limits and errors.
+    pub fn bounding_box_oriented_approx(
+        &self,
+    ) -> Result<crate::OrientedBoundingBox<P::Scalar, { P::DIM }>, crate::OrientedBoundingBoxError>
+    where
+        P: PointIndex,
+    {
+        crate::Bezier::from(*self).bounding_box_oriented_approx()
+    }
+
+    /// Fit an oriented box with at most `max_evaluations` full-curve trials.
+    ///
+    /// Delegates to the generic Bézier search. See
+    /// [`Bezier::bounding_box_oriented_approx_with_budget`](crate::Bezier::bounding_box_oriented_approx_with_budget)
+    /// for work limits, stack usage and errors. The budget does not bound volume error.
+    pub fn bounding_box_oriented_approx_with_budget(
+        &self,
+        max_evaluations: usize,
+    ) -> Result<crate::OrientedBoundingBox<P::Scalar, { P::DIM }>, crate::OrientedBoundingBoxError>
+    where
+        P: PointIndex,
+    {
+        crate::Bezier::from(*self).bounding_box_oriented_approx_with_budget(max_evaluations)
+    }
+
     /// Return a conservative box around the control points.
     pub fn control_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
     where
