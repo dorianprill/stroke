@@ -63,26 +63,27 @@ nalgebra = { version = "0.34", default-features = false, features = ["libm"] }
 
 These are the main supported features. Some further utility methods are exposed where useful.
 
-☑ implemented; ☐ not implemented; — not listed for this curve type.
+☑ implemented; ☐ not implemented; — not applicable. Checkmarks refer to public APIs.
 
 | Feature | Quadratic Bézier | Cubic Bézier | Generic Bézier | Generic B-Splines |
 |---|:---:|:---:|:---:|:---:|
-| evaluation (De Casteljau) | ☑ | ☑ | ☑ | — |
-| split | ☑ | ☑ | ☑ | — |
+| evaluation | ☑ | ☑ | ☑ | ☑ |
+| split | ☑ | ☑ | ☑ | ☐ |
 | derivative | ☑ | ☑ | ☑ | ☑ |
 | tangent (unit) | ☑ | ☑ | ☑ | ☑ |
 | normal (principal) | ☑ | ☑ | ☑ | ☑ |
 | curvature (magnitude) | ☑ | ☑ | ☑ | ☑ |
-| arc length (linear approx.) | ☑ | ☑ | ☑ | — |
+| arc length (polyline approximation) | ☑ | ☑ | ☑ | ☑ |
 | arc length (adaptive Gauss-Legendre) | ☑ | ☑ | ☑ | ☑ |
 | Frenet-Serret frame / torsion | ☐ | ☐ | ☐ | ☐ |
 | bounding box | ☑ | ☑ | ☑ | ☑ |
 | tight axis-aligned bounding box and conservative control-point bounds | ☑ | ☑ | ☑ | ☑ |
-| approximate oriented bounding box (heuristic orientation search) | — | — | ☑ | ☑ |
-| evaluation (De Boor) | — | — | — | ☑ |
+| approximate oriented bounding box (heuristic orientation search) | ☐ | ☐ | ☑ | ☑ |
 | Bézier span extraction (`bezier_spans`, without allocation) | — | — | — | ☑ |
-| basis functions (and derivatives) | — | — | — | ☑ |
-| arc length (polyline approximation) | — | — | — | ☑ |
+| basis functions (and derivatives) | ☐ | ☐ | ☐ | ☑ |
+
+Béziers use de Casteljau evaluation; B-splines use de Boor. Polyline arc length
+uses `segments` intervals per Bézier curve or per nonzero B-spline knot span.
 
 ## General use
 
