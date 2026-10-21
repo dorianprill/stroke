@@ -1,3 +1,6 @@
+//! Evaluate a quadratic curve with nalgebra vectors and print its axis-aligned box.
+//! Run with `cargo run --example nalgebra_basic --features nalgebra`.
+
 #[cfg(feature = "nalgebra")]
 fn main() {
     use nalgebra::SVector;

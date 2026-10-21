@@ -6,13 +6,13 @@ use crate::error::{CurveConstructionError, validate_control_points};
 use crate::numeric::is_negligible;
 use num_traits::{Float, NumCast};
 
-/// `LineSegment` defined by a start and an endpoint, evaluable anywhere inbetween using interpolation parameter t: \[0, 1\] in `eval()`.
+/// A line segment between `start` and `end`.
 ///
-/// A `LineSegment` is equal to a linear Bezier curve, which is why there is no
-/// specialized type for that case.
+/// `eval(t)` interpolates between the endpoints for `t` in `[0, 1]`.
+/// This is also a degree-one Bezier curve.
 ///
-/// Methods that need component access or norms add `PointIndex`/`PointNorm`
-/// bounds as required.
+/// Bounding boxes require `PointIndex`. Distance and differential geometry
+/// methods require `PointNorm`.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct LineSegment<P> {
     pub(crate) start: P,
@@ -39,19 +39,19 @@ where
         [&self.start, &self.end].into_iter()
     }
 
-    /// Consume the curve, returning its control-point array.
+    /// Return the control-point array, consuming the curve.
     pub fn into_control_points(self) -> [P; 2] {
         [self.start, self.end]
     }
 
-    /// Replace all control points atomically, leaving this curve unchanged on error.
+    /// Replace all control points. Leave the curve unchanged if validation fails.
     pub fn set_control_points(&mut self, points: [P; 2]) -> Result<(), CurveConstructionError> {
         *self = Self::new(points[0], points[1])?;
         Ok(())
     }
 
-    /// Map control points and validate the result without modifying this curve.
-    /// This maps the entire curve geometrically only when `map` is affine.
+    /// Return a curve with mapped control points. Reject non-finite results.
+    /// Affine maps, such as translations, also map every point of the curve.
     pub fn try_map_control_points(
         &self,
         map: impl FnMut(P) -> P,
@@ -60,12 +60,12 @@ where
         Self::new(points[0], points[1])
     }
 
-    /// Evaluate the derivative with respect to the unit-domain parameter.
+    /// Evaluate the derivative with respect to `t` in `[0, 1]`.
     pub fn derivative_at(&self, t: P::Scalar) -> P {
         crate::Bezier::from(*self).derivative_at(t)
     }
 
-    /// Return the derivative magnitude with respect to the unit-domain parameter.
+    /// Return the speed, the magnitude of the derivative with respect to `t`.
     pub fn speed(&self, t: P::Scalar) -> P::Scalar
     where
         P: PointNorm,
@@ -73,8 +73,8 @@ where
         self.derivative_at(t).norm()
     }
 
-    /// Extract a finite ordered range in `[0, 1]`, reparameterized to `[0, 1]`.
-    /// Equal range endpoints yield a constant curve.
+    /// Extract `start..end` and give the result a new parameter range `[0, 1]`.
+    /// Requires finite `0 <= start <= end <= 1`. Equal endpoints give a constant curve.
     pub fn subcurve(
         &self,
         range: core::ops::Range<P::Scalar>,
@@ -122,7 +122,6 @@ where
 
     /// Split the segment at `t` into two sub-segments.
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
-        // compute the split point by interpolation
         let ctrl_ab = self.eval(t);
 
         (
@@ -156,9 +155,9 @@ where
             return zero;
         }
 
-        // Center the geometry before projection rather than reconstructing a
-        // normalized global t: tiny displacements on a huge line can disappear
-        // when added to t=0.5. High/low centers retain midpoint rounding errors.
+        // Project displacements from the midpoint. On a huge segment, a small
+        // offset can disappear if expressed as t=0.5 + offset. The high/low
+        // midpoint pair preserves the rounding error in the center.
         let offset = |axis, scaled| {
             let (center, tail) = crate::numeric::midpoint_parts(self.start[axis], self.end[axis]);
             if scaled {
@@ -182,7 +181,7 @@ where
             direction_scale = direction_scale.max(direction(axis).abs());
             offset_scale = offset_scale.max(offset(axis, offset_half).abs());
         }
-        // These are structural zero checks, not scale-dependent tolerances.
+        // Compare with exact zero to preserve tiny nonzero segments.
         if direction_scale == zero {
             return start_distance;
         }
@@ -207,9 +206,9 @@ where
             squared_direction = squared_direction + d * d;
         }
         dot = dot + correction;
-        // Twice the absolute displacement from the midpoint, in segment units.
-        // Restore scales only after the dot products. Neither very large ratios
-        // nor tiny products must be rounded to inf/zero before they cancel.
+        // Compute twice the midpoint displacement in segment units.
+        // Restore the scales after the dot products so their factors do not
+        // overflow or underflow before cancellation.
         let shift = if offset_half { 1 } else { 0 } - if direction_half { 1 } else { 0 };
         let position = crate::numeric::scaled_product_ratio(
             &[offset_scale, dot.abs()],
@@ -285,7 +284,7 @@ where
         None
     }
 
-    /// Return the line's length; the subdivision count is accepted for API parity.
+    /// Return the line's length. The unused subdivision count matches curved types.
     pub fn arclen_polyline(&self, _segments: usize) -> P::Scalar
     where
         P: PointNorm,
@@ -295,7 +294,8 @@ where
 
     /// Return the exact arc length of this segment.
     ///
-    /// `accuracy` is accepted for API parity with curved segments.
+    /// `accuracy` must be finite and positive, as for curved segments.
+    /// A line needs no numerical integration.
     pub fn arclen(&self, accuracy: P::Scalar) -> Result<P::Scalar, ArcLengthError>
     where
         P: PointNorm,
@@ -397,7 +397,6 @@ where
             <P::Scalar as NumCast>::from(0.0).unwrap(),
         ); P::DIM];
 
-        // find min/max for each axis
         for i in 0..P::DIM {
             if self.start[i] < self.end[i] {
                 bounds[i] = (self.start[i], self.end[i]);
@@ -443,8 +442,7 @@ mod tests {
         );
     }
 
-    /// Check whether a line segment interpolation p + t*(q-p) at t=0.5
-    /// yields equal distance to the start (p)/end (q) points (up to machine accuracy).
+    /// Check that the midpoint is equidistant from both endpoints.
     #[test]
     fn line_segment_interpolation() {
         let line = LineSegment {
@@ -461,10 +459,9 @@ mod tests {
         );
     }
 
-    /// Check whether classic pythagorean equality holds for sides 3, 4 with hypothenuse 5
+    /// Check distances using a 3-4-5 right triangle.
     #[test]
     fn line_segment_distance_to_point() {
-        // 3D cause why not
         let line = LineSegment {
             start: ArrayPoint::new([0f64, 1f64, 0f64]),
             end: ArrayPoint::new([3f64, 1f64, 0f64]),

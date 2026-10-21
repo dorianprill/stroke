@@ -1,27 +1,34 @@
 #![no_std]
 #![forbid(unsafe_code)]
 #![allow(incomplete_features)]
-// this is needed to use expressions in const generics such as N-1 (see curve derivatives)
+// Curve derivatives use array lengths such as N-1.
 #![feature(generic_const_exprs)]
 
 //! A const-generic, no-std spline library for Bezier and B-spline curves.
 //!
-//! The core abstraction is the [`Point`] trait, which models
-//! a fixed-dimension vector space element. Optional capability traits such as
-//! [`PointIndex`], [`PointDot`], and [`PointNorm`] enable component access and
-//! geometric helpers when required.
+//! Curves use the [`Point`] trait for addition, subtraction and scalar
+//! multiplication in a fixed number of dimensions. Use [`ArrayPoint`] for
+//! array-backed coordinates, or implement [`Point`] for your own type.
+//! Coordinate indexing through [`PointIndex`] adds bounds queries.
+//! [`PointDot`] and [`PointNorm`] add dot products and Euclidean lengths.
 //!
-//! `Point::Scalar` must implement [`num_traits::Float`], so the library currently
-//! targets floating-point numeric representations such as `f32` and `f64`.
-//! Consumers using const-expression-based APIs, such as bounding boxes, should
-//! enable `#![feature(generic_const_exprs)]` at their crate root on nightly.
+//! `Point::Scalar` must implement [`num_traits::Float`], as `f32` and `f64` do.
+//! Nightly Rust is required. For methods with const-expression return types,
+//! such as bounding boxes, also enable `#![feature(generic_const_exprs)]`
+//! in your crate root.
 //!
-//! Curves and paths expose accuracy-controlled Gauss-Legendre arc length and
-//! tight [`BoundingBox`] values. Their `control_box()` methods return the
-//! conservative box of the control points. Arc-length operations return
-//! [`ArcLengthError`] for invalid input, non-finite arithmetic or failure to converge.
+//! Arc length uses adaptive Gauss-Legendre integration with a requested error
+//! tolerance. Invalid inputs, non-finite arithmetic and exhausted subdivision
+//! budgets return [`ArcLengthError`].
+//!
+//! `bounding_box()` bounds the curve along the coordinate axes. `control_box()`
+//! bounds its control points and may be larger. Generic Beziers and B-splines
+//! also have approximate oriented boxes through
+//! [`Bezier::bounding_box_oriented_approx`] and [`BSpline::bounding_box_oriented_approx`].
+//! Their rotation search has no guarantee of finding a minimum-volume box.
 //!
 //! # Examples
+//!
 //! ```rust
 //! use stroke::{Bezier, ArrayPoint};
 //!
@@ -36,24 +43,25 @@
 //! ```
 //!
 //! # Feature flags
-//! - `nalgebra`: implements `Point` for `nalgebra::SVector<T, D>` (add `nalgebra` as a dependency).
+//!
+//! - `nalgebra`: implements `Point` for `nalgebra::SVector<T, D>`. Add `nalgebra`
+//!   as a dependency in your crate to construct its vectors.
 
 use tinyvec::ArrayVec;
 
-// abstraction types
 pub mod bezier_segment;
 pub mod bounding_box;
-// specialized types
+pub mod oriented_bounding_box;
+
 pub mod cubic_bezier;
 pub mod error;
 pub mod line;
 pub mod quadratic_bezier;
-// generic types
+
 pub mod array_point;
 pub mod bezier;
 pub mod bspline;
 
-// Traits
 pub mod bspline_path;
 pub mod find_root;
 pub mod path;
@@ -79,7 +87,6 @@ mod geometry_regressions;
 #[cfg(feature = "nalgebra")]
 mod adapters;
 
-// export common types at crate root
 pub use arc_length::ArcLengthError;
 pub use array_point::ArrayPoint;
 pub use bezier::Bezier;
@@ -91,6 +98,9 @@ pub use cubic_bezier::CubicBezier;
 pub use error::{CurveConstructionError, CurveParameterError};
 pub use find_root::FindRoot;
 pub use line::LineSegment;
+pub use oriented_bounding_box::{
+    OrientedBoundingBox, OrientedBoundingBoxDiagnostics, OrientedBoundingBoxError,
+};
 pub use path::BezierPath;
 pub use point::Point;
 pub use point::{PointDot, PointIndex, PointNorm};

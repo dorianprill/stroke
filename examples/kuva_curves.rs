@@ -1,10 +1,11 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-//! Render four const-generic curves with Kuva's dependency-light SVG backend.
+//! Plot four curves with their control points and axis-aligned boxes using Kuva.
+//! Solid green boxes bound the curves. Dashed gray boxes bound the controls.
 //!
-//! Run `cargo run --example kuva_curves` to regenerate `curves.svg` in the
-//! current directory. No system font libraries or font installation are needed.
+//! Run `cargo run --example kuva_curves` to write `curves.svg` in the current
+//! directory. No system font libraries are needed.
 
 use kuva::prelude::{
     Figure, Layout, LegendEntry, LegendPosition, LegendShape, LinePlot, MarkerShape, Plot,
@@ -20,10 +21,22 @@ const STEPS: usize = 1000;
 const CURVE_COLOR: &str = "#d44336";
 const CONTROL_COLOR: &str = "#3267b1";
 const BOUNDS_COLOR: &str = "#26945d";
+const CONTROL_BOUNDS_COLOR: &str = "#777777";
 const KNOT_COLOR: &str = "#bc6b00";
 
 fn coordinates(point: Point) -> (f64, f64) {
     (point[0], point[1])
+}
+
+fn box_plot(bounds: Bounds) -> LinePlot {
+    let [(xmin, xmax), (ymin, ymax)] = bounds;
+    LinePlot::new().with_data([
+        (xmin, ymin),
+        (xmin, ymax),
+        (xmax, ymax),
+        (xmax, ymin),
+        (xmin, ymin),
+    ])
 }
 
 fn panel(
@@ -32,29 +45,41 @@ fn panel(
     control_points: &[Point],
     samples: Vec<Point>,
     bounds: Bounds,
+    control_bounds: Bounds,
 ) -> (Vec<Plot>, Layout) {
-    let [(xmin, xmax), (ymin, ymax)] = bounds;
-    // Allow floating-point roundoff when checking sampled curve containment.
+    // Allow a few representable steps of roundoff at these coordinate scales.
+    let tolerance = 128.0
+        * f64::EPSILON
+        * control_bounds.iter().fold(1.0_f64, |scale, &(lo, hi)| {
+            scale.max(lo.abs()).max(hi.abs())
+        });
+    for axis in 0..2 {
+        assert!(bounds[axis].0 >= control_bounds[axis].0 - tolerance);
+        assert!(bounds[axis].1 <= control_bounds[axis].1 + tolerance);
+        for point in control_points {
+            assert!(point[axis] >= control_bounds[axis].0 - tolerance);
+            assert!(point[axis] <= control_bounds[axis].1 + tolerance);
+        }
+    }
     for point in &samples {
         for axis in 0..2 {
             assert!(point[axis].is_finite());
-            assert!(point[axis] >= bounds[axis].0 - 1e-5);
-            assert!(point[axis] <= bounds[axis].1 + 1e-5);
+            assert!(point[axis] >= bounds[axis].0 - tolerance);
+            assert!(point[axis] <= bounds[axis].1 + tolerance);
         }
     }
 
     let plots: Vec<Plot> = vec![
-        LinePlot::new()
-            .with_data([
-                (xmin, ymin),
-                (xmin, ymax),
-                (xmax, ymax),
-                (xmax, ymin),
-                (xmin, ymin),
-            ])
-            .with_color(BOUNDS_COLOR)
+        box_plot(control_bounds)
+            .with_color(CONTROL_BOUNDS_COLOR)
             .with_stroke_width(1.5)
-            .with_legend("Curve bounding box")
+            .with_dashed()
+            .with_legend("Control box · control_box()")
+            .into(),
+        box_plot(bounds)
+            .with_color(BOUNDS_COLOR)
+            .with_stroke_width(2.0)
+            .with_legend("Tight box · bounding_box()")
             .into(),
         LinePlot::new()
             .with_data(control_points.iter().copied().map(coordinates))
@@ -143,7 +168,6 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         Point::new([4.0, 0.0]),
     ])
     .map_err(|error| error.to_string())?;
-    // Preserve the control points from the original README figure.
     let cubic = Bezier::new([
         Point::new([0.0, 1.77]),
         Point::new([1.1, -1.0]),
@@ -165,8 +189,8 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         ],
     )
     .map_err(|error| error.to_string())?;
-    // Strictly increasing knots make the spline unclamped: the curve need not
-    // pass through its first or last control point.
+    // Strictly increasing knots leave the spline unclamped. Its endpoints
+    // need not coincide with the first or last control point.
     let spline = BSpline::<Point, 10, 6, 3>::new(
         [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
         [
@@ -193,6 +217,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         &clamped.control_points().copied().collect::<Vec<_>>(),
         clamped_samples,
         clamped.bounding_box().into_axes(),
+        clamped.control_box().into_axes(),
     );
     let clamped_layout = with_knot_legend(clamped_layout, clamped.knots().copied(), (start, end))
         .with_subtitle("Degree 5 · clamped");
@@ -211,6 +236,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         &spline.control_points().copied().collect::<Vec<_>>(),
         spline_samples,
         spline.bounding_box().into_axes(),
+        spline.control_box().into_axes(),
     );
     // Mark the actual endpoints separately from the blue control points.
     spline_plots.push(
@@ -258,6 +284,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
                 .map(|i| quadratic.eval(i as f64 / STEPS as f64))
                 .collect(),
             quadratic.bounding_box().into_axes(),
+            quadratic.control_box().into_axes(),
         ),
         panel(
             "Bezier<ArrayPoint<f64, 2>, 4>",
@@ -267,6 +294,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
                 .map(|i| cubic.eval(i as f64 / STEPS as f64))
                 .collect(),
             cubic.bounding_box().into_axes(),
+            cubic.control_box().into_axes(),
         ),
         (clamped_plots, clamped_layout),
         (spline_plots, spline_layout),
@@ -290,4 +318,76 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         STEPS + 1
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quadratic_panel_plots_distinct_tight_and_control_boxes() {
+        let curve = Bezier::new([
+            Point::new([0.0, 0.0]),
+            Point::new([2.0, 4.0]),
+            Point::new([4.0, 0.0]),
+        ])
+        .unwrap();
+        let tight = curve.bounding_box().into_axes();
+        let control = curve.control_box().into_axes();
+        assert_eq!(tight, [(0.0, 4.0), (0.0, 2.0)]);
+        assert_eq!(control, [(0.0, 4.0), (0.0, 4.0)]);
+        let (plots, _) = panel(
+            "Quadratic",
+            2,
+            &curve.into_control_points(),
+            (0..=STEPS)
+                .map(|i| curve.eval(i as f64 / STEPS as f64))
+                .collect(),
+            tight,
+            control,
+        );
+        for (plot, bounds, color, dashed, label) in [
+            (
+                &plots[0],
+                control,
+                CONTROL_BOUNDS_COLOR,
+                true,
+                "Control box · control_box()",
+            ),
+            (
+                &plots[1],
+                tight,
+                BOUNDS_COLOR,
+                false,
+                "Tight box · bounding_box()",
+            ),
+        ] {
+            let Plot::Line(line) = plot else {
+                panic!("expected a box outline");
+            };
+            let expected = box_plot(bounds);
+            assert_eq!(
+                line.data.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>(),
+                expected.data.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>()
+            );
+            assert_eq!(line.color, color);
+            assert_eq!(line.line_style.dasharray().is_some(), dashed);
+            assert_eq!(line.legend_label.as_deref(), Some(label));
+        }
+    }
+
+    #[test]
+    fn box_outline_preserves_degenerate_bounds() {
+        let line = box_plot([(2.0, 2.0), (-1.0, 3.0)]);
+        assert_eq!(
+            line.data.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>(),
+            [
+                (2.0, -1.0),
+                (2.0, 3.0),
+                (2.0, 3.0),
+                (2.0, -1.0),
+                (2.0, -1.0)
+            ]
+        );
+    }
 }

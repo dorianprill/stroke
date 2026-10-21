@@ -4,7 +4,7 @@ use core::fmt;
 
 use crate::Point;
 
-/// Errors returned when constructing a Bezier curve or line segment.
+/// Invalid control points supplied to a Bezier or line constructor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CurveConstructionError {
     /// A generic Bezier curve must contain at least one control point.

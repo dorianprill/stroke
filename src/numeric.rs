@@ -77,9 +77,9 @@ impl<T: Float> Scaled<T> {
     }
 }
 
-/// Restore a short product/quotient without overflowing or underflowing its
-/// scale factors first. `Float::integer_decode` specifies a binary decomposition;
-/// this uses that trait contract, not an IEEE layout or a concrete scalar type.
+/// Evaluate a short product or quotient with separate binary exponents.
+/// This keeps scale factors from overflowing or underflowing before the result
+/// is known. Use `Float::integer_decode` to avoid assumptions about bit layout.
 pub(crate) fn scaled_product_ratio<T: Float>(
     numerators: &[T],
     denominators: &[T],
@@ -120,14 +120,14 @@ pub(crate) fn scaled_product_ratio<T: Float>(
             }
         }
     }
-    // Splitting the exponent also handles results near the subnormal and
-    // overflow limits without prematurely rounding the power of two to 0/inf.
+    // Split the exponent so the power of two does not round to zero or infinity
+    // before multiplication.
     let first = exponent / 2;
     sign * ((fraction * two.powi(first)) * two.powi(exponent - first))
 }
 
-/// Midpoint as a high/low pair. Retaining the addition error avoids shifting a
-/// line by an ulp when its midpoint itself falls between representable values.
+/// Return a midpoint and its rounding error as a high/low pair.
+/// Keep the error when the exact midpoint lies between representable values.
 pub(crate) fn midpoint_parts<T: Float>(a: T, b: T) -> (T, T) {
     let half = T::one() / (T::one() + T::one());
     let sum = a + b;
@@ -277,9 +277,9 @@ fn roots_recursive<T: Float, const N: usize>(
     }
 }
 
-/// Return whether `value` is negligible relative to quantities with magnitude
-/// `scale`. This is intended for algebraic cancellation tests where both values
-/// have the same units, not for geometric distance comparisons.
+/// Test whether `value` is negligible relative to `scale`.
+/// Use this for algebraic cancellation between quantities with the same units.
+/// Geometric distance checks need a distance tolerance instead.
 pub(crate) fn is_negligible<T: Float>(value: T, scale: T) -> bool {
     if value == T::zero() {
         return true;

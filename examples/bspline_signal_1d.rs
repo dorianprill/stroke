@@ -1,3 +1,6 @@
+//! Fit a clamped cubic B-spline through eight scalar samples.
+//! Solve for the controls, check interpolation and print an ASCII plot.
+
 use stroke::{ArrayPoint, BSpline};
 
 const DEGREE: usize = 3;
@@ -13,17 +16,16 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         base + ripple
     });
 
-    // Interpolate the samples with a cubic B-spline.
-    // We solve a basis-function collocation system to recover control points that force the
-    // spline to pass through the sample values at uniform parameter steps.
+    // Solve for controls so the spline passes through each sample at equal
+    // parameter steps.
     let control = interpolate_cubic_uniform(&samples)?;
     let control_points: [ArrayPoint<f64, 1>; CONTROL_POINTS] =
         core::array::from_fn(|i| ArrayPoint::new([control[i]]));
-    // Use a clamped uniform knot vector so the spline starts/ends at the samples.
+    // Repeated endpoint knots make the spline interpolate the endpoint controls.
     let spline: BSpline<ArrayPoint<f64, 1>, KNOTS, CONTROL_POINTS, DEGREE> =
         BSpline::new_clamped_uniform(control_points)?;
 
-    // Verify the example actually interpolates every sample, not just the endpoints.
+    // Check the fitted value at every sample parameter.
     for (i, expected) in samples.iter().enumerate() {
         let t = i as f64 / (CONTROL_POINTS - 1) as f64;
         assert!((spline.eval(t)?[0] - expected).abs() < 1e-12);
@@ -63,7 +65,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         let row = value_to_row(value, min, max, height);
         grid[row][i] = '*';
     }
-    // Overlay controls at their Greville abscissae (not at uniform sample times).
+    // Plot control i at its Greville parameter, the mean of knots[i+1..=i+DEGREE].
     for (i, value) in control.iter().copied().enumerate() {
         let t = spline.knots().skip(i + 1).take(DEGREE).sum::<f64>() / DEGREE as f64;
         let col = ((t - kmin) / (kmax - kmin) * (width - 1) as f64).round() as usize;
@@ -90,9 +92,8 @@ fn value_to_row(value: f64, min: f64, max: f64, height: usize) -> usize {
     y.round().clamp(0.0, (height - 1) as f64) as usize
 }
 
-// Solve for control points P so the cubic B-spline interpolates the samples.
-// Build the actual basis matrix: the 1:4:1 cardinal-spline stencil does not
-// describe a clamped spline sampled at arbitrary uniform parameter steps.
+// Solve basis_matrix * controls = samples. Each row uses the basis values
+// at that sample's parameter. Endpoint clamping changes these values.
 fn interpolate_cubic_uniform(
     samples: &[f64; CONTROL_POINTS],
 ) -> Result<[f64; CONTROL_POINTS], Box<dyn core::error::Error>> {

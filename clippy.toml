@@ -1,5 +1,5 @@
-# Lint levels live in Cargo.toml; MSRV is inherited from package.rust-version.
+# Lint levels are in Cargo.toml. The minimum Rust version is package.rust-version.
 # Preserve the public generic API when Clippy suggests refactors.
 avoid-breaking-exported-api = true
-# Examples/tests should not silently require APIs newer than the declared MSRV.
+# Check that test and example APIs exist in the declared minimum Rust version.
 check-incompatible-msrv-in-tests = true

@@ -14,14 +14,14 @@ use num_traits::{Float, NumCast};
 const MAX_ROOT_DEPTH: usize = 64;
 const DEFAULT_DISTANCE_STEPS: usize = 64;
 
-/// General implementation of a Bezier curve of arbitrary degree (`N - 1`).
+/// A Bezier curve with `N` control points and degree `N - 1`.
 ///
-/// The curve is defined by its control points. Points on the curve can be
-/// evaluated with an interpolation parameter `t` in `[0, 1]` using `eval()`.
-/// Methods that need component access or norms add `PointIndex`/`PointNorm`
-/// bounds as required.
+/// Use `eval(t)` to evaluate the curve for `t` in `[0, 1]`.
+/// Bounding boxes require `PointIndex`. Distance and differential geometry
+/// methods require `PointNorm`.
 ///
 /// # Parameters
+///
 /// - `P`: point type implementing [`Point`].
 /// - `N`: number of control points.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -29,7 +29,7 @@ pub struct Bezier<P, const N: usize>
 where
     P: Point,
 {
-    /// Control points which define the curve and hence its degree
+    /// Control points in parameter order.
     pub(crate) control_points: [P; N],
 }
 
@@ -76,13 +76,13 @@ where
         self.control_points.iter()
     }
 
-    /// Consume the curve, returning its control-point array.
+    /// Return the control-point array, consuming the curve.
     pub fn into_control_points(self) -> [P; N] {
         self.control_points
     }
 
-    /// Replace all control points atomically, leaving the curve unchanged on error.
-    /// Mutable control-point iteration is deliberately unavailable:
+    /// Replace all control points. Leave the curve unchanged if validation fails.
+    /// Use this method to keep all coordinates finite. Mutable iteration is unavailable.
     /// ```compile_fail
     /// use stroke::{Bezier, ArrayPoint};
     /// let mut curve = Bezier::new([ArrayPoint::new([0.0_f64]), ArrayPoint::new([1.0])]).unwrap();
@@ -93,8 +93,8 @@ where
         Ok(())
     }
 
-    /// Map control points and validate the result without modifying this curve.
-    /// This maps the entire curve geometrically only when `map` is affine.
+    /// Return a curve with mapped control points. Reject non-finite results.
+    /// Affine maps, such as translations, also map every point of the curve.
     pub fn try_map_control_points(
         &self,
         map: impl FnMut(P) -> P,
@@ -120,12 +120,11 @@ where
         Bezier { control_points }
     }
 
-    /// Evaluate a point on the curve at point 't' which should be in the interval \[0, 1\] (unchecked!)
-    /// This is implemented using De Casteljau's algorithm (over a temporary array with const generic sizing)
+    /// Evaluate the curve using de Casteljau interpolation.
+    /// `t` should be in `[0, 1]`. This method does not check the range.
     pub fn eval(&self, t: P::Scalar) -> P {
-        // start with a copy of the original control points array and succesively use it for evaluation
+        // Reuse a copy of the controls for each interpolation level.
         let mut p: [P; N] = self.control_points;
-        // loop up to degree = control_points.len() -1
         for i in 1..p.len() {
             for j in 0..p.len() - i {
                 p[j] = crate::numeric::lerp(p[j], p[j + 1], t);
@@ -134,12 +133,11 @@ where
         p[0]
     }
 
-    /// Approximate the minimum distance between given `point` and the curve.
-    /// Uses a coarse sampling pass over the full domain and a local search around
-    /// the best sample. `nsteps` counts coarse subdivisions (at least one).
-    /// Every sampled/refined candidate is retained if better; the search has no
-    /// global-minimum or accuracy guarantee. Non-finite query points return NaN;
-    /// distances outside the scalar range are infinite.
+    /// Estimate the minimum distance to `point`.
+    /// Sample at `nsteps` equal parameter intervals, then refine near the closest
+    /// sample. Use at least one interval and retain the best distance found.
+    /// This local search can miss a closer point and has no error bound.
+    /// Non-finite query points return NaN. Distances outside the scalar range are infinite.
     pub fn distance_to_point_approx(&self, point: P, nsteps: usize) -> P::Scalar
     where
         P: PointNorm,
@@ -150,8 +148,7 @@ where
         .unwrap_or_else(|never| match never {})
     }
 
-    /// Approximate the minimum distance between given `point` and the curve using
-    /// a default sampling resolution.
+    /// Estimate the minimum distance using the default number of parameter intervals.
     pub fn distance_to_point(&self, point: P) -> P::Scalar
     where
         P: PointNorm,
@@ -185,19 +182,14 @@ where
 
     /// Split the curve at `t` into two sub-curves.
     pub fn split(&self, t: P::Scalar) -> (Self, Self) {
-        // start with a copy of the original control points for now
-        // TODO how to initialize const generic array without using unsafe?
         let mut left: [P; N] = self.control_points;
         let mut right: [P; N] = self.control_points;
-        // these points get overriden each iteration; we save the intermediate results to 'left' and 'right'
+        // Each interpolation level supplies one control point for each subcurve.
         let mut casteljau_points: [P; N] = self.control_points;
 
         for i in 1..=casteljau_points.len() {
-            // save start point of level
             left[i - 1] = casteljau_points[0];
-            // save end point of level
             right[right.len() - i] = casteljau_points[right.len() - i];
-            // calculate next level of points (one less point each level until we reach one point, the one at t)
             for j in 0..casteljau_points.len() - i {
                 casteljau_points[j] =
                     crate::numeric::lerp(casteljau_points[j], casteljau_points[j + 1], t);
@@ -214,8 +206,8 @@ where
         )
     }
 
-    /// Extract `start..end`, reparameterized to `[0, 1]`.
-    /// Requires finite `0 <= start <= end <= 1`; equal endpoints yield a constant curve.
+    /// Extract `start..end` and give the result a new parameter range `[0, 1]`.
+    /// Requires finite `0 <= start <= end <= 1`. Equal endpoints give a constant curve.
     pub fn subcurve(
         &self,
         range: core::ops::Range<P::Scalar>,
@@ -270,13 +262,9 @@ where
         self.derivative_at(t).norm()
     }
 
-    /// Returns the derivative curve of self which has N-1 control points.
-    /// The derivative of an nth degree Bezier curve is an (n-1)th degree Bezier curve,
-    /// with one fewer term, and new weights w0...wn-1 derived from the
-    /// original weights as n(wi+1 - wi). So for a 3rd degree curve, with four weights,
-    /// the derivative has three new weights:
-    ///     w0 = 3(w1-w0), w'1 = 3(w2-w1) and w'2 = 3(w3-w2).
-    /// Requires at least two control points. For constant curves use
+    /// Return the derivative as a Bezier curve with `N - 1` control points.
+    /// Its controls are `(N - 1) * (p[i + 1] - p[i])`.
+    /// Requires at least two control points. For constant curves, use
     /// [`Self::derivative_at`], which returns zero.
     /// ```compile_fail
     /// #![feature(generic_const_exprs)]
@@ -323,7 +311,7 @@ where
         crate::differential::Differential::bezier(self.control_points, t, true).normal()
     }
 
-    /// Approximate the arc length by flattening the curve into `segments` lines.
+    /// Approximate arc length with `segments` straight lines at equal parameter steps.
     pub fn arclen_polyline(&self, segments: usize) -> P::Scalar
     where
         P: PointNorm,
@@ -363,7 +351,7 @@ where
     }
 
     /// Integrate arc length over `start..end`, where `0 <= start <= end <= 1`.
-    /// The positive finite `accuracy` is an absolute length tolerance.
+    /// `accuracy` must be finite and positive, in the same units as the coordinates.
     pub fn arclen_between(
         &self,
         start: P::Scalar,
@@ -445,8 +433,8 @@ where
         }
     }
 
-    // Degree-elevate the unscaled derivative to N coefficients. Keeping its
-    // size N avoids leaking N-1 const-expression bounds into the length API.
+    // Elevate the derivative to N coefficients so length methods do not need
+    // an additional N-1 const-expression bound.
     fn elevated_velocity_axis(&self, axis: usize) -> [P::Scalar; N]
     where
         P: PointIndex,
@@ -489,7 +477,7 @@ where
     }
 
     /// Find isolated derivative zeros using a tolerance in parameter space.
-    /// The absolute tolerance is floored at eight scalar epsilons.
+    /// The minimum tolerance is eight times the scalar's machine epsilon.
     pub fn derivative_roots_with_tolerance(
         &self,
         axis: usize,
@@ -521,52 +509,55 @@ where
 
     /// Return a tight axis-aligned box of the curve on `[0, 1]`.
     ///
-    /// Bernstein convex-hull subdivision encloses every coordinate extremum,
-    /// including repeated roots, to floating-point resolution. This does not
-    /// depend on sampled sign changes or an absolute derivative-value threshold.
+    /// Subdivide the Bernstein control hulls to bound each coordinate extremum
+    /// to floating-point resolution. This also handles repeated derivative roots.
     pub fn bounding_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
     where
         P: PointIndex,
     {
         let axes = core::array::from_fn(|axis| {
-            let original: [P::Scalar; N] = core::array::from_fn(|i| self.control_points[i][axis]);
-            let control_min = original.iter().copied().fold(original[0], Float::min);
-            let control_max = original.iter().copied().fold(original[0], Float::max);
-            // Subdivision in a local coordinate system makes the refinement
-            // criterion translation independent. Restore the origin only once,
-            // when the final extrema are rounded to the output coordinates.
-            let mut origin = original[0];
-            let mut control = original.map(|value| value - origin);
-            if control.iter().any(|value| !value.is_finite()) {
-                // Opposite finite extremes can have an unrepresentable range.
-                // Their absolute coordinates remain safe for convex subdivision.
-                origin = <P::Scalar as NumCast>::from(0.0).unwrap();
-                control = original;
-            }
-            let start = control[0];
-            let end = control[N - 1];
-            let mut min = start.min(end);
-            let mut max = start.max(end);
-            let lo = control.iter().copied().fold(control[0], Float::min);
-            let hi = control.iter().copied().fold(control[0], Float::max);
-            let half = <P::Scalar as NumCast>::from(0.5).unwrap();
-            let tolerance = ((hi * half - lo * half)
-                * P::Scalar::epsilon()
-                * <P::Scalar as NumCast>::from(32_u8).unwrap())
-            .max(lo.abs().max(hi.abs()) * P::Scalar::epsilon());
-            Self::bound_axis(control, tolerance, 0, &mut min, &mut max);
-            (
-                (min + origin)
-                    .min(original[0])
-                    .min(original[N - 1])
-                    .max(control_min),
-                (max + origin)
-                    .max(original[0])
-                    .max(original[N - 1])
-                    .min(control_max),
-            )
+            Self::bound_scalar_axis(core::array::from_fn(|i| self.control_points[i][axis]))
         });
         BoundingBox::from_axes_unchecked(axes)
+    }
+
+    // Shared by ordinary AABBs and the oriented fitter's projected polynomials.
+    pub(crate) fn bound_scalar_axis(original: [P::Scalar; N]) -> (P::Scalar, P::Scalar) {
+        let control_min = original.iter().copied().fold(original[0], Float::min);
+        let control_max = original.iter().copied().fold(original[0], Float::max);
+        // Subdivision in a local coordinate system makes the refinement
+        // criterion translation independent. Restore the origin only once,
+        // when the final extrema are rounded to the output coordinates.
+        let mut origin = original[0];
+        let mut control = original.map(|value| value - origin);
+        if control.iter().any(|value| !value.is_finite()) {
+            // Opposite finite extremes can have an unrepresentable range.
+            // Their absolute coordinates remain safe for convex subdivision.
+            origin = <P::Scalar as NumCast>::from(0.0).unwrap();
+            control = original;
+        }
+        let start = control[0];
+        let end = control[N - 1];
+        let mut min = start.min(end);
+        let mut max = start.max(end);
+        let lo = control.iter().copied().fold(control[0], Float::min);
+        let hi = control.iter().copied().fold(control[0], Float::max);
+        let half = <P::Scalar as NumCast>::from(0.5).unwrap();
+        let tolerance = ((hi * half - lo * half)
+            * P::Scalar::epsilon()
+            * <P::Scalar as NumCast>::from(32_u8).unwrap())
+        .max(lo.abs().max(hi.abs()) * P::Scalar::epsilon());
+        Self::bound_axis(control, tolerance, 0, &mut min, &mut max);
+        (
+            (min + origin)
+                .min(original[0])
+                .min(original[N - 1])
+                .max(control_min),
+            (max + origin)
+                .max(original[0])
+                .max(original[N - 1])
+                .min(control_max),
+        )
     }
 
     fn bound_axis(
@@ -598,6 +589,88 @@ where
         Self::bound_axis(right, tolerance, depth + 1, min, max);
     }
 
+    /// Fit a box with rotated axes around the curve on `[0, 1]`.
+    ///
+    /// Search up to 256 orientations. Subdivide the curve and use its geometry
+    /// to choose starting axes, then refine them with plane rotations. Each
+    /// trial bounds the continuous curve using Bernstein subdivision.
+    /// The search uses fixed stack storage and needs no PCA or eigensolver.
+    ///
+    /// # Approximation and numerical limits
+    ///
+    /// The search may stop before reaching even a local minimum. There is no
+    /// guarantee on how close its volume is to the global minimum. It can cost
+    /// much more than [`Self::bounding_box`]. Reaching the work limit returns
+    /// the best box found.
+    ///
+    /// Floating-point margins can dominate very thin curves or geometry far
+    /// from the origin. They are not certified interval bounds. The search
+    /// retains a padded axis-aligned box as its first candidate, so its result
+    /// can be larger than the unpadded [`Self::bounding_box`].
+    ///
+    /// See the [method and research references](
+    /// crate::oriented_bounding_box#method-and-references) for the algorithm.
+    /// Published epsilon-kernel and convergence guarantees do not apply here.
+    ///
+    /// # Errors
+    ///
+    /// Return [`OrientedBoundingBoxError::ZeroDimension`] for zero-dimensional
+    /// points, or [`OrientedBoundingBoxError::NonFiniteComputation`] if
+    /// normalization, projection or padding cannot be represented.
+    ///
+    /// ```
+    /// #![allow(incomplete_features)]
+    /// #![feature(generic_const_exprs)]
+    /// use stroke::{ArrayPoint, Bezier};
+    /// let curve = Bezier::new([
+    ///     ArrayPoint::from([0.0_f64, 0.0, 0.0]),
+    ///     ArrayPoint::from([1.0, 3.0, 2.0]),
+    ///     ArrayPoint::from([4.0, -2.0, 1.0]),
+    ///     ArrayPoint::from([5.0, 1.0, 4.0]),
+    /// ]).unwrap();
+    /// let bounds = curve.bounding_box_oriented_approx().unwrap();
+    /// assert!(bounds.contains(&curve.eval(0.5)));
+    /// ```
+    pub fn bounding_box_oriented_approx(
+        &self,
+    ) -> Result<OrientedBoundingBox<P::Scalar, { P::DIM }>, OrientedBoundingBoxError>
+    where
+        P: PointIndex,
+    {
+        self.bounding_box_oriented_approx_with_budget(256)
+    }
+
+    /// Fit an oriented box with at most `max_evaluations` full-curve trials.
+    ///
+    /// Uses [`Self::bounding_box_oriented_approx`] with a caller-chosen budget.
+    /// Each trial tests one set of box axes and may require Bernstein subdivision.
+    /// The budget limits trials, not runtime or volume error. Larger budgets
+    /// extend the same sequence and keep the best earlier box, so padded log
+    /// volume cannot increase. This does not establish convergence.
+    ///
+    /// For budgets greater than one, model construction and its initial search
+    /// have a fixed cost. Cache at most 64 control polygons on the stack, using
+    /// `O(64 * N * P::DIM)` scalars. Start with at most 16 pieces and run up to
+    /// 512 model-search trials for each of eight starting frames.
+    /// Refinement targets a 0.1% model-volume gap at selected frames.
+    /// Capacity or scalar resolution can prevent reaching this target.
+    /// It does not bound the error relative to the minimum-volume box.
+    /// [`OrientedBoundingBox::diagnostics`] reports model work and uncertainty.
+    ///
+    /// Constant curves use zero trials. One-dimensional curves and budget-one
+    /// calls use only the initial axis-aligned trial. These cases skip the model.
+    /// A zero budget returns [`OrientedBoundingBoxError::ZeroBudget`].
+    /// Other errors and numerical limits match [`Self::bounding_box_oriented_approx`].
+    pub fn bounding_box_oriented_approx_with_budget(
+        &self,
+        max_evaluations: usize,
+    ) -> Result<OrientedBoundingBox<P::Scalar, { P::DIM }>, OrientedBoundingBoxError>
+    where
+        P: PointIndex,
+    {
+        crate::oriented_bounding_box::fit(self, max_evaluations)
+    }
+
     /// Return a conservative box around all control points.
     pub fn control_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
     where
@@ -606,9 +679,9 @@ where
         BoundingBox::from_points(&self.control_points)
     }
 
-    /// Find a root for a particular axis using Newton-Raphson on the scalar axis function.
-    /// `eps` is a positive finite absolute coordinate residual tolerance (default
-    /// `1e-6`). This local search can fail even when a root exists.
+    /// Find a parameter where one coordinate equals `value`, using Newton's method.
+    /// `eps` bounds the coordinate error and defaults to `1e-6`. It must be finite
+    /// and positive. This local search can fail even when a solution exists.
     pub fn root_newton_axis(
         &self,
         value: P::Scalar,
@@ -743,7 +816,6 @@ mod tests {
         ));
     }
 
-    //use crate::num_traits::{Pow};
     #[test]
     fn eval_endpoints() {
         let points = [
@@ -757,7 +829,6 @@ mod tests {
 
         let curve: Bezier<ArrayPoint<f64, 2>, 6> = Bezier::new(points).unwrap();
 
-        // check if start/end points match
         let start = curve.eval(0.0);
         assert_point_approx_equal(start, points[0], ABSOLUTE_TOLERANCE, RELATIVE_TOLERANCE);
 
@@ -772,7 +843,6 @@ mod tests {
 
     #[test]
     fn distance_to_point() {
-        // chose some arbitrary control points and construct a cubic bezier
         let bezier = Bezier {
             control_points: [
                 ArrayPoint::new([0f64, 1.77f64]),
@@ -799,7 +869,6 @@ mod tests {
 
     #[test]
     fn split_equivalence() {
-        // chose some arbitrary control points and construct a cubic bezier
         let bezier = Bezier {
             control_points: [
                 ArrayPoint::new([0f64, 1.77f64]),
@@ -808,22 +877,18 @@ mod tests {
                 ArrayPoint::new([3.2f64, -4f64]),
             ],
         };
-        // split it at an arbitrary point
         let at = 0.5;
         let (left, right) = bezier.split(at);
-        // compare left and right subcurves with parent curve
-        // take the difference of the two points which must not exceed the absolute error
+        // Each subcurve must match the corresponding parameter range of the original.
         let nsteps: usize = 1000;
         for t in 0..=nsteps {
             let t = t as f64 * 1f64 / (nsteps as f64);
-            // check the left part of the split curve
             assert_point_approx_equal(
                 bezier.eval(t / 2.0),
                 left.eval(t),
                 ABSOLUTE_TOLERANCE,
                 RELATIVE_TOLERANCE,
             );
-            // check the right part of the split curve
             assert_point_approx_equal(
                 bezier.eval((t * 0.5) + 0.5),
                 right.eval(t),
@@ -834,8 +899,7 @@ mod tests {
     }
 
     #[test]
-    /// Check whether the generic implementation is
-    /// equivalent to the specialized cubic implementation
+    /// Check that generic and specialized cubic curves give the same results.
     fn equivalence_cubic_specialization() {
         let cubic_bezier = CubicBezier::new(
             ArrayPoint::new([0f64, 1.77f64]),
@@ -867,8 +931,7 @@ mod tests {
     }
 
     #[test]
-    /// Check whether the generic implementation is
-    /// equivalent to the specialized quadratic implementation
+    /// Check that generic and specialized quadratic curves give the same results.
     fn equivalence_quadratic_specialization() {
         let quadratic_bezier = QuadraticBezier::new(
             ArrayPoint::new([0f64, 1.77f64]),

@@ -1,7 +1,4 @@
-//! Polynomial root helpers using `tinyvec::ArrayVec`.
-//!
-//! Available functions:
-//! - `root_newton_raphson()`
+//! Newton's method with parameter bounds and coordinate-error checks.
 use num_traits::Float;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,9 +13,13 @@ pub enum RootFindingError {
     InvalidIterationLimit,
     /// Function, derivative, or Newton-step arithmetic is non-finite.
     NonFiniteComputation,
+    /// The solver returned no isolated roots.
     NoRootsFound,
+    /// Parameter rounding or clamping prevented further progress.
     FailedToConverge,
+    /// The search used all permitted Newton updates.
     MaxIterationsReached,
+    /// A Newton update encountered a zero derivative.
     ZeroDerivative,
 }
 
@@ -40,8 +41,9 @@ impl core::fmt::Display for RootFindingError {
 
 impl core::error::Error for RootFindingError {}
 
-/// Bounded local Newton search. Only a finite residual at the returned,
-/// domain-clamped parameter can establish success; step size cannot.
+/// Search within the parameter domain using Newton's method.
+/// Success requires a finite function value within `eps` of zero at the returned
+/// parameter. A small parameter step alone does not satisfy the tolerance.
 pub(crate) fn root_newton_raphson<F, Func, Deriv>(
     start: F,
     domain: (F, F),
@@ -78,8 +80,8 @@ where
         if !dx.is_finite() {
             return Err(RootFindingError::NonFiniteComputation);
         }
-        // Derivatives and residual tolerances have different units. A small
-        // nonzero derivative can still produce a perfectly valid Newton step.
+        // A small nonzero derivative can give a valid Newton step. Its units
+        // differ from the coordinate-error tolerance, so compare only with zero.
         if dx == F::zero() {
             return Err(RootFindingError::ZeroDerivative);
         }

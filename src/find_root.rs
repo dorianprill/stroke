@@ -4,7 +4,7 @@ use crate::point::PointIndex;
 use crate::roots::{RootFindingError, root_newton_raphson};
 use num_traits::{Float, NumCast};
 
-/// Helper trait for 1D root finding along a curve axis.
+/// Find parameters where a curve coordinate equals a target value.
 pub trait FindRoot<P: PointIndex> {
     /// Return the inclusive parameter domain for the curve.
     fn parameter_domain(&self) -> (P::Scalar, P::Scalar);
@@ -15,11 +15,11 @@ pub trait FindRoot<P: PointIndex> {
     /// Evaluate the curve's derivative along one axis.
     fn axis_derivative(&self, t: P::Scalar, axis: usize) -> Result<P::Scalar, RootFindingError>;
 
-    /// Find a root for a particular axis using Newton-Raphson on the scalar axis function.
-    /// `eps` is a positive finite absolute tolerance in coordinate units (default
-    /// `1e-6`), not parameter units. Finite initial guesses and every Newton step
-    /// are clamped to the domain. Success checks the actual returned residual.
-    /// This is a local search: failure does not prove that no root exists.
+    /// Find a parameter where coordinate `axis` equals `value`, using Newton's method.
+    /// `eps` bounds the coordinate error and defaults to `1e-6`. It must be finite
+    /// and positive. Clamp the initial guess and each update to the curve's domain.
+    /// Check the coordinate error at the returned parameter before reporting success.
+    /// This local search can fail even when a solution exists.
     fn root_newton_axis(
         &self,
         value: P::Scalar,

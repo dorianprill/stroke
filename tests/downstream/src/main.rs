@@ -21,6 +21,11 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
     assert!(curve.bounding_box().intersects(&cubic.control_box()));
     let spline = BSpline::<P, 8, 4, 3>::new_clamped_uniform(points)?;
     assert!(spline.speed(0.5)?.is_finite());
+    assert!(
+        spline
+            .bounding_box_oriented_approx_with_budget(64)?
+            .contains(&spline.eval(0.5)?)
+    );
     let _: Option<RootFindingError> = None;
     #[cfg(feature = "nalgebra")]
     {

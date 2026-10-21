@@ -4,8 +4,8 @@ use crate::ArcLengthError;
 use crate::numeric::unit_parameter;
 use num_traits::{Float, NumCast};
 
-/// Use exactly the same representable boundaries in both directions. Multiplying
-/// a rounded quotient by count is not an inverse of floating-point division.
+/// Compute the same segment boundaries for evaluation and inverse length lookup.
+/// Multiplication cannot always undo a rounded division.
 pub(crate) fn boundary<T: Float>(index: usize, count: usize) -> T {
     <T as NumCast>::from(index).unwrap() / <T as NumCast>::from(count).unwrap()
 }
@@ -18,8 +18,8 @@ pub(crate) fn decode<T: Float>(t: T, count: usize) -> Option<(usize, T)> {
     if t == T::one() {
         return Some((count - 1, T::one()));
     }
-    // Upper-bound search implements right-hand ownership at exact boundaries,
-    // without snapping neighboring representable parameters to the boundary.
+    // Exact boundaries select the segment on the right. Nearby representable
+    // parameters must stay in their own segment.
     let mut lo = 0;
     let mut hi = count;
     while hi - lo > 1 {
@@ -44,10 +44,9 @@ pub(crate) fn encode<T: Float>(index: usize, local: T, count: usize) -> Result<T
     }
     let mut t = (start * (T::one() - local) + end * local).clamp(start, end);
     if index + 1 < count && t == end {
-        // Rounding an interior location up to the next boundary must not change
-        // its segment. Find the last representable parameter in this interval.
-        // This rare fallback uses arithmetic bisection, without IEEE bit-layout
-        // assumptions or an epsilon that would absorb neighboring parameters.
+        // Rounding to the next boundary would select the wrong segment.
+        // Bisect to find the last representable parameter inside this interval.
+        // This works without assumptions about the scalar's bit layout.
         let half = <T as NumCast>::from(0.5).unwrap();
         let mut inside = start;
         loop {

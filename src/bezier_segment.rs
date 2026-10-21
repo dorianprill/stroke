@@ -1,4 +1,4 @@
-//! Sum type for specialized Bezier segments.
+//! A common interface for line, quadratic and cubic segments.
 
 use super::{
     ArcLengthError, BoundingBox, CubicBezier, LineSegment, Point, PointDot, PointIndex, PointNorm,
@@ -6,10 +6,10 @@ use super::{
 };
 use num_traits::{Float, NumCast};
 
-/// Sum type for line/quadratic/cubic Bezier segments.
+/// A segment containing a line, quadratic Bezier or cubic Bezier curve.
 ///
-/// Methods that need component access or norms add `PointIndex`/`PointNorm`
-/// bounds as required.
+/// Bounding boxes require `PointIndex`. Distance and differential geometry
+/// methods require `PointNorm`.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum BezierSegment<P: Point> {
     Linear(LineSegment<P>),
@@ -74,7 +74,7 @@ where
     }
 
     #[inline]
-    /// Return the baseline line segment between start and end.
+    /// Return the line joining the segment's endpoints.
     pub fn baseline(&self) -> LineSegment<P> {
         match self {
             BezierSegment::Linear(segment) => *segment,
@@ -84,7 +84,7 @@ where
     }
 
     #[inline]
-    /// Return the bounding box across all axes.
+    /// Return the tight axis-aligned bounding box.
     pub fn bounding_box(&self) -> BoundingBox<P::Scalar, { P::DIM }>
     where
         P: PointIndex,
@@ -175,7 +175,7 @@ where
         }
     }
 
-    /// Evaluate the derivative with respect to the unit-domain parameter.
+    /// Evaluate the derivative with respect to `t` in `[0, 1]`.
     pub fn derivative_at(&self, t: P::Scalar) -> P {
         match self {
             Self::Linear(curve) => curve.derivative_at(t),
@@ -184,7 +184,7 @@ where
         }
     }
 
-    /// Return derivative magnitude per unit of the unit-domain parameter.
+    /// Return the speed, the magnitude of the derivative with respect to `t`.
     pub fn speed(&self, t: P::Scalar) -> P::Scalar
     where
         P: PointNorm,
@@ -192,8 +192,8 @@ where
         self.derivative_at(t).norm()
     }
 
-    /// Extract a finite ordered range in `[0, 1]`, reparameterized to `[0, 1]`.
-    /// Equal endpoints yield a constant segment.
+    /// Extract `start..end` and give the result a new parameter range `[0, 1]`.
+    /// Requires finite `0 <= start <= end <= 1`. Equal endpoints give a constant segment.
     pub fn subcurve(
         &self,
         range: core::ops::Range<P::Scalar>,
@@ -227,8 +227,8 @@ where
         }
     }
 
-    /// Map control points and validate the result without modifying this segment.
-    /// Only affine maps geometrically transform the whole curve in the same way.
+    /// Return a segment with mapped control points. Reject non-finite results.
+    /// Affine maps, such as translations, also map every point of the segment.
     pub fn try_map_control_points(
         &self,
         map: impl FnMut(P) -> P,

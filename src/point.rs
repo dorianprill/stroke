@@ -1,13 +1,12 @@
-//! Point traits and capability helpers.
+//! Point arithmetic, coordinate access and Euclidean lengths.
 
 use core::ops::{Add, Index, Mul, Sub};
 use num_traits::{Float, Zero};
 
-/// Core point abstraction used across the library.
+/// A fixed-dimensional point with addition, subtraction and scalar multiplication.
 ///
-/// `Point` models a fixed-dimension vector space element. Curve evaluation
-/// only relies on these operations; geometry helpers are provided via
-/// capability traits like [`PointIndex`] and [`PointNorm`].
+/// These operations are enough to evaluate curves. Coordinate indexing through
+/// [`PointIndex`] adds bounds queries. [`PointNorm`] adds Euclidean geometry.
 pub trait Point:
     Add<Self, Output = Self> + Sub<Self, Output = Self> + Mul<Self::Scalar, Output = Self> + Copy
 {
@@ -22,16 +21,16 @@ pub trait Point:
     fn is_finite(&self) -> bool;
 }
 
-/// Optional capability trait for component access via indexing.
+/// Coordinate access through `point[axis]`, used by bounding-box queries.
 ///
-/// This is required for methods that need per-axis values (e.g. bounding boxes).
+/// Implemented automatically for any [`Point`] with the required indexing.
 pub trait PointIndex: Point + Index<usize, Output = Self::Scalar> {}
 
 impl<T> PointIndex for T where T: Point + Index<usize, Output = Self::Scalar> {}
 
-/// Optional capability trait for dot products.
+/// Dot products for distance and projection calculations.
 ///
-/// Used by distance and projection helpers.
+/// Implemented automatically for every [`PointIndex`].
 pub trait PointDot: PointIndex {
     fn dot(&self, other: &Self) -> Self::Scalar {
         let mut sum = <Self::Scalar as num_traits::NumCast>::from(0.0).unwrap();
@@ -44,16 +43,16 @@ pub trait PointDot: PointIndex {
 
 impl<T> PointDot for T where T: PointIndex {}
 
-/// Optional capability trait for norms.
+/// Euclidean lengths for points and difference vectors.
 ///
-/// Provides stable norm calculations without allocation or dynamic sizing.
+/// Implemented automatically for every [`PointDot`].
 pub trait PointNorm: PointDot {
     fn squared_norm(&self) -> Self::Scalar {
         self.dot(self)
     }
 
-    /// Return the Euclidean norm using scaled accumulation to avoid avoidable
-    /// intermediate overflow and underflow.
+    /// Return the Euclidean length.
+    /// Scale coordinates before squaring to limit intermediate overflow and underflow.
     fn norm(&self) -> Self::Scalar {
         let mut scale = Self::Scalar::zero();
         for axis in 0..Self::DIM {

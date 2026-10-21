@@ -1,3 +1,6 @@
+//! Evaluate a path of line, quadratic and cubic segments and print its bounds.
+//! Each segment occupies one third of the path parameter range.
+
 use stroke::{ArrayPoint, BezierPath, CubicBezier, LineSegment, QuadraticBezier};
 
 fn main() {

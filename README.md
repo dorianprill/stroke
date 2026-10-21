@@ -5,9 +5,9 @@
 
 A zero-allocation library providing const-generic implementations of Bézier curves, B-Spline curves and specialized implementations of up to cubic Bézier curves in N-dimensional euclidean space. It is intended for general/embedded/wasm use supporting #![no_std] environments written in 100% safe Rust with minimal dependencies.
 
-![Generic Bézier and B-spline curves with bounding boxes and labeled control points](curves.svg)
+![Generic Bézier and B-spline curves with tight and control boxes and labeled control points](https://raw.githubusercontent.com/dorianprill/stroke/main/curves.svg)
 
-Made with [Kuva](https://github.com/Psy-Fer/kuva). Regenerate with `cargo run --example kuva_curves`.
+Solid green boxes show `bounding_box()`; dashed gray boxes show `control_box()`. Made with [Kuva](https://github.com/Psy-Fer/kuva). Regenerate with `cargo run --example kuva_curves`.
 
 The library makes heavy use of const-generics and `generic_const_exprs`, so the nightly compiler is required.  
 This repo uses `nightly` via `rust-toolchain`.  
@@ -61,61 +61,37 @@ nalgebra = { version = "0.34", default-features = false, features = ["libm"] }
 
 ## Features
 
-These are the main supported features. Some further utility methods are exposed where useful.  
+These are the main supported features. Some further utility methods are exposed where useful.
 
-### Quadratic and Cubic Bézier Curves
+☑ implemented; ☐ not implemented; — not listed for this curve type.
 
-- [x] evaluation (De Casteljau)
-- [x] split
-- [x] derivative
-- [x] tangent (unit)
-- [x] normal (principal)
-- [x] curvature (magnitude)
-- [x] arc length (linear approx.)
-- [x] arc length (adaptive Gauss-Legendre)
-- [ ] Frenet-Serret frame / torsion
-- [x] bounding box
-- [x] tight axis-aligned bounding box and conservative control-point bounds
+| Feature | Quadratic Bézier | Cubic Bézier | Generic Bézier | Generic B-Splines |
+|---|:---:|:---:|:---:|:---:|
+| evaluation (De Casteljau) | ☑ | ☑ | ☑ | — |
+| split | ☑ | ☑ | ☑ | — |
+| derivative | ☑ | ☑ | ☑ | ☑ |
+| tangent (unit) | ☑ | ☑ | ☑ | ☑ |
+| normal (principal) | ☑ | ☑ | ☑ | ☑ |
+| curvature (magnitude) | ☑ | ☑ | ☑ | ☑ |
+| arc length (linear approx.) | ☑ | ☑ | ☑ | — |
+| arc length (adaptive Gauss-Legendre) | ☑ | ☑ | ☑ | ☑ |
+| Frenet-Serret frame / torsion | ☐ | ☐ | ☐ | ☐ |
+| bounding box | ☑ | ☑ | ☑ | ☑ |
+| tight axis-aligned bounding box and conservative control-point bounds | ☑ | ☑ | ☑ | ☑ |
+| approximate oriented bounding box (heuristic orientation search) | — | — | ☑ | ☑ |
+| evaluation (De Boor) | — | — | — | ☑ |
+| Bézier span extraction (`bezier_spans`, without allocation) | — | — | — | ☑ |
+| basis functions (and derivatives) | — | — | — | ☑ |
+| arc length (polyline approximation) | — | — | — | ☑ |
 
-### Generic Bézier Curves
+## General use
 
-- [x] evaluation (De Casteljau)
-- [x] split
-- [x] derivative
-- [x] tangent (unit)
-- [x] normal (principal)
-- [x] curvature (magnitude)
-- [x] arc length (linear approx.)
-- [x] arc length (adaptive Gauss-Legendre)
-- [ ] Frenet-Serret frame / torsion
-- [x] bounding box
-- [x] tight axis-aligned bounding box and conservative control-point bounds
-
-### Generic B-Splines
-
-- [x] evaluation (De Boor)
-- [x] Bézier span extraction (`bezier_spans`, without allocation)
-- [x] derivative
-- [x] basis functions (and derivatives)
-- [x] tangent (unit)
-- [x] normal (principal)
-- [x] curvature (magnitude)
-- [x] arc length (polyline approximation)
-- [x] arc length (adaptive Gauss-Legendre)
-- [ ] Frenet-Serret frame / torsion
-- [x] bounding box
-- [x] tight axis-aligned bounding box and conservative control-point bounds
-
-### General use
-
-`arclen(accuracy)`, `arclen_between(start, end, accuracy)`, and inverse-length
-queries use adaptive Gauss-Legendre quadrature. Choose a positive finite
-`accuracy` in coordinate units; subdivision follows an error estimate and is
-limited by scalar roundoff. These queries return errors for invalid input,
-non-finite arithmetic, or exhausted convergence budgets.
-`arclen_polyline(segments)` uses fixed subdivisions per curve or B-spline span.
+Constructors return `Result` and reject non-finite controls. B-splines also
+validate their knots. Control-point setters leave the curve unchanged on error.
 
 ```rust
+#![allow(incomplete_features)]
+#![feature(generic_const_exprs)]
 use stroke::{ArrayPoint, Bezier};
 
 let curve = Bezier::new([
@@ -128,77 +104,101 @@ let halfway = curve.point_at_length(length * 0.5, 1e-10).unwrap();
 let bounds = curve.bounding_box();
 ```
 
-Bézier parameters lie in `[0, 1]`; paths divide that interval uniformly among
-segments. B-splines use `[knots[D], knots[C]]`. `derivative_at(t)` and `speed(t)`
-use these parameter units. At a boundary, evaluation selects the piece on the
-right, except at the final endpoint. Gaps contribute no arc length.
+`arclen(accuracy)`, `arclen_between(start, end, accuracy)` and inverse-length
+queries use adaptive Gauss-Legendre integration for curved pieces. Choose a
+finite, positive `accuracy` in coordinate units. It is an absolute error target
+based on an estimate, limited by floating-point roundoff. Invalid inputs,
+non-finite arithmetic or exhausted work limits return errors.
+`arclen_polyline(segments)` uses fixed parameter steps per curve or B-spline span.
 
-Inverse lookups clamp finite distances to the endpoints; zero-length curves
-select their start. Empty paths have length zero, `Ok(None)` for inverse
-lookups, and `None` for boxes. `bounding_box()` gives tight bounds to floating-point
-resolution; the cheaper `control_box()` encloses the control points and curve.
+Bézier parameters lie in `[0, 1]`. Paths divide that interval equally among
+stored segments. B-splines use `[knots[D], knots[C]]`. Derivatives and speeds
+use these parameter units. At a boundary, evaluation selects the piece to the
+right, except at the final endpoint. Gaps add no arc length.
 
-Clamped uniform B-splines interpolate their endpoint controls; interior
-controls shape the curve. Use `bezier_spans()` to extract their polynomial
-pieces. Mapping control points transforms the whole curve geometrically when
-the map is affine.
+Inverse-length queries clamp finite distances to the endpoints. Zero-length
+curves select their start. Empty paths have length zero, return `Ok(None)`
+for inverse lookups and `None` for boxes.
 
-Curved `distance_to_point*` queries use sampling and local refinement, with no
-global accuracy guarantee. Non-finite query points produce NaN.
-Newton root queries use `eps` as an absolute coordinate residual tolerance;
-a failed local search can miss existing roots. At stationary points,
-tangent and curvature return zero and normal returns `None`.
+`bounding_box()` gives tight axis-aligned curve bounds to floating-point
+resolution. `control_box()` bounds the controls and curve, usually with less work.
+`bounding_box_oriented_approx()` searches for a smaller box with rotated axes,
+using up to 256 full-curve trials. Its `_with_budget(n)` variant limits trials.
+Neither the runtime nor volume error is fixed by that budget. Larger budgets
+retain earlier improvements. The search has no guarantee of finding a minimum
+or a fixed-factor approximation. `diagnostics()` reports model work and error
+estimates. B-splines include every nonzero span and both limits at jumps.
+Their stack storage grows with control count and degree.
+
+Clamped uniform B-splines pass through their endpoint controls. Interior controls
+shape the curve. Use `bezier_spans()` to extract its polynomial pieces.
+Affine control-point maps, such as translations, also map the whole curve.
+
+Curved `distance_to_point*` queries sample and refine near the closest sample.
+They can miss a closer point and have no error bound. Non-finite query points
+produce NaN. Newton root searches use `eps` to bound coordinate error, and can
+fail even when a root exists. At a stationary point, tangent and curvature
+return zero and normal returns `None`.
 
 ## Examples
 
-- `bezier_path`: mixed Bezier path segments; run `cargo run --example bezier_path`.
-- `bspline_path`: basic B-spline path evaluation; run `cargo run --example bspline_path`.
-- `bspline_signal_1d`: 1D signal interpolation with a cubic B-spline; run `cargo run --example bspline_signal_1d`.
-- `bezier_quarter_circle`: cubic Bezier quarter-circle approximation; run `cargo run --example bezier_quarter_circle`.
-- `arc_length_sampling`: equal-arc-length sampling along a Bezier curve; run `cargo run --example arc_length_sampling`.
-- `motion_3d`: sample a 3D tool trajectory at a fixed feed rate; CSV includes time, position, velocity, and curvature. Run `cargo run --example motion_3d`.
-- `spatial_queries`: CAD/GIS broad-phase filtering with tight versus control boxes, overlap queries, and trimmed curve bounds. Run `cargo run --example spatial_queries`.
-- `animation_envelope`: scalar B-spline value and rate over a native time domain, producing CSV output. Run `cargo run --example animation_envelope`.
-- `tangent_normal_curvature`: sample tangent/normal/curvature; run `cargo run --example tangent_normal_curvature`.
-- `kuva_curves`: render a 2×2 SVG figure with generic quadratic and cubic `Bezier` curves, a clamped quintic `BSpline`, and an unclamped cubic `BSpline`, with curve bounding boxes, control polygons, named control points, knot-vector legends, and marked interior knots and unclamped endpoints; run `cargo run --example kuva_curves` to write `curves.svg`. Uses Kuva's SVG backend with optional features disabled; no system font library or font installation is required.
-- `nalgebra_basic`: Bezier with nalgebra SVector; run `cargo run --example nalgebra_basic --features nalgebra`.
-  
+Run `cargo run --example NAME`. The study and nalgebra examples need the extra
+options shown below.
+
+- `bezier_path` joins line, quadratic and cubic segments.
+- `bspline_path` evaluates a path of B-spline segments.
+- `bspline_signal_1d` fits a cubic B-spline through scalar samples.
+- `bezier_quarter_circle` approximates a quarter circle with a cubic curve.
+- `arc_length_sampling` places samples at equal arc-length intervals.
+- `motion_3d` samples a tool trajectory at a fixed feed rate. Its CSV contains
+  time, position, velocity and curvature.
+- `spatial_queries` filters curve candidates with bounding-box overlap and
+  bounds trimmed portions of a curve.
+- `animation_envelope` evaluates a scalar B-spline and its rate of change over
+  a time domain, with CSV output.
+- `tangent_normal_curvature` samples those geometric quantities.
+- `kuva_curves` writes `curves.svg`, with curve boxes, control boxes, labeled
+  controls and knot markers. It needs no system font libraries.
+- `oriented_box_study` checks oriented bounds against polynomial extrema and
+  numerical reference searches in 2D, 3D and 4D. Run it with
+  `cargo run --release --example oriented_box_study`. Add `-- --extended`
+  for a larger corpus. It writes timings and diagnostics to CSV. Reference
+  orientations are best-known numerical results, not certified optima.
+- `nalgebra_basic` uses `SVector` points. Run it with
+  `cargo run --example nalgebra_basic --features nalgebra`.
+
 ## Development
 
-Install the nightly tools once with `rustup component add rustfmt clippy`.
-Run `cargo lint` for all targets with all features, or `cargo lint-default`
-for all targets without default features. Both treat warnings as errors;
-CI runs both commands. `.cargo/config.toml` also selects the compatible
-nightly trait solver for local builds, Clippy, and doctests.
-CI checks the library with and without nalgebra on WASM and bare-metal ARM,
-verifies the release package, and denies warnings in all-feature rustdoc.
-Run `cargo test --examples --all-features` for example assertions. CI also
-builds a separate downstream consumer from outside the repository, without
-inheriting this configuration. The API pass was tested with
-`rustc 1.101.0-nightly (7df81381d 2026-10-14)`; stable Rust is not supported.
+Install the tools with `rustup component add rustfmt clippy`.
 
-Enable automatic checks before each commit in a fresh clone:
+- `cargo lint` checks all targets with all features.
+- `cargo lint-default` checks all targets without default features.
+- `cargo test --all-features` runs the tests and doc examples.
+- `cargo test --examples --all-features` runs the example assertions.
+
+Both lint commands deny warnings. CI also checks WASM and bare-metal ARM builds
+with and without nalgebra, verifies the release package and denies rustdoc
+warnings. A separate consumer test runs outside the repository's Cargo
+configuration. Local builds use the nightly trait solver selected in
+`.cargo/config.toml`.
+
+To check formatting and run both lints before each commit:
 
 ```sh
 git config --local core.hooksPath .githooks
 ```
 
-The hook checks formatting and runs both lint commands. It requires no extra
-hook manager. To disable it, run `git config --local --unset core.hooksPath`.
+The hook needs no extra manager. Disable it with
+`git config --local --unset core.hooksPath`.
 
-Lint levels are in `Cargo.toml`, with lint options in `clippy.toml`.
-The policy keeps Clippy's default checks, adds Cargo metadata checks,
-portable `core`/`alloc` API checks, documentation formatting, redundant-clone
-checks, and checks for debug macros, unfinished code, and process exits.
-Unsafe code is forbidden for every target. Clippy reads the declared MSRV
-from `package.rust-version` and checks test code against it as well.
+Lint settings are in `Cargo.toml` and `clippy.toml`. Unsafe code is forbidden in
+the library, tests and examples. Clippy checks the declared minimum Rust version
+in `package.rust-version`, including test code.
 
-We enable extra lints individually rather than enabling all of `pedantic`,
-`nursery`, or `restriction`. Exact floating-point knot comparisons, indexed
-arrays, scalar casts, and short mathematical variable names are intentional
-in these algorithms. Unwraps are also intentional for scalar conversions
-and test assertions; they are not banned globally. Any lint exception should
-be scoped to the relevant item and explain why it applies.
+Extra lints are enabled individually. Exact knot comparisons, indexed arrays,
+scalar casts and short mathematical names are intentional. Scalar conversions
+and test assertions may use `unwrap()`. Keep lint exceptions local and explain
+why they are needed.
 
 ## Related  
 

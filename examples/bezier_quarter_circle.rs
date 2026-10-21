@@ -1,3 +1,6 @@
+//! Approximate a unit quarter circle with a cubic Bezier curve.
+//! Report the largest radial error among 101 equally spaced parameter samples.
+
 use stroke::{ArrayPoint, Bezier};
 
 fn main() {

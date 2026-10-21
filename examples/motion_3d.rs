@@ -1,7 +1,7 @@
-//! Sample a cubic 3D tool trajectory at a feed rate of 0.5 coordinate units/s.
-//! Arc-length inversion maps elapsed time to knot parameters. CSV output
-//! contains positions, velocity vectors, and curvature at 21 uniformly spaced times.
-//! Feed starts and stops instantaneously; acceleration and jerk are unconstrained.
+//! Sample a cubic 3D tool trajectory at 0.5 coordinate units per second.
+//! Convert elapsed time to distance, then invert arc length to find the curve parameter.
+//! CSV output gives position, velocity and curvature at 21 equally spaced times.
+//! Assume instantaneous starts and stops, with no acceleration or jerk limits.
 
 use stroke::{ArrayPoint, BSpline};
 

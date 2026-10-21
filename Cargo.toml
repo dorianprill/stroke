@@ -1,7 +1,7 @@
 [package]
 name = "stroke"
-version = "0.4.0"
-description = """Zero-allocation, const-generic implementations of Bézier and B-Spline curves in N-dimensional euclidean space."""
+version = "0.4.1"
+description = """Zero-allocation Bézier and B-spline curves in a compile-time number of dimensions."""
 authors = ["Dorian Prill"]
 repository = "https://github.com/dorianprill/stroke"
 readme = "README.md"
@@ -17,7 +17,6 @@ include = [
     "clippy.toml",
     "CHANGELOG.md",
     "README.md",
-    "curves.svg",
     "LICENSE",
     "rust-toolchain",
     "src/**/*.rs",
@@ -26,7 +25,7 @@ include = [
 ]
 
 [dependencies]
-tinyvec = { version = "^1.10.0" } #{, features = ["rustc_1_55"] }
+tinyvec = { version = "^1.10.0" }
 nalgebra = { version = "^0.34.1", default-features = false, features = [
     "libm",
 ], optional = true }
@@ -40,7 +39,7 @@ features = ["libm"]      # use `Float` and `Real` without `std`
 [features]
 nalgebra = ["dep:nalgebra"]
 
-# these are just for development (e.g. integration tests and examples)
+# Used by tests and examples.
 [dev-dependencies]
 kuva = { version = "0.6", default-features = false }
 
@@ -67,7 +66,7 @@ alloc_instead_of_core = "warn"
 redundant_clone = "warn"
 doc_markdown = "warn"
 
-# Dependencies may legitimately resolve multiple versions beyond our control.
+# Transitive dependencies can require different versions of the same crate.
 multiple_crate_versions = "allow"
-# Do not enable pedantic/restriction wholesale: numerical algorithms deliberately
-# use exact knot comparisons, scalar casts, indexed arrays, and short math names.
+# Enable extra lints individually. The numerical code uses exact knot
+# comparisons, scalar casts, indexed arrays and short mathematical names.
